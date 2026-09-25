@@ -1,0 +1,19 @@
+{% if movimientos %}
+  <table>
+    <thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Lote</th><th>Ubicación</th><th class="num">Cantidad</th><th>Documento</th><th>Usuario</th></tr></thead>
+    <tbody>
+      {% for m in movimientos %}
+        <tr>
+          <td>{{ m.fecha|date:"d-m-Y H:i" }}</td>
+          <td>{{ m.get_tipo_display }}</td>
+          <td>{{ m.lote.producto.nombre }}</td>
+          <td>{{ m.lote.numero }}</td>
+          <td>{{ m.ubicacion.nombre }}</td>
+          <td class="num">{% if m.cantidad > 0 %}+{% endif %}{{ m.cantidad }}</td>
+          <td>{{ m.documento|default:"—" }}</td>
+          <td>{{ m.usuario.username }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}<p class="suave">Aún no hay movimientos.</p>{% endif %}

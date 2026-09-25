@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block titulo %}Registro · Inventario Salud{% endblock %}
+{% block contenido %}
+  <h1>Registrar mi centro</h1>
+  <div class="caja formulario">
+    <p class="suave">Se crea tu usuario y tu empresa. Quedarás como administrador y podrás invitar a tu equipo.</p>
+    <form method="post">
+      {% csrf_token %}
+      {{ form }}
+      <button type="submit">Crear cuenta</button>
+    </form>
+    <p class="suave">¿Ya tienes cuenta? <a href="{% url 'login' %}">Ingresa</a>.</p>
+  </div>
+{% endblock %}

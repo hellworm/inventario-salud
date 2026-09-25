@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block contenido %}
+  <div class="encabezado">
+    <h1>Panel · {{ empresa_actual.nombre }}</h1>
+    {% if membresia_actual.puede_editar %}
+      <div>
+        <a class="boton" href="{% url 'inventario:movimiento_nuevo' %}?tipo=entrada">+ Entrada</a>
+        <a class="boton secundario" href="{% url 'inventario:movimiento_nuevo' %}?tipo=salida">− Salida</a>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="tarjetas">
+    <div class="tarjeta"><div class="valor">{{ total_productos }}</div><div class="etiqueta">Productos activos</div></div>
+    <div class="tarjeta"><div class="valor">{{ bajo_minimo|length }}</div><div class="etiqueta">Bajo stock mínimo</div></div>
+    <div class="tarjeta"><div class="valor">{{ por_vencer|length }}</div><div class="etiqueta">Lotes vencen en {{ dias_alerta }} días</div></div>
+    <div class="tarjeta"><div class="valor">{{ vencidos|length }}</div><div class="etiqueta">Lotes vencidos con stock</div></div>
+  </div>
+
+  {% if vencidos %}
+    <h2>Vencidos con stock</h2>
+    <div class="caja">
+      <table>
+        <thead><tr><th>Producto</th><th>Lote</th><th>Venció</th><th class="num">Stock</th></tr></thead>
+        <tbody>
+          {% for l in vencidos %}
+            <tr><td>{{ l.producto.nombre }}</td><td>{{ l.numero }}</td><td><span class="etiqueta-estado vencido">{{ l.vencimiento|date:"d-m-Y" }}</span></td><td class="num">{{ l.stock }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  <h2>Por vencer (próximos {{ dias_alerta }} días)</h2>
+  <div class="caja">
+    {% if por_vencer %}
+      <table>
+        <thead><tr><th>Producto</th><th>Lote</th><th>Vence</th><th class="num">Stock</th></tr></thead>
+        <tbody>
+          {% for l in por_vencer %}
+            <tr><td>{{ l.producto.nombre }}</td><td>{{ l.numero }}</td><td><span class="etiqueta-estado por-vencer">{{ l.vencimiento|date:"d-m-Y" }}</span></td><td class="num">{{ l.stock }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}<p class="suave">No hay lotes por vencer.</p>{% endif %}
+  </div>
+
+  <h2>Bajo stock mínimo</h2>
+  <div class="caja">
+    {% if bajo_minimo %}
+      <table>
+        <thead><tr><th>Código</th><th>Producto</th><th class="num">Stock</th><th class="num">Mínimo</th></tr></thead>
+        <tbody>
+          {% for p in bajo_minimo %}
+            <tr><td>{{ p.codigo }}</td><td><a href="{% url 'inventario:producto_detalle' p.pk %}">{{ p.nombre }}</a></td><td class="num"><span class="etiqueta-estado bajo">{{ p.stock }}</span></td><td class="num">{{ p.stock_minimo }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}<p class="suave">Todo sobre el mínimo.</p>{% endif %}
+  </div>
+
+  <h2>Últimos movimientos</h2>
+  <div class="caja">
+    {% include "inventario/_tabla_movimientos.html" with movimientos=ultimos_movimientos %}
+  </div>
+{% endblock %}

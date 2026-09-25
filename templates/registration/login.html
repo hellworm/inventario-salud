@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block titulo %}Ingresar · Inventario Salud{% endblock %}
+{% block contenido %}
+  <h1>Ingresar</h1>
+  <div class="caja formulario">
+    <form method="post">
+      {% csrf_token %}
+      {{ form }}
+      <input type="hidden" name="next" value="{{ next }}">
+      <button type="submit">Ingresar</button>
+    </form>
+    <p class="suave">¿Tu centro aún no tiene cuenta? <a href="{% url 'cuentas:registro' %}">Regístralo aquí</a>.</p>
+  </div>
+{% endblock %}

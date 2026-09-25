@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block titulo %}Stock · Inventario Salud{% endblock %}
+{% block contenido %}
+  <div class="encabezado"><h1>Stock actual</h1></div>
+  <form class="filtros" method="get">
+    <select name="ubicacion" onchange="this.form.submit()" aria-label="Ubicación">
+      <option value="">Todas las ubicaciones</option>
+      {% for u in ubicaciones %}<option value="{{ u.pk }}" {% if u.pk|stringformat:"s" == ubicacion_actual %}selected{% endif %}>{{ u.nombre }}</option>{% endfor %}
+    </select>
+  </form>
+  <div class="caja">
+    {% if filas %}
+      <table>
+        <thead><tr><th>Código</th><th>Producto</th><th>Lote</th><th>Vencimiento</th><th>Ubicación</th><th class="num">Stock</th></tr></thead>
+        <tbody>
+          {% for f in filas %}
+            <tr>
+              <td>{{ f.lote__producto__codigo }}</td>
+              <td><a href="{% url 'inventario:producto_detalle' f.lote__producto__pk %}">{{ f.lote__producto__nombre }}</a></td>
+              <td>{{ f.lote__numero }}</td>
+              <td>{% if f.lote__vencimiento and f.lote__vencimiento < hoy %}<span class="etiqueta-estado vencido">{{ f.lote__vencimiento|date:"d-m-Y" }}</span>{% else %}{{ f.lote__vencimiento|date:"d-m-Y"|default:"—" }}{% endif %}</td>
+              <td>{{ f.ubicacion__nombre }}</td>
+              <td class="num">{{ f.stock }} <span class="suave">{{ f.lote__producto__unidad }}</span></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}<p class="suave">No hay stock registrado.</p>{% endif %}
+  </div>
+{% endblock %}

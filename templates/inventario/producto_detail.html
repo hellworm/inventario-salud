@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block titulo %}{{ producto.nombre }} · Inventario Salud{% endblock %}
+{% block contenido %}
+  <div class="encabezado">
+    <h1>{{ producto.nombre }}</h1>
+    {% if membresia_actual.puede_editar %}
+      <div>
+        <a class="boton" href="{% url 'inventario:lote_nuevo' %}?producto={{ producto.pk }}">+ Lote</a>
+        <a class="boton secundario" href="{% url 'inventario:producto_editar' producto.pk %}">Editar</a>
+      </div>
+    {% endif %}
+  </div>
+  <div class="tarjetas">
+    <div class="tarjeta"><div class="valor">{{ stock_total }}</div><div class="etiqueta">Stock total ({{ producto.unidad }})</div></div>
+    <div class="tarjeta"><div class="valor">{{ producto.stock_minimo }}</div><div class="etiqueta">Stock mínimo</div></div>
+    <div class="tarjeta"><div class="etiqueta">Código</div><strong>{{ producto.codigo }}</strong><div class="etiqueta">Presentación</div><strong>{{ producto.presentacion|default:"—" }}</strong></div>
+  </div>
+
+  <h2>Stock por lote y ubicación</h2>
+  <div class="caja">
+    {% if stock_por_lote %}
+      <table>
+        <thead><tr><th>Lote</th><th>Vencimiento</th><th>Ubicación</th><th class="num">Stock</th><th></th></tr></thead>
+        <tbody>
+          {% for f in stock_por_lote %}
+            <tr>
+              <td>{{ f.lote__numero }}</td>
+              <td>{{ f.lote__vencimiento|date:"d-m-Y"|default:"—" }}</td>
+              <td>{{ f.ubicacion__nombre }}</td>
+              <td class="num">{{ f.stock }}</td>
+              <td>{% if membresia_actual.puede_editar %}<a href="{% url 'inventario:movimiento_nuevo' %}?tipo=salida&lote={{ f.lote__pk }}">Salida</a>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}<p class="suave">Sin stock. Crea un lote y registra una entrada.</p>{% endif %}
+  </div>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Inventario Salud{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'app.css' %}">
+</head>
+<body>
+  <header class="barra">
+    <a class="marca" href="{% url 'inventario:panel' %}">Inventario Salud</a>
+    {% if user.is_authenticated and empresa_actual %}
+      <nav>
+        <a href="{% url 'inventario:panel' %}">Panel</a>
+        <a href="{% url 'inventario:stock' %}">Stock</a>
+        <a href="{% url 'inventario:productos' %}">Productos</a>
+        <a href="{% url 'inventario:lotes' %}">Lotes</a>
+        <a href="{% url 'inventario:movimientos' %}">Movimientos</a>
+        <a href="{% url 'inventario:ubicaciones' %}">Ubicaciones</a>
+        {% if membresia_actual.es_admin %}<a href="{% url 'cuentas:miembros' %}">Usuarios</a>{% endif %}
+      </nav>
+    {% endif %}
+    {% if user.is_authenticated %}
+      <div class="usuario">
+        {% if empresa_actual %}
+          {% if otras_membresias %}
+            <form method="post" action="{% url 'cuentas:cambiar_empresa' %}">
+              {% csrf_token %}
+              <select name="empresa" onchange="this.form.submit()" aria-label="Empresa">
+                <option value="{{ empresa_actual.pk }}" selected>{{ empresa_actual.nombre }}</option>
+                {% for m in otras_membresias %}<option value="{{ m.empresa.pk }}">{{ m.empresa.nombre }}</option>{% endfor %}
+              </select>
+            </form>
+          {% else %}
+            <strong>{{ empresa_actual.nombre }}</strong>
+          {% endif %}
+          · {{ membresia_actual.get_rol_display }}
+        {% endif %}
+        · {{ user.username }}
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="enlace" type="submit">Salir</button></form>
+      </div>
+    {% endif %}
+  </header>
+  <main>
+    {% if messages %}
+      <ul class="mensajes">
+        {% for m in messages %}<li class="{{ m.tags }}">{{ m }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+    {% block contenido %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block titulo %}Lotes · Inventario Salud{% endblock %}
+{% block contenido %}
+  <div class="encabezado">
+    <h1>Lotes</h1>
+    {% if membresia_actual.puede_editar %}<a class="boton" href="{% url 'inventario:lote_nuevo' %}">+ Nuevo lote</a>{% endif %}
+  </div>
+  <form class="filtros" method="get">
+    <input type="search" name="q" value="{{ request.GET.q }}" placeholder="Buscar lote o producto">
+    <label><input type="checkbox" name="todos" value="1" {% if request.GET.todos == "1" %}checked{% endif %}> Incluir lotes sin stock</label>
+    <button type="submit" class="secundario">Filtrar</button>
+  </form>
+  <div class="caja">
+    {% if lotes %}
+      <table>
+        <thead><tr><th>Producto</th><th>Lote</th><th>Vencimiento</th><th class="num">Stock</th><th></th></tr></thead>
+        <tbody>
+          {% for l in lotes %}
+            <tr>
+              <td><a href="{% url 'inventario:producto_detalle' l.producto.pk %}">{{ l.producto.nombre }}</a></td>
+              <td>{{ l.numero }}</td>
+              <td>
+                {% if not l.vencimiento %}<span class="suave">—</span>
+                {% elif l.vencimiento < hoy %}<span class="etiqueta-estado vencido">{{ l.vencimiento|date:"d-m-Y" }}</span>
+                {% elif l.vencimiento <= limite %}<span class="etiqueta-estado por-vencer">{{ l.vencimiento|date:"d-m-Y" }}</span>
+                {% else %}{{ l.vencimiento|date:"d-m-Y" }}{% endif %}
+              </td>
+              <td class="num">{{ l.stock }}</td>
+              <td>
+                {% if membresia_actual.puede_editar %}
+                  <a href="{% url 'inventario:movimiento_nuevo' %}?tipo=entrada&lote={{ l.pk }}">Entrada</a> ·
+                  <a href="{% url 'inventario:lote_editar' l.pk %}">Editar</a>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% include "paginacion.html" %}
+    {% else %}<p class="suave">No hay lotes con stock.</p>{% endif %}
+  </div>
+{% endblock %}

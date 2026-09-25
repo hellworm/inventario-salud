@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block contenido %}
+  <h1>Sin permiso</h1>
+  <p>Tu rol en esta empresa no permite realizar esta acción. Pide acceso a un administrador.</p>
+  <p><a href="{% url 'inventario:panel' %}">Volver al panel</a></p>
+{% endblock %}

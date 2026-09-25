@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block titulo %}{{ titulo }} · Inventario Salud{% endblock %}
+{% block contenido %}
+  <h1>{{ titulo }}</h1>
+  <div class="caja formulario">
+    <form method="post">
+      {% csrf_token %}
+      {{ form }}
+      <button type="submit">Guardar</button>
+      <a href="javascript:history.back()" class="boton secundario">Cancelar</a>
+    </form>
+  </div>
+{% endblock %}

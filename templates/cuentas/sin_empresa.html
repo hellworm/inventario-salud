@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block contenido %}
+  <h1>Sin empresa asignada</h1>
+  <p>Tu usuario todavía no pertenece a ninguna empresa activa.</p>
+  <p>Pide al administrador de tu centro que te agregue, o <a href="{% url 'cuentas:registro' %}">registra un centro nuevo</a> con otro usuario.</p>
+{% endblock %}

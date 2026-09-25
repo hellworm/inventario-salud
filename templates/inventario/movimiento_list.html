@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block titulo %}Movimientos · Inventario Salud{% endblock %}
+{% block contenido %}
+  <div class="encabezado">
+    <h1>Movimientos</h1>
+    {% if membresia_actual.puede_editar %}<a class="boton" href="{% url 'inventario:movimiento_nuevo' %}">+ Registrar movimiento</a>{% endif %}
+  </div>
+  <form class="filtros" method="get">
+    <select name="tipo" onchange="this.form.submit()" aria-label="Tipo">
+      <option value="">Todos los tipos</option>
+      {% for valor, nombre in tipos %}<option value="{{ valor }}" {% if valor == tipo_actual %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+    </select>
+  </form>
+  <div class="caja">
+    {% include "inventario/_tabla_movimientos.html" %}
+    {% include "paginacion.html" %}
+  </div>
+{% endblock %}

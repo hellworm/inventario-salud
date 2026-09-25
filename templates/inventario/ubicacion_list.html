@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block titulo %}Ubicaciones · Inventario Salud{% endblock %}
+{% block contenido %}
+  <div class="encabezado">
+    <h1>Ubicaciones</h1>
+    {% if membresia_actual.puede_editar %}<a class="boton" href="{% url 'inventario:ubicacion_nueva' %}">+ Nueva ubicación</a>{% endif %}
+  </div>
+  <div class="caja">
+    {% if ubicaciones %}
+      <table>
+        <thead><tr><th>Nombre</th><th>Descripción</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          {% for u in ubicaciones %}
+            <tr>
+              <td><a href="{% url 'inventario:stock' %}?ubicacion={{ u.pk }}">{{ u.nombre }}</a></td>
+              <td>{{ u.descripcion|default:"—" }}</td>
+              <td>{% if u.activa %}Activa{% else %}<span class="suave">Inactiva</span>{% endif %}</td>
+              <td>{% if membresia_actual.puede_editar %}<a href="{% url 'inventario:ubicacion_editar' u.pk %}">Editar</a>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}<p class="suave">Crea al menos una ubicación (bodega, farmacia, sala...) antes de registrar movimientos.</p>{% endif %}
+  </div>
+{% endblock %}
