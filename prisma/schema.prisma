@@ -1,0 +1,298 @@
+// Modelo de datos de RedInsumos.
+// Convención: tablas en snake_case plural (@@map), columnas en camelCase.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TipoCentro {
+  DIALISIS
+  CONSULTORIO
+  CLINICA
+  HOSPITAL
+  OTRO
+}
+
+enum TipoUbicacion {
+  BODEGA
+  SALA
+  REFRIGERADO
+  OTRO
+}
+
+enum Rol {
+  ADMIN
+  BODEGUERO
+  VISITANTE
+}
+
+enum TipoMovimiento {
+  INGRESO
+  RETIRO
+  AJUSTE_POSITIVO
+  AJUSTE_NEGATIVO
+  MERMA
+  TRASLADO_SALIDA
+  TRASLADO_ENTRADA
+}
+
+model Centro {
+  id        String     @id @default(cuid())
+  nombre    String     @unique
+  tipo      TipoCentro
+  rut       String?
+  direccion String
+  comuna    String
+  region    String
+  telefono  String?
+  activo    Boolean    @default(true)
+  creadoEn  DateTime   @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  ubicaciones Ubicacion[]
+  usuarios    UsuarioCentro[]
+  parametros  ParametroStock[]
+  movimientos Movimiento[]
+
+  @@map("centros")
+}
+
+model Ubicacion {
+  id          String        @id @default(cuid())
+  centroId    String
+  nombre      String
+  tipo        TipoUbicacion @default(BODEGA)
+  descripcion String?
+  activo      Boolean       @default(true)
+  creadoEn    DateTime      @default(now())
+  actualizadoEn DateTime    @updatedAt
+
+  centro      Centro       @relation(fields: [centroId], references: [id], onDelete: Restrict)
+  existencias Existencia[]
+  movimientos Movimiento[]
+
+  @@unique([centroId, nombre])
+  @@map("ubicaciones")
+}
+
+model Usuario {
+  id                  String    @id @default(cuid())
+  nombre              String
+  /// Siempre en minúsculas (se normaliza en el servidor).
+  email               String    @unique
+  passwordHash        String
+  rol                 Rol
+  activo              Boolean   @default(true)
+  debeCambiarPassword Boolean   @default(true)
+  ultimoAcceso        DateTime?
+  intentosFallidos    Int       @default(0)
+  bloqueadoHasta      DateTime?
+  creadoEn            DateTime  @default(now())
+  actualizadoEn       DateTime  @updatedAt
+
+  centros     UsuarioCentro[]
+  sesiones    Sesion[]
+  movimientos Movimiento[]
+  auditoria   RegistroAuditoria[]
+
+  @@map("usuarios")
+}
+
+model UsuarioCentro {
+  usuarioId String
+  centroId  String
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  centro  Centro  @relation(fields: [centroId], references: [id], onDelete: Cascade)
+
+  @@id([usuarioId, centroId])
+  @@index([centroId])
+  @@map("usuarios_centros")
+}
+
+model Sesion {
+  id        String   @id @default(cuid())
+  /// SHA-256 (hex) del token aleatorio; el token en claro solo vive en la cookie.
+  tokenHash String   @unique
+  usuarioId String
+  expiraEn  DateTime
+  ip        String?
+  userAgent String?
+  creadoEn  DateTime @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@index([expiraEn])
+  @@map("sesiones")
+}
+
+model Categoria {
+  id       String   @id @default(cuid())
+  nombre   String   @unique
+  creadoEn DateTime @default(now())
+
+  insumos Insumo[]
+
+  @@map("categorias")
+}
+
+/// Catálogo común a toda la red.
+model Insumo {
+  id                 String   @id @default(cuid())
+  /// SKU interno, en mayúsculas.
+  codigo             String   @unique
+  nombre             String
+  descripcion        String?
+  categoriaId        String
+  unidadMedida       String
+  presentacion       String?
+  fabricante         String?
+  /// Registro sanitario ISP.
+  registroSanitario  String?
+  codigoBarras       String?
+  requiereCadenaFrio Boolean  @default(false)
+  controlaVencimiento Boolean @default(true)
+  activo             Boolean  @default(true)
+  creadoEn           DateTime @default(now())
+  actualizadoEn      DateTime @updatedAt
+
+  categoria   Categoria        @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
+  parametros  ParametroStock[]
+  lotes       Lote[]
+  movimientos Movimiento[]
+
+  @@index([categoriaId])
+  @@index([nombre])
+  @@index([codigoBarras])
+  @@map("insumos")
+}
+
+model ParametroStock {
+  id          String @id @default(cuid())
+  insumoId    String
+  centroId    String
+  stockMinimo Int
+  stockMaximo Int?
+
+  insumo Insumo @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+  centro Centro @relation(fields: [centroId], references: [id], onDelete: Cascade)
+
+  @@unique([insumoId, centroId])
+  @@index([centroId])
+  @@map("parametros_stock")
+}
+
+model Proveedor {
+  id          String   @id @default(cuid())
+  /// RUT normalizado sin puntos y con guion: 76123456-7.
+  rut         String   @unique
+  razonSocial String
+  contacto    String?
+  telefono    String?
+  email       String?
+  activo      Boolean  @default(true)
+  creadoEn    DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  movimientos Movimiento[]
+
+  @@map("proveedores")
+}
+
+model Lote {
+  id               String    @id @default(cuid())
+  insumoId         String
+  numeroLote       String
+  fechaVencimiento DateTime? @db.Date
+  fechaFabricacion DateTime? @db.Date
+  creadoEn         DateTime  @default(now())
+
+  insumo      Insumo       @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  existencias Existencia[]
+  movimientos Movimiento[]
+
+  @@unique([insumoId, numeroLote])
+  @@index([fechaVencimiento])
+  @@map("lotes")
+}
+
+/// Saldo actual de un lote en una ubicación. CHECK (cantidad >= 0) en SQL.
+model Existencia {
+  id          String   @id @default(cuid())
+  loteId      String
+  ubicacionId String
+  cantidad    Int
+  actualizadoEn DateTime @default(now()) @updatedAt
+
+  lote      Lote      @relation(fields: [loteId], references: [id], onDelete: Restrict)
+  ubicacion Ubicacion @relation(fields: [ubicacionId], references: [id], onDelete: Restrict)
+
+  @@unique([loteId, ubicacionId])
+  @@index([ubicacionId])
+  @@map("existencias")
+}
+
+/// Libro mayor INMUTABLE (un trigger SQL impide UPDATE/DELETE).
+model Movimiento {
+  id              String         @id @default(cuid())
+  tipo            TipoMovimiento
+  insumoId        String
+  loteId          String
+  ubicacionId     String
+  centroId        String
+  /// Siempre > 0; el signo lo da el tipo.
+  cantidad        Int
+  /// Saldo del lote en la ubicación después del movimiento.
+  saldoPosterior  Int
+  motivo          String?
+  /// Guía de despacho, factura u otro documento de respaldo.
+  documentoRef    String?
+  proveedorId     String?
+  costoUnitario   Decimal?       @db.Decimal(14, 2)
+  nota            String?
+  usuarioId       String
+  /// Enlaza TRASLADO_SALIDA con TRASLADO_ENTRADA.
+  trasladoGrupoId String?
+  creadoEn        DateTime       @default(now())
+
+  insumo    Insumo     @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+  lote      Lote       @relation(fields: [loteId], references: [id], onDelete: Restrict)
+  ubicacion Ubicacion  @relation(fields: [ubicacionId], references: [id], onDelete: Restrict)
+  centro    Centro     @relation(fields: [centroId], references: [id], onDelete: Restrict)
+  proveedor Proveedor? @relation(fields: [proveedorId], references: [id], onDelete: Restrict)
+  usuario   Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([centroId, creadoEn(sort: Desc)])
+  @@index([insumoId, creadoEn(sort: Desc)])
+  @@index([loteId])
+  @@index([ubicacionId])
+  @@index([usuarioId])
+  @@index([tipo, creadoEn(sort: Desc)])
+  @@index([trasladoGrupoId])
+  @@index([creadoEn(sort: Desc)])
+  @@map("movimientos")
+}
+
+model RegistroAuditoria {
+  id        String   @id @default(cuid())
+  usuarioId String?
+  accion    String
+  entidad   String
+  entidadId String?
+  detalle   Json     @default("{}")
+  ip        String?
+  creadoEn  DateTime @default(now())
+
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([creadoEn(sort: Desc)])
+  @@index([usuarioId, creadoEn(sort: Desc)])
+  @@index([entidad, entidadId])
+  @@map("registros_auditoria")
+}
