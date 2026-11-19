@@ -18,6 +18,8 @@ tablet o teléfono) y conecta a todos los centros de una misma red.
   una lista de compra imprimible o exportable.
 - **Trazabilidad completa.** Cada ingreso, retiro, traslado, ajuste y merma queda registrado con
   usuario, fecha y motivo. El historial no se puede modificar ni borrar.
+- **Menos errores al registrar.** Confirmación antes de un ajuste, una merma o un retiro grande;
+  desde cada alerta se abre el formulario ya prellenado; un doble clic no duplica el movimiento.
 - **Permisos por rol y por centro.** Cada persona ve y hace solo lo que le corresponde.
 - **Reportes para Excel.** Existencias, movimientos, consumo y cobertura, vencimientos y mermas.
 - **Pensado para Chile.** RUT, regiones y comunas, pesos chilenos, hora de Santiago y textos en
@@ -40,31 +42,6 @@ tablet o teléfono) y conecta a todos los centros de una misma red.
 | **Visitante** | Quien solo necesita consultar | Consulta inventario y alertas de sus centros. No modifica nada. |
 
 La guía de uso por rol está en [`docs/MANUAL-USUARIO.md`](docs/MANUAL-USUARIO.md).
-
-## Pruebas e2e (Playwright)
-
-La suite de `e2e/` recorre la aplicación real en Chromium (escritorio 1440 px y, para los flujos
-principales marcados `@movil`, 390 px). Usa **su propia base** (`medired_e2e`): crea insumos,
-usuarios y proveedores nuevos en cada ejecución, así que nunca debe apuntar a la base de demo.
-
-```bash
-createdb medired_e2e                                  # una sola vez
-export DATABASE_URL=postgresql://medired:medired_dev@localhost:5432/medired_e2e?schema=public
-npx prisma migrate deploy && npx prisma db seed       # una sola vez (o para partir de cero)
-npm run build                                         # la suite levanta `next start -p 3200`
-unset DATABASE_URL
-npm run test:e2e                                      # todo; agrega p. ej. `retiros` o `--project=movil`
-```
-
-- Si ya hay un servidor en el puerto 3200 se reutiliza. Variables: `E2E_PORT`, `E2E_DATABASE_URL`
-  (base del servidor que arranca la suite), `E2E_BASE_URL` (usar un servidor ya levantado),
-  `E2E_WORKERS`, `E2E_CHROMIUM` (ruta a un Chromium ya instalado).
-- `@playwright/test` debe coincidir con el navegador instalado (`npx playwright install chromium`
-  si no hay uno).
-- Cada rol inicia sesión una vez (`e2e/sesiones.setup.ts`) y los tests reutilizan esa sesión.
-- Los tests marcados con `bugConocido("B-xx: …")` documentan bugs reales pendientes: se espera que
-  fallen y no rompen la suite. `E2E_EXIGIR_BUGS=1 npm run test:e2e -- -g "B-"` los ejecuta como
-  tests normales para ver el fallo o comprobar un arreglo.
 
 ## Documentación
 
@@ -121,7 +98,7 @@ Abre <http://localhost:3000> e ingresa con una de las cuentas de demostración.
 
 Las crea `npm run db:seed` junto con 3 centros, 52 insumos y unos 60 días de historial.
 
-| Rol | Email | Contraseña | Centros |
+| Rol | Correo electrónico | Contraseña | Centros |
 |---|---|---|---|
 | Administrador | `admin@redinsumos.cl` | `Admin.Demo.2026` | Toda la red |
 | Bodeguero | `bodega@redinsumos.cl` | `Bodega.Demo.2026` | Centro de Diálisis Ñuñoa |
@@ -151,16 +128,18 @@ producción, está en [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md).
 | Comando | Qué hace |
 |---|---|
 | `npm run dev` | Servidor de desarrollo en <http://localhost:3000>. |
-| `npm run build` / `npm run start` | Compila para producción / inicia la versión compilada. |
+| `npm run build` | Compila para producción (salida autocontenida en `.next/standalone`). |
+| `npm start` | Inicia la versión compilada: copia los estáticos y `public/` junto al servidor y lo arranca (`npm start -- -p 3200` para otro puerto). No uses `next start`: no es compatible con esta salida. |
 | `npm run typecheck` | Verifica los tipos de TypeScript. |
 | `npm run lint` | Revisa el estilo y errores comunes del código. |
-| `npm test` | Ejecuta las pruebas (usa la base `DATABASE_URL_TEST`). |
+| `npm test` | Ejecuta las pruebas de servicios y utilidades (usa la base `DATABASE_URL_TEST`). |
+| `npm run test:e2e` | Recorre la aplicación compilada en un navegador (usa la base `medired_e2e`; ver más abajo). |
 | `npm run db:migrate` | Desarrollo: crea y aplica migraciones. |
 | `npm run db:deploy` | Producción: aplica las migraciones pendientes. |
 | `npm run db:seed` | Carga datos de **demostración** (bloqueado en producción). |
 | `npm run db:studio` | Explorador visual de la base (Prisma Studio). |
 | `npm run admin:crear -- --email …` | Crea el primer administrador (o recupera su acceso con `--restablecer`). |
-| `npm run sesiones:limpiar` | Borra las sesiones vencidas. |
+| `npm run sesiones:limpiar` | Borra las sesiones vencidas y los contadores vencidos del limitador de intentos. |
 | `npm run respaldo` | Respaldo comprimido de la base, con rotación. |
 | `npm run restaurar -- <archivo>` | Restaura un respaldo (pide confirmación). |
 
@@ -171,16 +150,18 @@ ejecutarlo una persona, a conciencia.
 
 ```
 prisma/              Modelo de datos, migraciones y datos de demostración (seed)
-scripts/             Operación: crear administrador, limpiar sesiones, respaldo y restauración
+scripts/             Operación: iniciar el build, crear administrador, limpiar sesiones, respaldo y restauración
 src/
-  app/               Pantallas (login, panel, inventario, movimientos, alertas, reportes, admin)
+  app/               Pantallas (login, panel, inventario, movimientos, alertas, reportes, ayuda, admin)
     api/salud/       Endpoint de salud para monitoreo
   acciones/          Acciones del servidor que invocan los formularios
   components/        Componentes de interfaz
   lib/               Reglas compartidas: permisos, fechas, formato, RUT, validaciones
   server/            Lógica de servidor: servicios, autenticación, auditoría, configuración
-  proxy.ts           Protección de rutas (redirige a /login sin sesión)
-tests/               Pruebas automáticas
+  proxy.ts           Protección de rutas (redirige a /login sin sesión) y política de seguridad de contenido
+tests/               Pruebas automáticas de servicios y utilidades (vitest)
+e2e/                 Pruebas de punta a punta en navegador (Playwright)
+public/              Manifiesto e íconos de la aplicación instalable
 docs/                Documentación y capturas
 Dockerfile, docker-compose.yml, Caddyfile     Contenedor y despliegue
 .github/workflows/ci.yml                      Integración continua
@@ -198,18 +179,84 @@ npm test
 
 Las pruebas usan una base aparte (`DATABASE_URL_TEST`, cuyo nombre debe terminar en `_test`), la
 migran y la limpian solas; nunca tocan la base de desarrollo. Cubren reglas de inventario (FEFO,
-vencimientos, concurrencia), permisos, autenticación, administración, reportes y configuración.
+vencimientos, concurrencia), permisos, autenticación, administración, reportes, configuración y
+las utilidades de formato, validación y lectura de parámetros.
 
 Antes de entregar un cambio:
 
 ```bash
 npm run typecheck && npm run lint && npm test && npm run build
+npm run test:e2e          # si tocaste pantallas o flujos (necesita el build y la base medired_e2e)
 ```
 
 El flujo de integración continua (`.github/workflows/ci.yml`) ejecuta lo mismo en cada cambio y
 además construye la imagen Docker.
 
-## Estado y alcance
+## Pruebas e2e (Playwright)
+
+La suite de `e2e/` recorre la aplicación **compilada** en Chromium: escritorio (1440 px), los flujos
+principales marcados `@movil` también a 390 px, y los marcados `@tablet` a 1024 × 768 con pantalla
+táctil. Usa **su propia base** (`medired_e2e`): crea insumos, usuarios y proveedores nuevos en cada
+ejecución, así que nunca debe apuntar a la base de demostración.
+
+```bash
+# Una sola vez, o para partir de cero (dropdb medired_e2e antes de createdb):
+createdb medired_e2e
+export DATABASE_URL="postgresql://medired:medired_dev@localhost:5432/medired_e2e?schema=public"
+npx prisma migrate deploy && npx prisma db seed
+unset DATABASE_URL
+
+npm run build             # la suite prueba el build; vuelve a compilar si cambiaste el código
+npm run test:e2e          # todo; agrega p. ej. `retiros`, `--project=movil` o `-g "FEFO"`
+```
+
+- La suite levanta el servidor con `node scripts/iniciar.mjs -p 3200` (lo mismo que `npm start`) y
+  lo detiene al terminar. Si ya hay un servidor en el puerto 3200 lo reutiliza: asegúrate de que
+  sea el build actual. Tras una actualización con migraciones nuevas, aplícalas también a
+  `medired_e2e` (`prisma migrate deploy`).
+- Variables: `E2E_PORT`, `E2E_DATABASE_URL` (base del servidor que arranca la suite),
+  `E2E_BASE_URL` (usar un servidor ya levantado), `E2E_WORKERS`, `E2E_CHROMIUM` (ruta a un Chromium
+  ya instalado).
+- `@playwright/test` debe coincidir con el navegador instalado (`npx playwright install chromium`
+  si no hay uno).
+- Cada rol inicia sesión una vez (`e2e/sesiones.setup.ts`) y los tests reutilizan esa sesión.
+- **Límite de intentos de ingreso.** El servidor de la suite corre con `TRUST_PROXY=1` (lo fija
+  `playwright.config.ts`; es solo de ese servidor de pruebas). Los tests normales no envían
+  `X-Forwarded-For`, así que para ellos no hay IP y no los alcanza el límite por IP. Los tests del
+  limitador envían su propia cabecera con una IP distinta por test (`ipDePrueba()`), y así
+  comprueban el modelo real: bloqueo por cuenta + IP sin dejar fuera al titular desde otra red. La
+  protección no se desactiva en ningún caso.
+- `bugConocido("B-xx: …")` (`e2e/soporte/fixtures.ts`) marca un test que documenta un bug real
+  pendiente: se espera que falle y no rompe la suite. Hoy **ningún test lo usa**; queda como
+  herramienta para el próximo informe de QA (`E2E_EXIGIR_BUGS=1` los ejecuta como tests normales).
+
+## Estado y pendientes conocidos
+
+La aplicación está completa para el alcance descrito arriba y pasa todas sus verificaciones
+(tipos, lint, pruebas de servicios, build y suite e2e). Lo que **no** hace o queda pendiente:
+
+- **Recuperación de contraseña por correo:** no existe; la restablece un administrador (contraseña
+  temporal válida por 72 horas).
+- **Sin conexión:** se puede instalar en la tablet o el teléfono, pero necesita internet para
+  funcionar; no guarda movimientos para enviarlos después.
+- **Sesión vencida a mitad de un formulario:** el sistema avisa y devuelve a la misma pantalla tras
+  ingresar, pero lo escrito y no registrado se pierde.
+- **Lotes duplicados por espacios:** desde esta versión el número de lote se normaliza. Si antes se
+  registraron dos variantes del mismo lote (por ejemplo `L-01  A` y `L-01 A`), siguen separadas:
+  hay que unificarlas a mano con un traslado o ajuste.
+- **Bloqueo de cuentas sin proxy declarado:** sin `TRUST_PROXY` la aplicación no conoce la IP de
+  cada persona y el bloqueo por intentos fallidos es por cuenta (un tercero podría bloquearla 15
+  minutos). En producción con Docker Compose ya viene configurado.
+- **Costos:** el costo unitario es opcional y los reportes valorizan con el costo promedio de los
+  ingresos que lo traen; no es un sistema contable.
+- **Modo oscuro** y listado oficial completo de comunas: no incluidos.
+- **Imagen Docker:** el `Dockerfile` se mantiene al día con el código, pero conviene construirla y
+  probarla en el entorno de destino antes de salir a producción (ver el checklist de
+  [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)).
+
+El detalle técnico de las deudas está en [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) §13.
+
+## Alcance
 
 RedInsumos gestiona **insumos**, no pacientes: no almacena datos clínicos ni de pacientes. Es una
 herramienta de apoyo a la gestión de inventario y no reemplaza las obligaciones regulatorias de cada

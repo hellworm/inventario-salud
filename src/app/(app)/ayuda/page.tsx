@@ -7,6 +7,7 @@ import {
   ArrowUpFromLine,
   BellRing,
   Boxes,
+  CalendarCog,
   ChevronDown,
   History,
   LifeBuoy,
@@ -42,6 +43,7 @@ const QUE_PUEDE: Record<Rol, { resumen: string; puntos: string[] }> = {
     puntos: [
       "Todo lo de un bodeguero, en cualquier centro o en “Toda la red”.",
       "Trasladar stock entre ubicaciones o centros, corregirlo con ajustes y dar de baja mermas.",
+      "Corregir la fecha de vencimiento de un lote que se digitó mal.",
       "Ver reportes y descargarlos para Excel.",
       "Administrar insumos, categorías, centros, proveedores y usuarios, y revisar la auditoría.",
     ],
@@ -79,9 +81,10 @@ const TAREAS: Tarea[] = [
     enlace: { href: "/alertas", texto: "Ir a Alertas" },
     pasos: [
       <>En <strong>Alertas</strong> hay cuatro pestañas: <strong>Sin stock</strong>, <strong>Bajo mínimo</strong>, <strong>Vencidos</strong> y <strong>Por vencer</strong>.</>,
+      <>Cada fila trae la acción que tu rol puede hacer: <strong>Ingresar</strong> lo que falta, <strong>Retirar</strong> primero el lote que está por vencer o <strong>Dar de baja</strong> un lote vencido. Abren el formulario con el insumo, la ubicación y el lote ya elegidos.</>,
       <>El botón <strong>Lista de reposición</strong> arma el listado de lo que conviene pedir. Puedes imprimirlo o descargarlo para Excel.</>,
     ],
-    notas: ["El Panel muestra un resumen de lo mismo, en orden de prioridad."],
+    notas: ["El Panel muestra un resumen de lo mismo, en orden de prioridad, con las mismas acciones."],
   },
   {
     id: "ingreso",
@@ -94,9 +97,14 @@ const TAREAS: Tarea[] = [
       <>Busca el <strong>insumo</strong> por nombre o código y elige la <strong>ubicación de destino</strong>.</>,
       <>Copia el <strong>número de lote</strong> y el <strong>vencimiento</strong> tal como vienen en el envase. Si el lote ya existe, tócalo en las sugerencias.</>,
       <>Escribe la <strong>cantidad</strong>. Recomendado: indica el proveedor y la guía o factura.</>,
+      <>Si anotas el <strong>costo unitario</strong>, usa coma para los decimales (1250,5); el punto separa miles (1.250). Bajo el campo verás el monto tal como se guardará.</>,
       <>Revisa el resumen al pie (“Vas a ingresar…”) y presiona <strong>Registrar ingreso</strong>.</>,
     ],
-    notas: ["No se pueden ingresar lotes ya vencidos.", "Si el insumo controla vencimiento, la fecha es obligatoria."],
+    notas: [
+      "No se pueden ingresar lotes ya vencidos.",
+      "Si el insumo controla vencimiento, la fecha es obligatoria.",
+      "En las notas no incluyas datos de pacientes.",
+    ],
   },
   {
     id: "retiro",
@@ -106,7 +114,7 @@ const TAREAS: Tarea[] = [
     enlace: { href: "/movimientos/retiro", texto: "Registrar retiro" },
     pasos: [
       <>Menú <strong>Registrar → Retiro</strong>.</>,
-      <>Elige el <strong>insumo</strong> y <strong>desde qué ubicación</strong> lo sacas. Verás cuánto hay disponible ahí.</>,
+      <>Elige el <strong>insumo</strong> (al abrir el buscador aparecen primero los <strong>más usados en este centro</strong>) y <strong>desde qué ubicación</strong> lo sacas. Verás cuánto hay disponible ahí.</>,
       <>Deja <strong>Automático</strong> para que salga primero lo que vence antes (toma físicamente esos mismos lotes), o usa <strong>Elegir lote</strong>.</>,
       <>Escribe la <strong>cantidad</strong> y, si quieres, el destino o motivo.</>,
       <>Presiona <strong>Registrar retiro</strong>. Si retiras más de la mitad de lo disponible, el sistema te pide confirmar.</>,
@@ -146,14 +154,49 @@ const TAREAS: Tarea[] = [
     pasos: [
       <>Menú <strong>Registrar → Ajuste o merma</strong>.</>,
       <>Elige <strong>Sumar stock</strong> (hay más de lo registrado), <strong>Restar stock</strong> (hay menos) o <strong>Dar de baja</strong> (vencido, dañado o perdido).</>,
-      <>Indica insumo, ubicación, lote, cantidad y el <strong>motivo</strong>, y confirma el resumen que muestra el sistema.</>,
+      <>Indica insumo, ubicación, lote, cantidad y el <strong>motivo</strong>.</>,
+      <>El sistema muestra un resumen y pide <strong>confirmar</strong>: un ajuste o una merma no se pueden editar ni borrar después.</>,
     ],
     notas: ["Dar de baja es la única forma de sacar del inventario un lote vencido.", "Todo ajuste queda en el historial y en la auditoría con tu nombre."],
+  },
+  {
+    id: "vencimiento",
+    titulo: "Corregir el vencimiento de un lote",
+    icono: CalendarCog,
+    permiso: "usuarios:gestionar",
+    enlace: { href: "/inventario", texto: "Ir a Inventario" },
+    pasos: [
+      <>Abre la <strong>ficha completa</strong> del insumo desde Inventario.</>,
+      <>En la tabla <strong>Existencias por lote y ubicación</strong>, usa <strong>Corregir vencimiento</strong> en el lote.</>,
+      <>Indica la <strong>fecha correcta</strong> y el <strong>motivo</strong>, revisa el antes y el después y confirma.</>,
+    ],
+    notas: [
+      "Úsalo solo si la fecha se digitó mal: cambia el lote en todas las ubicaciones y centros.",
+      "Queda en la auditoría con tu nombre, la fecha anterior, la nueva y el motivo.",
+    ],
   },
 ];
 
 const PREGUNTAS: { pregunta: string; respuesta: string }[] = [
-  { pregunta: "Olvidé mi contraseña.", respuesta: "Pide a un administrador que la restablezca: te dará una contraseña temporal. No hay recuperación por correo." },
+  {
+    pregunta: "Olvidé mi contraseña.",
+    respuesta:
+      "Pide a un administrador que la restablezca: te dará una contraseña temporal, que debes usar dentro de 72 horas (después vence y hay que pedir otra). No hay recuperación por correo.",
+  },
+  {
+    pregunta: "Me aparece “Tu sesión venció”.",
+    respuesta:
+      "La sesión se cierra sola tras varias horas sin uso. Vuelve a ingresar: el sistema te devuelve a la pantalla donde estabas, pero tendrás que escribir de nuevo lo que no alcanzaste a registrar.",
+  },
+  {
+    pregunta: "¿Puedo instalarlo en la tablet o el teléfono?",
+    respuesta:
+      "Sí. En Chrome o Edge abre el menú del navegador y elige “Instalar aplicación” o “Agregar a la pantalla principal”; en iPad o iPhone, en Safari, toca Compartir y luego “Agregar a inicio”. Queda con su ícono y se abre a pantalla completa. Necesita conexión: no funciona sin internet.",
+  },
+  {
+    pregunta: "Dice que no tengo un centro activo asignado.",
+    respuesta: "Tu cuenta no está asignada a ningún centro en funcionamiento. Pide a un administrador que te asigne uno.",
+  },
   {
     pregunta: "Registré mal un movimiento.",
     respuesta: "No se puede editar ni borrar. Un administrador lo corrige con un ajuste, indicando el motivo.",

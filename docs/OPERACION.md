@@ -58,9 +58,10 @@ No hay recuperación por correo: la restablece un administrador.
 3. Entrégasela; deberá cambiarla al ingresar.
 
 Las contraseñas temporales (de un usuario nuevo o restablecidas) **vencen a las 72 horas**. Si la
-persona no alcanzó a usarla verá el mensaje genérico "Email o contraseña incorrectos": restablécela
-de nuevo. En la lista de usuarios, una cuenta con la temporal vencida sigue marcada como pendiente
-de cambio de contraseña.
+persona no alcanzó a usarla verá el mensaje genérico "Correo electrónico o contraseña incorrectos":
+restablécela de nuevo. La lista de usuarios lo muestra: **Contraseña temporal vence el dd-mm-aaaa**
+mientras está vigente y **Contraseña temporal vencida**, con el botón **Restablecer** en la misma
+fila, cuando ya no sirve.
 
 Un administrador no puede restablecer **su propia** contraseña desde ahí: la cambia en el menú de
 su nombre (arriba a la derecha) → **Cambiar contraseña**, o se la restablece otro administrador.
@@ -68,7 +69,7 @@ su nombre (arriba a la derecha) → **Cambiar contraseña**, o se la restablece 
 ### Desbloquear una cuenta
 
 El sistema limita los intentos de inicio de sesión de tres maneras, siempre con el mismo mensaje
-("Email o contraseña incorrectos") y todas se levantan solas:
+("Correo electrónico o contraseña incorrectos") y todas se levantan solas:
 
 - **Por conexión (IP) y cuenta:** 5 fallos seguidos bloquean por 15 minutos esa cuenta *desde esa
   conexión*. Desde otra red (por ejemplo, el titular en su centro) la cuenta sigue funcionando.
@@ -289,7 +290,7 @@ curl -s http://127.0.0.1:3000/api/salud
 
 ### No se puede iniciar sesión
 
-- **"Email o contraseña incorrectos"**: es el mismo mensaje para clave errada, cuenta o conexión
+- **"Correo electrónico o contraseña incorrectos"**: es el mismo mensaje para clave errada, cuenta o conexión
   bloqueada, contraseña temporal vencida (72 horas) o usuario desactivado (a propósito, para no dar
   pistas). Revisa el estado del usuario en **Administración → Usuarios** y desbloquea o restablece.
 - **Nadie de un centro puede entrar durante unos minutos**: probablemente se superaron los 20

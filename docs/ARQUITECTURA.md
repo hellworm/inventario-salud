@@ -34,25 +34,31 @@ este documento.
 ```
 prisma/
   schema.prisma            Modelo de datos (tablas snake_case con @@map, columnas camelCase)
-  migrations/              Inicial (+ CHECKs, trigger de inmutabilidad, unaccent) y
+  migrations/              Inicial (+ CHECKs, trigger de inmutabilidad, unaccent),
                            endurecimiento_seguridad (idempotencia, limitador, TRUNCATE, auditoría)
+                           y normaliza_numero_lote (lotes en forma canónica)
   seed.ts                  Seed demo (referencia idempotente + historial vía servicios)
 src/
-  proxy.ts                 Redirección optimista a /login y CSP con nonce por solicitud (sin BD)
+  proxy.ts                 Redirección optimista a /login (las Server Actions pasan y responden
+                           NO_AUTENTICADO) y CSP con nonce por solicitud (sin BD)
   app/
     layout.tsx             Raíz: <html lang="es-CL">, fuentes, <Toaster/>
     (auth)/                /login y /cambiar-password (layout de dos paneles)
     (app)/                 Área autenticada: layout con AppShell, loading, error, sin-permiso
       panel/, inventario/, movimientos/ (ingreso, retiro, traslado, ajuste)
-      alertas/ (+ reposicion/exportar), reportes/ (+ exportar/[reporte])
+      alertas/ (+ reposicion/exportar), reportes/ (+ exportar/[reporte]), ayuda/
       admin/ (insumos, categorias, centros, usuarios, proveedores, auditoria)
+    (directo)/             Mismo shell, SIN loading.tsx por encima: ficha del insumo
+                           (inventario/[insumoId]) y comodín [...resto] → 404 HTTP real (§10)
     api/salud/             Verificación de salud (pública)
   acciones/                Server Actions ("use server"): auth, movimientos, consultas (solo
                            lectura) y admin-* (catálogo, centros, usuarios, proveedores)
   components/
     ui/                    UI kit (importar SIEMPRE desde "@/components/ui")
-    shell/                 AppShell (sidebar, barra superior, navegación inferior), Logo
-    movimientos/           ComboboxInsumo, campos y piezas comunes de los formularios (§10)
+    shell/                 AppShell (sidebar, barra superior, navegación inferior), Logo,
+                           SinCentroActivo (estado "sin centro activo")
+    movimientos/           ComboboxInsumo, campos y piezas comunes de los formularios,
+                           AvisoCambioCentro (§10)
     inventario/, panel/, alertas/, reportes/, admin/   Piezas de cada área
   lib/                     Código ISOMÓRFICO (cliente y servidor), sin acceso a BD
     permisos.ts            ★ Fuente única de verdad de roles y permisos
@@ -64,7 +70,7 @@ src/
                            proveedores, usuarios)
     resultado.ts           ResultadoAccion<T>, Paginado<T>
     csv.ts, unidades.ts, parametros.ts, parametros-url.ts, filtros-reportes.ts,
-    fefo.ts, abastecimiento.ts                          Utilidades compartidas (§9)
+    fefo.ts, abastecimiento.ts, errores-formulario.ts   Utilidades compartidas (§9)
   server/                  SOLO servidor (todos importan "server-only")
     db.ts                  Cliente Prisma singleton + enTransaccion()
     errores.ts             ErrorDominio y códigos
@@ -79,7 +85,10 @@ src/
                            meta-solicitud.ts (IP/user-agent), sesion.ts (cookies/Next),
                            constantes.ts
     servicios/             ★ Capa de servicios (única puerta a los datos de negocio)
-tests/                     vitest (servicios, permisos, concurrencia, auth, utilidades)
+scripts/                   Operación (admin:crear, sesiones:limpiar, respaldo, restaurar) e
+                           iniciar.mjs (npm start: servidor standalone + estáticos + public)
+tests/                     vitest (servicios, permisos, concurrencia, auth, utilidades, cierre)
+e2e/                       Playwright contra el build de producción (README, "Pruebas e2e")
 docs/                      Este documento y capturas
 ```
 
@@ -101,6 +110,10 @@ inmutable), `LimiteIntentos` (tabla `intentos_login`: contadores del limitador).
   auditoría no se puede actualizar, **no se pueden borrar usuarios con registros de auditoría**
   (la FK `SET NULL` sería un `UPDATE`): los usuarios se desactivan. El endurecimiento con un rol de
   base de datos sin `UPDATE`/`DELETE` sobre esas tablas está en `DESPLIEGUE.md` §6.1.
+- **Número de lote canónico:** `normalizarNumeroLote` (`@/lib/esquemas/movimientos`): sin espacios
+  en los extremos, espacios internos colapsados a uno y en mayúsculas. Lo aplica el esquema de
+  ingreso; la migración `normaliza_numero_lote` alineó los lotes existentes (sin fusionar los que
+  quedarían duplicados).
 - **Idempotencia:** `Movimiento.claveIdempotencia` + `indiceIdempotencia` (único en conjunto; un
   `CHECK` exige ambos o ninguno). Una operación con varios movimientos (retiro FEFO multi-lote,
   traslado) usa la misma clave con índices 0, 1, 2…
@@ -139,14 +152,21 @@ Para un permiso nuevo: agrégalo a `PERMISOS` y a la matriz en `permisos.ts`, ac
 
 ## 5. Autenticación y sesión
 
-- Login email + contraseña (argon2id). Mensaje único de error: no revela si el email existe, si hay
-  un bloqueo ni si una contraseña temporal venció.
+- Login correo electrónico + contraseña (argon2id). Mensaje único de error ("Correo electrónico o
+  contraseña incorrectos…"): no revela si el correo existe, si hay un bloqueo ni si una contraseña
+  temporal venció.
 - Sesión: token aleatorio de 32 bytes en cookie `ri_sesion` (httpOnly, sameSite=lax, secure en
   producción); en BD solo su SHA-256. Expiración deslizante de 12 h (`SESION_HORAS`), vida máxima
   absoluta de 7 días. La expiración deslizante vive **solo en la BD** (`validarTokenSesion`): la
   cookie dura los 7 días y `proxy.ts` **no la renueva**, así que una cookie con un token inválido
   nunca se prolonga. El proxy borra las cookies mal formadas y las Server Actions borran las que ya
   no valen (`descartarCookieSesionInvalida`).
+- **Sesión vencida en un formulario:** el proxy NO redirige las Server Actions (cabecera
+  `next-action`): un 307 a `/login` se vería como error de red. La acción llega a `accionSegura`,
+  que responde `codigo: "NO_AUTENTICADO"`; `useAccion` y los hooks de consulta
+  (`useExistenciasInsumo`, `ComboboxInsumo`) llaman a `avisarSesionVencida()`
+  (`@/components/ui`): aviso "Tu sesión venció" y `location.assign("/login?motivo=sesion&destino=<ruta
+  actual>")`. Una acción llamada sin `useAccion` debe comprobar `esSesionVencida(r)` por su cuenta.
 - `debeCambiarPassword` obliga a pasar por `/cambiar-password` (≥10 caracteres, letra y número,
   distinta de la actual). Mientras esté pendiente, `accionSegura`, `responderCsv` y
   `cambiarCentroActivoAccion` rechazan todo. Cambiar la contraseña cierra las demás sesiones; es
@@ -166,8 +186,13 @@ Helpers (`@/server/auth/sesion`):
 | `obtenerSesion()` | `Sesion \| null`, memoizada por solicitud. |
 | `requerirSesion()` | Redirige a `/login` (o `/cambiar-password`). |
 | `requerirPermiso(permiso, centroId?)` | Para páginas/layouts: redirige a `/sin-permiso`. |
-| `contextoPagina(permiso)` | ★ Lo normal en una página: `{ sesion, actor, centroId, centro, centros, puedeVerTodaLaRed }`. |
-| `obtenerCentroActivo(sesion)` | Centro activo (cookie `ri_centro`); `centroId: null` = "Toda la red" (solo ADMIN). |
+| `contextoPagina(permiso)` | ★ Lo normal en una página: `{ sesion, actor, centroId, centro, centros, puedeVerTodaLaRed, sinCentro }`. |
+| `obtenerCentroActivo(sesion)` | Centro activo (cookie `ri_centro`); `centroId: null` = "Toda la red" **solo si `sinCentro` es `false`**. |
+
+**`sinCentro`** es `true` para quien no ve toda la red y no tiene ningún centro activo asignado
+(su único centro fue desactivado). No es "toda la red": toda página que pueda ver un bodeguero o
+un visitante empieza con `if (sinCentro) return <SinCentroActivo titulo="…" />;`
+(`@/components/shell/sin-centro`).
 
 Al crear o restablecer usuarios (ver `servicios/usuarios.ts`): `hashearPassword` y
 `validarPoliticaPassword` (`@/server/auth/password`), email con `normalizarEmail`,
@@ -265,15 +290,17 @@ montar el formulario y de nuevo tras cada éxito (así lo hacen los cuatro formu
 Acciones (`@/acciones/movimientos`): `registrarIngresoAccion`, `registrarRetiroAccion`,
 `registrarAjusteAccion`, `registrarMermaAccion`, `registrarTrasladoAccion` (las cuatro primeras
 agregan `stock: StockActual | null`) y `corregirVencimientoLoteAccion` (permiso
-`movimientos:ajuste`; el servicio exige además rol ADMIN). **`corregirVencimientoLoteAccion` aún
-no tiene pantalla.**
+`movimientos:ajuste`; el servicio exige además rol ADMIN). La pantalla de esta última es
+`BotonCorregirVencimiento` (`@/components/inventario/corregir-vencimiento`), en la tabla de lotes
+de la ficha del insumo: fecha nueva + motivo + paso de confirmación.
 
 Los tipos `Entrada*` salen de los esquemas zod de `@/lib/esquemas/movimientos` (aceptan los textos
 de un formulario: `cantidad: "24"`, fechas `YYYY-MM-DD` o `dd-MM-yyyy`, `""` como vacío).
 
 Reglas de negocio:
 
-- **Ingreso:** el lote se identifica por insumo + `numeroLote` (se guarda en mayúsculas). Si existe
+- **Ingreso:** el lote se identifica por insumo + `numeroLote` (en forma canónica: mayúsculas y
+  espacios colapsados). `costoUnitario` es un `zMontoOpcional` (§9): un punto decimal se rechaza. Si existe
   se reutiliza; indicar un vencimiento distinto al registrado → `LOTE_INCONSISTENTE`. Si el insumo
   `controlaVencimiento`, el lote debe tener fecha → `VENCIMIENTO_REQUERIDO`. No se ingresan lotes
   vencidos → `LOTE_VENCIDO`. Ubicación, centro, insumo y proveedor deben estar activos → `INACTIVO`.
@@ -310,10 +337,12 @@ listarMovimientos(actor, filtros?: FiltrosMovimientos): Promise<Paginado<FilaMov
   // filtros: { centroId?, ubicacionId?, insumoId?, loteId?, tipo? (uno o varios), usuarioId?,
   //            proveedorId?, desde?, hasta?, texto?, pagina?, porPagina? }
   // `texto` busca en insumo (nombre/código), lote y documento, sin distinguir tildes
+condicionMovimientos(actor, filtros): Prisma.MovimientoWhereInput   // alcance + filtros, SIN texto
+consultaPorTexto(where, texto): { contar(), ids({ limite, saltar?, despuesDe? }), agrupar("tipo" | "motivo") }
+  // el mismo where + búsqueda con unaccent (SQL); la usan el historial y los reportes
 obtenerTraslado(actor, trasladoGrupoId): Promise<FilaMovimiento[]>
 obtenerMovimiento(actor, movimientoId): Promise<FilaMovimiento | null>
 usuariosConMovimientos(actor, { centroId? }?): Promise<OpcionUsuarioMovimientos[]>
-condicionMovimientos(actor, filtros): Prisma.MovimientoWhereInput   // para reportes
 
 // alertas.ts
 obtenerAlertas(actor, { centroId? }?): Promise<Alertas>
@@ -321,13 +350,15 @@ obtenerAlertas(actor, { centroId? }?): Promise<Alertas>
 
 // panel.ts
 resumenPanel(actor, { centroId?, diasActividad?, ultimos? }?): Promise<ResumenPanel>
+  // actividad[]: { dia, entradas, salidas, movimientos } = NÚMERO DE MOVIMIENTOS de entrada y de
+  // salida por día (no unidades: cajas + ampollas + litros no se suman)
 
 // catalogo.ts — opciones para formularios
 listarCategorias(actor): Promise<OpcionCategoria[]>
 buscarInsumos(actor, filtros?: FiltrosBuscarInsumos): Promise<OpcionInsumo[]>
   // { texto?, categoriaId?, soloActivos?, limite?, priorizarRetirosDeCentroId? }
   // sin tildes ni mayúsculas. `priorizarRetirosDeCentroId` (solo sin texto): primero lo más
-  // retirado en ese centro en los últimos 30 días, luego el resto por nombre
+  // retirado en ese centro en los últimos 30 días (con masUsado: true), luego el resto por nombre
 listarUbicaciones(actor, { centroId?, soloActivas? }?): Promise<OpcionUbicacion[]>
 listarProveedoresActivos(actor): Promise<OpcionProveedor[]>
 lotesDisponibles(actor, { insumoId, ubicacionId, incluirVencidos? }): Promise<OpcionLote[]>  // FEFO
@@ -353,8 +384,9 @@ existenciasInsumoAccion({ insumoId, centroId? })               // permiso invent
   // lotesRegistrados solo llega con contenido a quien puede `movimientos:ingreso`
 ```
 
-`priorizarRetirosDeCentroId` **aún no está conectado en la UI**: basta pasarlo desde
-`ComboboxInsumo` (o en las opciones iniciales del formulario de retiro) con el centro activo.
+`priorizarRetirosDeCentroId` lo usa el formulario de retiro: la página lo pasa a `buscarInsumos`
+para las opciones iniciales y `ComboboxInsumo` (prop `priorizarRetirosDeCentroId`) las refresca al
+abrir y rotula "Más usados en este centro" / "Otros insumos" según `masUsado`.
 
 Convenciones de las consultas:
 
@@ -362,6 +394,12 @@ Convenciones de las consultas:
   Pasar un centro ajeno lanza `SIN_ACCESO_AL_CENTRO`. Lo habitual: pasar el `centroId` de
   `contextoPagina`.
 - `Paginado<T>` = `{ items, total, pagina, porPagina, totalPaginas }`; por defecto 25, máximo 100.
+  Todos los servicios normalizan con `normalizarPagina` (`servicios/apoyo-admin`), que acota la
+  página a 1..1.000.000 con `acotarPagina` (§9): un `?pagina=` absurdo cae en la página 1.
+- **Texto y fechas de filtros:** todo texto libre pasa por `textoDeBusqueda` (`apoyo-admin`; quita
+  caracteres de control como el byte nulo y acota a 120) antes de llegar a SQL o al detalle de
+  auditoría. Las fechas `desde`/`hasta` se leen con `parsearDiaFiltro`: fuera de 2000–2100 se
+  ignoran.
 - **Stock:** `total` = unidades físicas; `vencido` = en lotes vencidos; `disponible = total −
   vencido`. `estadoStock` compara `disponible` con el mínimo (suma de los mínimos de los centros
   del alcance): `SIN_STOCK` (≤ 0), `BAJO_MINIMO` (< mínimo), `OK`. Sin mínimo definido solo hay
@@ -378,8 +416,8 @@ Convenciones de las consultas:
 - **Búsquedas por texto:** sin distinguir tildes ni mayúsculas (`unaccent` + `ILIKE`, con
   `patronLike` de `servicios/apoyo-admin.ts`, que escapa comodines y acota a 120 caracteres) en
   inventario, catálogo (`buscarInsumos`, administración), proveedores, usuarios, historial de
-  movimientos y reportes de existencias/consumo. Excepción: el filtro de texto del **reporte de
-  movimientos** y su CSV usan `condicionMovimientos` (Prisma), que aún distingue tildes.
+  movimientos y todos los reportes y sus CSV (existencias, consumo, vencimientos, movimientos y
+  mermas; estos dos últimos con `consultaPorTexto`).
 
 ### Exportaciones CSV
 
@@ -451,21 +489,24 @@ export default async function PaginaInventario({ searchParams }: PageProps<"/inv
   const sp = await searchParams;                                         // ¡asíncrono!
   const inventario = await listarInventario(actor, {
     centroId,
-    texto: typeof sp.q === "string" ? sp.q : undefined,
-    pagina: Number(sp.pagina) || 1,
+    texto: textoParam(sp.q) ?? undefined,     // nunca sp.q directo (ver §9, @/lib/parametros)
+    pagina: paginaParam(sp.pagina),           // nunca Number(sp.pagina)
   });
   // …PageHeader, filtros (SearchInput escribe ?q=), DataTable, <Pagination {...inventario} />
 }
 ```
 
 - Los filtros y la página viven en la **URL** (`?q=`, `?estado=`, `?pagina=`): `SearchInput` y
-  `Pagination` ya la sincronizan. La página relee `searchParams`.
+  `Pagination` ya la sincronizan. La página relee `searchParams` **siempre** con los helpers de
+  `@/lib/parametros` (`textoParam`, `paginaParam`, `diaParam`, `enumParam`) o de
+  `@/lib/parametros-url` / `leerFiltros`: son el único lugar donde se acotan página, texto y fechas.
 - Lo interactivo va en un Client Component hermano (`formulario-x.tsx`, `"use client"`) que
   recibe datos serializables por props. No pases funciones ni íconos desde el servidor.
 - Ruta dinámica: `const { insumoId } = await params;` y `notFound()` si el servicio lanza
   `NO_ENCONTRADO`. Ojo: si la ruta tiene un `loading.tsx` por encima, la respuesta ya empezó a
   transmitirse y el estado HTTP queda en 200 (se ve la pantalla de "no encontrado", con
-  `noindex`); un 404 real exige resolver la existencia fuera de todo límite de Suspense.
+  `noindex`). Las rutas de detalle que deben responder 404 real viven en el grupo `(directo)`,
+  que no tiene `loading.tsx` (§10).
 - Muestra botones según `puede(actor.rol, "permiso")`.
 
 ### Server Action
@@ -535,8 +576,15 @@ export function FormularioIngreso({ ubicacionId, insumoId }: { ubicacionId: stri
 }
 ```
 
-`useAccion` maneja `pendiente`, `error`, `erroresCampo` y los toasts (éxito y error). Las claves de
-`erroresCampo` son las rutas de zod (`"cantidad"`, `"items.0.cantidad"`).
+`useAccion` maneja `pendiente`, `error`, `erroresCampo`, los toasts (éxito y error) y la sesión
+vencida (§5). Las claves de `erroresCampo` son las rutas de zod (`"cantidad"`, `"items.0.cantidad"`).
+
+**Ningún error del servidor puede quedar invisible.** Si el servidor devuelve un error de un campo
+que la pantalla no muestra en ese momento (un modo que oculta el control, un campo interno como
+`claveIdempotencia`), debe aparecer en el resumen del formulario: los formularios de movimientos
+usan `<ResumenErrores errores={accion.erroresCampo} camposVisibles={[…]} />`
+(`@/components/movimientos/formulario`; la lógica pura es `erroresSinControl` de
+`@/lib/errores-formulario`).
 
 ## 8. Errores
 
@@ -559,21 +607,35 @@ a `notFound()` cuando corresponda.
 | `chile/rut` | `validarRut`, `formatearRut` (12.345.678-5), `normalizarRut` (12345678-5), `calcularDv`, `limpiarRut` |
 | `chile/regiones` | `REGIONES` (16 regiones con comunas principales), `NOMBRES_REGIONES`, `comunasDeRegion` |
 | `fechas` | `hoyEnSantiago`, `diaEnSantiago`, `parsearDia`, `formatearDia` (dd-MM-yyyy), `formatearFecha`, `formatearFechaHora` (dd-MM-yyyy HH:mm), `formatearRelativo`, `describirVencimiento`, `sumarDias`, `diasEntre`, `inicioDelDia`, `finDelDia`, `diaADate`, `dateADia` |
-| `formato` | `formatearNumero` (1.234), `formatearDecimal`, `formatearCLP` ($12.500), `formatearPorcentaje`, `formatearCantidad`, `pluralizar`, `parsearNumero`, `normalizarTexto` |
+| `formato` | `formatearNumero` (1.234), `formatearDecimal`, `formatearDecimalFijo`, `formatearCLP` ($12.500), `formatearMonto` ($1.250,5: conserva decimales), `formatearPorcentaje`, `pluralizar`, `interpretarNumero` / `parsearNumero`, `normalizarTexto` |
 | `estados` | `calcularEstadoStock`, `calcularEstadoVencimiento`, `diasParaVencer`, `tramoDeVencimiento`, etiquetas (`ETIQUETA_*`), `SIGNO_MOVIMIENTO`, `MOTIVOS_MERMA`, `MOTIVOS_AJUSTE`, `UNIDADES_MEDIDA`, `TIPOS_*` |
-| `esquemas/base` | `zId`, `zIdOpcional`, `zCantidad`, `zEnteroNoNegativo`, `zTexto(max)`, `zTextoOpcional(max)`, `zDia`, `zDiaOpcional`, `zMontoOpcional`, `zRut`, `zEmail`, `zPagina`, `zClaveIdempotencia`, `nuevaClaveIdempotencia()` |
+| `esquemas/base` | `zId`, `zIdOpcional`, `zCantidad`, `zEnteroNoNegativo`, `zTexto(max)`, `zTextoOpcional(max)`, `zDia`, `zDiaOpcional`, `zMontoOpcional` (+ `MONTO_MAXIMO`), `zRut`, `zEmail`, `zClaveIdempotencia`, `nuevaClaveIdempotencia()` |
 | `csv` | `generarCsv`, `filaCsv`, `escaparCeldaCsv`, `neutralizarFormula`, `nombreArchivoCsv`, `BOM_UTF8` (ver "Exportaciones CSV" en §6) |
-| `unidades` | `pluralUnidad("caja")` → "cajas", `unidadSegun(cantidad, unidad)`, `cantidadConUnidad(20, "caja")` → "20 cajas" |
-| `parametros` | Lectura segura de un valor de `searchParams`: `textoParam`, `enumParam(valor, permitidos)`, `paginaParam`, `diaParam` |
-| `parametros-url` | Filtros en la URL compartidos por páginas y Route Handlers: `parametrosDe(URLSearchParams)`, `leerTexto`, `leerOpcion`, `leerEntero`, `construirHref(ruta, parametros)`, `resolverCentro(…)` |
+| `unidades` | `pluralUnidad("caja")` → "cajas", `unidadSegun(cantidad, unidad)`, `cantidadConUnidad(20, "caja")` → "20 cajas", `cantidadConSigno(3, "caja", 1)` → "+3 cajas" |
+| `parametros` | ★ Único lugar donde se acota lo que viene de la URL: `acotarPagina(valor)` (entero seguro 1..`PAGINA_MAXIMA` = 1.000.000; lo demás → 1), `limpiarTexto(texto, max?)` (sin caracteres de control, recortado), `textoParam`, `enumParam(valor, permitidos)`, `paginaParam`, `diaParam` (día de filtro, 2000–2100) |
+| `parametros-url` | Filtros en la URL compartidos por páginas y Route Handlers, sobre los helpers anteriores: `parametrosDe(URLSearchParams)`, `leerTexto`, `leerOpcion`, `leerEntero` (enteros pequeños, p. ej. `dias`), `leerPagina(sp, clave?)`, `leerDia`, `construirHref(ruta, parametros)`, `resolverCentro(…)` |
+| `errores-formulario` | `conPuntoFinal`, `unirErrores`, `erroresSinControl(errores, camposVisibles)`, `esSesionVencida(resultado)`, `rutaLoginConDestino(location)` |
 | `filtros-reportes` | `leerFiltros(sp)`: los filtros de los reportes, iguales en la vista y en su exportación |
 | `fefo` | `ordenarFefo(lotes)`, `planificarFefo(lotes, cantidad)`: vista previa en el cliente del orden que aplicará el servidor |
 | `abastecimiento` | `calcularReposicion`, `calcularCobertura`, `nivelDeCobertura`, `ETIQUETA_NIVEL_COBERTURA` |
+
+**Montos (`zMontoOpcional`, `interpretarNumero`).** La coma es el separador decimal; el punto es
+de miles solo si agrupa de a tres (`1.250`, `1.250.000,5`). Un punto usado como decimal (`1250.5`,
+`1.5`) **se rechaza** con "Usa coma para los decimales: 1250,5." en vez de adivinar: el libro mayor
+es inmutable. Tope de sanidad `MONTO_MAXIMO` = 100.000.000. El formulario de ingreso muestra bajo
+el campo el monto interpretado ("Se guardará como $1.250,5 por caja").
+
+**Mensajes de validación.** Todos los mensajes de `src/lib/esquemas` terminan en punto, tutean y
+dicen "correo electrónico" (nunca "email"); `tests/utilidades.test.ts` lo comprueba leyendo el
+código.
 
 `zCantidad` y `zEnteroNoNegativo` aceptan **solo** un `number` entero o un texto de dígitos
 (`"24"`, `" 24 "`): rechazan `"0x10"`, `"1e3"`, `true`, `[5]` o `""`, que `z.coerce.number()`
 convertiría en silencio. `motivo` admite hasta 200 caracteres y `nota` hasta 500. zod corre en modo
 `jitless` (configurado en `esquemas/base`): no usa `new Function`, que la CSP bloquearía.
+
+Fechas de filtros: usa `parsearDiaFiltro` (`fechas`), no `parsearDia`: ignora lo que cae fuera de
+2000–2100 (`?desde=9999-12-31` producía instantes que la base no maneja).
 
 Fechas: **nunca** uses `new Date().toLocaleDateString()` ni compares días en UTC. Un día es un
 `DiaISO` (`YYYY-MM-DD`); un instante es un `Date` que se muestra con `formatearFechaHora`.
@@ -605,7 +667,7 @@ Principios: estética clínica sobria, primario teal (`marca-*`), mucho aire, ob
 | `Tabs` | `<Tabs defaultValue="a"><TabsList><TabsTrigger value="a" contador={3}>…</TabsTrigger></TabsList><TabsContent value="a">…` |
 | `DropdownMenu` | `DropdownMenuTrigger/Content/Item/Label/Separator` (acciones por fila, menús). |
 | `toast` / `Toaster` | `toast.exito("Guardado")`, `toast.error("…")`, `toast.info("…")`. `Toaster` ya está en el layout raíz. |
-| `Pagination` | `<Pagination {...paginado} />` (usa `?pagina=` y conserva los demás parámetros). |
+| `Pagination` | `<Pagination {...paginado} />` (usa `?pagina=` y conserva los demás parámetros). Con más de una lista paginada en la página: `parametro="paginaMermas"` y `etiqueta="Paginación de mermas"` (nombre accesible del `nav`). Una página más allá del final ofrece "Ir a la última página". |
 | `SearchInput` | `<SearchInput placeholder="Buscar insumo…" />` sincroniza `?q=` con debounce; con `onBuscar` no toca la URL. `useDebounce(valor, ms)`. |
 | `EmptyState` | `<EmptyState icono={X} titulo descripcion accion={…} compacto />` |
 | `Skeleton` | `Skeleton`, `SkeletonTabla`, `SkeletonTarjetas` (para `loading.tsx`). |
@@ -613,16 +675,19 @@ Principios: estética clínica sobria, primario teal (`marca-*`), mucho aire, ob
 | `StatCard` | `<StatCard etiqueta valor detalle icono tono href />` |
 | `Alert` | `<Alert tono="info\|exito\|alerta\|peligro" titulo>…</Alert>` para mensajes en línea. |
 | `useAccion` | Ver §7. |
+| `avisarSesionVencida`, `esSesionVencida` | Sesión vencida desde el cliente (§5). |
 
 Fuera del kit, piezas compartidas por las pantallas:
 
 | Pieza | Uso |
 |---|---|
-| `ComboboxInsumo` (`@/components/movimientos/combobox-insumo`) | Buscador accesible de insumos (combobox WAI-ARIA; nombre, código o código de barras escaneado). `<ComboboxInsumo valor onCambiar iniciales placeholder? autoFocus? disabled? compacto? />` con `InsumoOpcion` (= `OpcionInsumo` de `buscarInsumos`). Llama a `buscarInsumosAccion`. Dentro de `<Field>` toma id y aria. |
-| `@/components/movimientos/formulario` | `useExistenciasInsumo(insumoId, centroId)` (existencias en vivo vía `existenciasInsumoAccion`), `PanelExistencias`, `Confirmacion`, `CifrasConfirmacion`, `enfocarPrimerError`, `erroresDeEsquema`, `unirErrores`, `AnuncioErrores`. |
+| `ComboboxInsumo` (`@/components/movimientos/combobox-insumo`) | Buscador accesible de insumos (combobox WAI-ARIA; nombre, código o código de barras escaneado). `<ComboboxInsumo valor onCambiar iniciales placeholder? autoFocus? disabled? compacto? priorizarRetirosDeCentroId? />` con `InsumoOpcion` (= `OpcionInsumo` de `buscarInsumos`). Llama a `buscarInsumosAccion`. Dentro de `<Field>` toma id y aria. |
+| `@/components/movimientos/formulario` | `useExistenciasInsumo(insumoId, centroId)` (existencias en vivo vía `existenciasInsumoAccion`), `PanelExistencias`, `Confirmacion` (props `centro`: centro REAL del movimiento según el servidor; `repetido`: avisa "Este movimiento ya estaba registrado; no se duplicó."), `CifrasConfirmacion`, `enfocarPrimerError`, `erroresDeEsquema`, `unirErrores`, `AnuncioErrores`, `ResumenErrores`, `AYUDA_SIN_PACIENTES` (ayuda de todo campo de nota o motivo libre). |
+| `AvisoCambioCentro` (`@/components/movimientos/aviso-cambio-centro`) | En las cuatro páginas de formulario: al volver a la pestaña refresca los datos del servidor y, si el centro activo cambió en otra pestaña, lo avisa. |
+| `BotonCorregirVencimiento` (`@/components/inventario/corregir-vencimiento`) | Diálogo de corrección del vencimiento de un lote (solo ADMIN). |
 | `@/components/movimientos/campos` | `CampoCantidad`, `SelectUbicacion`, `SelectorLote`, `OpcionesTarjeta`, `Grupo`, `Sugerencias`, `ubicacionPorDefecto`, `leerCantidad`. |
 | `useParametrosUrl()` (`@/components/inventario/parametros-url`) | Estado en la URL para filtros y paneles: `{ params, urlCon(cambios, { conservarPagina? }), filtrar(cambios), pendiente, iniciar, router }`. `filtrar` reemplaza la entrada del historial, vuelve a la página 1 y no salta al inicio. `enfocarFila(id)` devuelve el foco a la fila (`data-fila`) que abrió un panel. |
-| `@/components/admin/filtros-url` | `FiltroSelect`, `FiltroFecha`, `LimpiarFiltros` (filtros que escriben en la URL). `useValidacion(esquema, erroresServidor)` en `use-validacion`. |
+| `@/components/admin/filtros-url` | ★ Módulo único de filtros que escriben en la URL (lo usan administración, alertas y reportes): `BarraFiltros`, `FiltroBusqueda`, `FiltroSelect`, `FiltroFecha`, `FiltroPeriodo`, `FiltroCentro` (solo en "Toda la red"), `LimpiarFiltros`. `useValidacion(esquema, erroresServidor)` en `use-validacion`. |
 
 ```tsx
 const columnas: Columna<FilaInventario>[] = [
@@ -658,7 +723,13 @@ márgenes ya definidos: empieza directamente con `<PageHeader>`.
 - **Impresión:** `globals.css` oculta en `@media print` el shell, los botones del kit (clase
   `ri-boton`), la paginación y todo lo que lleve `data-no-imprimir`.
 - **Objetivos táctiles:** 44 px mínimo; lo que puede ser más compacto con mouse usa la variante
-  `pointer-fine:` (p. ej. `Button size="sm"`), nunca un breakpoint de ancho.
+  `pointer-fine:` (p. ej. `Button size="sm"`), nunca un breakpoint de ancho. Los botones internos
+  de fila de las tablas (inventario, historial) son compactos con mouse y suben a 44 px con
+  `pointer-coarse:min-h-11`.
+- **Formularios de movimiento:** piden confirmación los ajustes y las mermas (siempre) y los
+  retiros de más de la mitad de lo disponible en la ubicación; mientras cargan las existencias el
+  botón de envío queda deshabilitado con "Cargando existencias…"; la confirmación muestra el centro
+  real del movimiento.
 - **Diálogos controlados:** `DialogContent`, `SheetContent` y `ConfirmDialog` devuelven el foco al
   elemento que lo tenía al abrir aunque no haya `Trigger` (`useDevolverFoco`). `ConfirmDialog`
   acepta `children`; `EmptyState` acepta `nivelTitulo` (usa `1` cuando es toda la página).
@@ -694,10 +765,14 @@ márgenes ya definidos: empieza directamente con `<PageHeader>`.
 
 ```bash
 npm run dev          # desarrollo (http://localhost:3000)
-npm run build        # build de producción        npm run start
+npm run build        # build de producción (output standalone)
+npm start            # inicia ese build: scripts/iniciar.mjs copia .next/static y public junto a
+                     # .next/standalone/server.js y lo arranca (npm start -- -p 3200).
+                     # "next start" NO sirve con output standalone.
 npm run typecheck    # next typegen + tsc --noEmit
 npm run lint         # eslint
 npm test             # vitest (migra y usa la base de DATABASE_URL_TEST; se ejecuta en serie)
+npm run test:e2e     # Playwright contra el build (base medired_e2e; ver README)
 npm run db:migrate   # prisma migrate dev         npm run db:deploy (producción)
 npm run db:seed      # seed demo (idempotente; el historial solo se genera si no hay movimientos)
 npm run db:reset     # borra TODO y vuelve a migrar + seed (solo desarrollo)
@@ -746,15 +821,16 @@ en `null`); las que genera la aplicación vencen a las 72 h.
   retrasa hasta 15 min a un titular que entra desde una red nueva; no afecta a sus redes habituales.
   Sin `TRUST_PROXY`, un tercero puede bloquear una cuenta 15 min repitiendo claves erradas.
 - **Deuda — recuperación de contraseña:** no hay flujo por correo; la restablece un ADMIN.
-- **Deuda — búsqueda sin tildes en el reporte de movimientos:** su filtro de texto (y el CSV) usa
-  `condicionMovimientos` (Prisma `contains`), que distingue tildes; el resto de las búsquedas no.
-- **Deuda — 404 real en rutas de detalle:** `/inventario/<id inexistente>` muestra "no encontrado"
-  pero responde HTTP 200 porque `loading.tsx` inicia la transmisión antes (ver §7).
-- **Deuda — pantallas pendientes:** `corregirVencimientoLoteAccion` y el parámetro
-  `priorizarRetirosDeCentroId` de `buscarInsumosAccion` no tienen UI; la lista de usuarios no
-  muestra aún `passwordTemporalVencida`; `auditoria-legible.ts` no tiene etiquetas propias para
-  `LOGIN_FALLIDO_AGREGADO`, `LOTE_ACTUALIZADO` ni `PASSWORD_CAMBIO_BLOQUEADO` (se muestran con el
-  nombre genérico).
+- **Deuda — 404 real fuera de `(directo)`:** las rutas de detalle de administración
+  (`/admin/insumos/<id>`, `/admin/centros/<id>`) siguen bajo `(app)/loading.tsx`: un id inexistente
+  muestra "no encontrado" (con `noindex`) pero responde HTTP 200.
+- **Deuda — sesión vencida y borradores:** al vencer la sesión se conserva la ruta (con su
+  prellenado por URL), no lo escrito en el formulario.
+- **Deuda — sin conexión:** la app es instalable (manifiesto) pero no tiene service worker: no
+  funciona sin red.
+- **Auditoría legible:** toda acción que el código escribe tiene etiqueta en
+  `components/admin/auditoria-legible.ts` (`ETIQUETA_ACCION`); el test de utilidades falla si se
+  agrega una acción sin etiqueta.
 - **Deuda — modo oscuro:** los tokens semánticos están preparados (`:root` en `globals.css`), sin
   tema oscuro definido.
 - Comunas: `REGIONES` trae las principales por región, no el listado oficial completo.

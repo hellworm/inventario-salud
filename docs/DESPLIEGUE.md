@@ -277,7 +277,7 @@ Resultado:
 ```
 ✔ Administrador creado.
 
-    Email:                ana@miclinica.cl
+    Correo electrónico:   ana@miclinica.cl
     Contraseña temporal:  Abcd-Efgh-2345-Jkmn
 
   Anótala ahora: no se volverá a mostrar ni se puede recuperar.
