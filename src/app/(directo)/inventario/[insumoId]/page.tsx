@@ -177,6 +177,7 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
             encabezado: "Acción",
             alinear: "derecha",
             className: "whitespace-nowrap",
+            movilAncho: true,
             celda: (e) => (
               <span className="flex flex-wrap items-center justify-end gap-1.5 max-md:justify-start">
                 {permisos.corregirVencimiento ? (

@@ -18,6 +18,8 @@ export interface Columna<T> {
    * - por defecto: par etiqueta / valor.
    */
   movil?: "titulo" | "destacado" | "oculto";
+  /** En la tarjeta móvil ocupa todo el ancho y no se trunca (p. ej. una celda con botones). */
+  movilAncho?: boolean;
   /** Clases para `<td>` (escritorio), p. ej. anchos. */
   className?: string;
 }
@@ -119,9 +121,9 @@ export function DataTable<T>({ columnas, filas, claveFila, titulo, vacio, hrefFi
               {colsDetalle.length > 0 ? (
                 <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
                   {colsDetalle.map((c) => (
-                    <div key={c.clave} className="min-w-0">
+                    <div key={c.clave} className={cn("min-w-0", c.movilAncho && "col-span-2")}>
                       <dt className="text-xs text-texto-tenue">{c.encabezado}</dt>
-                      <dd className="truncate text-texto">{c.celda(fila)}</dd>
+                      <dd className={cn("text-texto", !c.movilAncho && "truncate")}>{c.celda(fila)}</dd>
                     </div>
                   ))}
                 </dl>

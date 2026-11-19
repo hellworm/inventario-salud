@@ -93,11 +93,8 @@ function columnas(usuarioActualId: string, centros: OpcionCentro[]): Columna<Fil
               Contraseña temporal vence el <span className="cifras">{formatearFecha(u.passwordTemporalExpira)}</span>
             </span>
           ) : null}
-          {u.activo && u.passwordTemporalVencida ? (
-            <span className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-peligro-800" data-password-temporal="vencida">
-              No puede ingresar hasta restablecerla.
-              {u.id !== usuarioActualId ? <BotonRestablecerVencida usuario={{ id: u.id, nombre: u.nombre }} /> : null}
-            </span>
+          {u.activo && u.debeCambiarPassword && u.id !== usuarioActualId ? (
+            <BotonRestablecerVencida usuario={{ id: u.id, nombre: u.nombre }} vencida={u.passwordTemporalVencida} />
           ) : null}
           <span className="mt-1 block text-xs text-texto-suave max-md:hidden" title={u.ultimoAcceso ? formatearFechaHora(u.ultimoAcceso) : undefined}>
             {u.ultimoAcceso ? `Ingresó ${formatearRelativo(u.ultimoAcceso)}` : "Nunca ingresó"}

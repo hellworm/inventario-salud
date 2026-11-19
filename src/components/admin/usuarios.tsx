@@ -129,8 +129,7 @@ function DialogoPasswordTemporal({ datos, onCerrar }: { datos: PasswordEntregada
             </div>
           </div>
           <Alert tono="alerta" titulo="Solo se muestra esta vez">
-            Cópiala ahora: al cerrar esta ventana no se puede volver a ver. Al ingresar, el sistema le pedirá crear su
-            propia contraseña.
+            Cópiala ahora: al cerrar esta ventana no se puede volver a ver. Al ingresar, el sistema le pedirá crear su propia contraseña.
           </Alert>
         </div>
         <DialogFooter>
@@ -147,7 +146,17 @@ function DialogoPasswordTemporal({ datos, onCerrar }: { datos: PasswordEntregada
 // Formulario de usuario
 // ---------------------------------------------------------------------------
 
-function SelectorRol({ valor, onCambiar, bloqueado, error }: { valor: Rol | ""; onCambiar: (rol: Rol) => void; bloqueado: boolean; error?: string }) {
+function SelectorRol({
+  valor,
+  onCambiar,
+  bloqueado,
+  error,
+}: {
+  valor: Rol | "";
+  onCambiar: (rol: Rol) => void;
+  bloqueado: boolean;
+  error?: string;
+}) {
   const idError = React.useId();
   return (
     <fieldset aria-describedby={error ? idError : undefined}>
@@ -425,29 +434,39 @@ export function BotonNuevoUsuario({ centros }: { centros: OpcionCentro[] }) {
 /**
  * Acción directa en la fila cuando la contraseña temporal venció: la persona
  * no puede entrar hasta que un administrador genere otra.
+ *
+ * Se monta para toda cuenta con contraseña temporal pendiente y muestra el
+ * aviso y el botón solo si está `vencida`: al restablecer, la lista se
+ * revalida y la fila deja de estar vencida, pero el componente sigue montado
+ * y puede mostrar la contraseña nueva (que se ve una sola vez).
  */
-export function BotonRestablecerVencida({ usuario }: { usuario: { id: string; nombre: string } }) {
+export function BotonRestablecerVencida({ usuario, vencida }: { usuario: { id: string; nombre: string }; vencida: boolean }) {
   const [abierto, setAbierto] = React.useState(false);
   const [password, setPassword] = React.useState<PasswordEntregada | null>(null);
   return (
     <>
-      <Button
-        size="sm"
-        variant="secundario"
-        onClick={() => setAbierto(true)}
-        aria-label={`Restablecer la contraseña de ${usuario.nombre}`}
-      >
-        <KeyRound aria-hidden />
-        Restablecer
-      </Button>
+      {vencida ? (
+        <span className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-peligro-800" data-password-temporal="vencida">
+          No puede ingresar hasta restablecerla.
+          <Button
+            size="sm"
+            variant="secundario"
+            onClick={() => setAbierto(true)}
+            aria-label={`Restablecer la contraseña de ${usuario.nombre}`}
+          >
+            <KeyRound aria-hidden />
+            Restablecer
+          </Button>
+        </span>
+      ) : null}
       <ConfirmDialog
         open={abierto}
         onOpenChange={setAbierto}
         titulo="¿Restablecer la contraseña?"
         descripcion={
           <>
-            La contraseña temporal de <strong className="font-semibold text-texto">{usuario.nombre}</strong> venció sin usarse. Se
-            generará una nueva, válida por 72 horas.
+            La contraseña temporal de <strong className="font-semibold text-texto">{usuario.nombre}</strong> venció sin usarse. Se generará
+            una nueva, válida por 72 horas.
           </>
         }
         textoConfirmar="Restablecer"
@@ -535,8 +554,8 @@ export function AccionesUsuario({ usuario, centros, esYo }: { usuario: UsuarioEd
         titulo="¿Restablecer la contraseña?"
         descripcion={
           <>
-            Se generará una nueva contraseña temporal para <strong className="font-semibold text-texto">{usuario.nombre}</strong>. La
-            actual dejará de funcionar y se cerrarán sus sesiones abiertas.
+            Se generará una nueva contraseña temporal para <strong className="font-semibold text-texto">{usuario.nombre}</strong>. La actual
+            dejará de funcionar y se cerrarán sus sesiones abiertas.
           </>
         }
         textoConfirmar="Restablecer"
@@ -553,8 +572,8 @@ export function AccionesUsuario({ usuario, centros, esYo }: { usuario: UsuarioEd
         titulo="¿Desbloquear la cuenta?"
         descripcion={
           <>
-            <strong className="font-semibold text-texto">{usuario.nombre}</strong> quedó bloqueado por varios intentos fallidos.
-            Podrá volver a intentar de inmediato con su contraseña actual.
+            <strong className="font-semibold text-texto">{usuario.nombre}</strong> quedó bloqueado por varios intentos fallidos. Podrá
+            volver a intentar de inmediato con su contraseña actual.
           </>
         }
         textoConfirmar="Desbloquear"
