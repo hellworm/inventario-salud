@@ -1,14 +1,16 @@
 import { comoSeMuestra, CUENTAS, diaSantiago, UBICACIONES } from "./soporte/entorno";
 import {
+  avisos,
   cajas,
   crearInsumo,
   disponibleEnFicha,
   esperarStockEnGrilla,
   filaDeLote,
   llenarIngreso,
+  marcar,
   registrarIngreso,
 } from "./soporte/datos";
-import { bugConocido, expect, test } from "./soporte/fixtures";
+import { expect, test } from "./soporte/fixtures";
 
 const BODEGA = UBICACIONES.nunoaBodega;
 
@@ -129,15 +131,28 @@ test.describe("Ingresos de stock", () => {
     await expect(ultimos.getByRole("row").nth(1)).toContainText(CUENTAS.bodega.nombre);
   });
 
-  // --- Bugs conocidos (ver informe de QA). Quitar `test.fail` cuando se corrijan. ---
-
-  test("B-01: el costo unitario escrito con punto decimal se guarda tal cual", async ({ abrirComo }) => {
-    bugConocido("B-01: '1250.5' se guarda como 12.505 (el punto se toma siempre como separador de miles)");
+  test("B-01: el costo con punto decimal se rechaza con un mensaje claro; con coma se guarda exacto", async ({ abrirComo }) => {
     const admin = await abrirComo("admin");
     const insumo = await crearInsumo(admin);
     const lote = `CO-${insumo.sufijo}`;
+    const formulario = admin.getByRole("form", { name: "Registrar ingreso" });
+    const costo = admin.getByLabel(/Costo unitario/);
     await llenarIngreso(admin, { insumo, ubicacion: BODEGA, lote, vence: diaSantiago(120), cantidad: 2 });
-    await admin.getByLabel(/Costo unitario/).fill("1250.5");
+
+    // "1250.5" NO se adivina (antes se guardaba como 12.505): se pide usar coma, de inmediato.
+    await costo.fill("1250.5");
+    await expect(formulario).toContainText("Usa coma para los decimales: 1250,5.");
+    await admin.getByRole("button", { name: "Registrar ingreso" }).click();
+    await expect(costo).toHaveAttribute("aria-invalid", "true");
+    await expect(admin.getByRole("heading", { name: "Ingreso registrado" })).toBeHidden();
+    await admin.goto(`/inventario?q=${insumo.codigo}`);
+    await expect(admin.getByRole("main"), "el intento rechazado no dejó stock").not.toContainText(insumo.nombre);
+
+    // Con coma decimal y punto de miles: se muestra cómo se guardará y se guarda exacto.
+    await llenarIngreso(admin, { insumo, ubicacion: BODEGA, lote, vence: diaSantiago(120), cantidad: 2 });
+    await costo.fill("1.250,5");
+    await expect(formulario).toContainText("Se guardará como $1.250,5 por caja");
+    await expect(formulario).not.toContainText("Usa coma para los decimales");
     await admin.getByRole("button", { name: "Registrar ingreso" }).click();
     await expect(admin.getByRole("heading", { name: "Ingreso registrado" })).toBeVisible();
 
@@ -149,26 +164,56 @@ test.describe("Ingresos de stock", () => {
     expect(fila[encabezados.indexOf("Valor (CLP)")]).toBe("2501");
   });
 
-  test("B-06: se puede ingresar a un lote sin fecha después de activar el control de vencimiento", async ({ abrirComo }) => {
-    bugConocido("B-06: el formulario no deja indicar la fecha de un lote existente sin vencimiento y el rechazo del servidor no se muestra");
+  test("B-01: un costo absurdo choca con el tope de sanidad y '1.5' tampoco se adivina", async ({ abrirComo }) => {
+    const admin = await abrirComo("admin");
+    const insumo = await crearInsumo(admin);
+    const formulario = admin.getByRole("form", { name: "Registrar ingreso" });
+    const costo = admin.getByLabel(/Costo unitario/);
+    await llenarIngreso(admin, { insumo, ubicacion: BODEGA, lote: `CT-${insumo.sufijo}`, vence: diaSantiago(120), cantidad: 1 });
+    await costo.fill("1.5");
+    await expect(formulario).toContainText("Usa coma para los decimales: 1,5.");
+    await costo.fill("100.000.001");
+    await expect(formulario).toContainText("El monto es demasiado grande");
+    await admin.getByRole("button", { name: "Registrar ingreso" }).click();
+    await expect(admin.getByRole("heading", { name: "Ingreso registrado" })).toBeHidden();
+    await costo.fill("1.250");
+    await expect(formulario).toContainText("Se guardará como $1.250 por caja");
+  });
+
+  test("B-06: un lote sin fecha en un insumo que pasa a controlar vencimiento pide la fecha y la completa", async ({ abrirComo }) => {
     const admin = await abrirComo("admin");
     const insumo = await crearInsumo(admin, { controlaVencimiento: false });
     const lote = `SF-${insumo.sufijo}`;
     await registrarIngreso(admin, { insumo, ubicacion: BODEGA, lote, cantidad: 5 });
 
     await admin.goto(`/admin/insumos/${insumo.id}`);
-    await admin.getByRole("checkbox", { name: /Controla fecha de vencimiento/ }).check();
-    await admin.getByRole("button", { name: "Guardar cambios" }).click();
-    await expect(admin.getByRole("region", { name: /Notifications/ })).toContainText(/guardad|actualizad/i);
+    await marcar(admin.getByRole("checkbox", { name: /Controla fecha de vencimiento/ }));
+    await admin.getByRole("button", { name: "Guardar datos del insumo" }).click();
+    await expect(avisos(admin)).toContainText(/guardad|actualizad/i);
 
-    // Segundo ingreso al mismo lote: debe poder completarse (indicando la fecha que faltaba)
-    // o, como mínimo, explicar a la vista por qué no se registra.
-    await llenarIngreso(admin, { insumo, ubicacion: BODEGA, lote, cantidad: 2 });
-    await expect(admin.getByText("Lote existente")).toBeVisible();
-    await admin.getByRole("button", { name: "Registrar ingreso" }).click();
+    // Segundo ingreso al mismo lote: el formulario muestra el campo de fecha y explica por qué.
     const formulario = admin.getByRole("form", { name: "Registrar ingreso" });
     const fecha = admin.getByLabel("Vencimiento");
-    const mensajeVisible = formulario.locator(":not(.sr-only)").getByText(/controla vencimiento/).first();
-    await expect(fecha.or(mensajeVisible).or(admin.getByRole("heading", { name: "Ingreso registrado" })).first()).toBeVisible();
+    await llenarIngreso(admin, { insumo, ubicacion: BODEGA, lote, cantidad: 2 });
+    await expect(fecha).toBeVisible();
+    await expect(formulario).toContainText("ya está registrado, pero sin fecha de vencimiento");
+
+    // Sin fecha no se registra y el motivo queda a la vista, junto al campo.
+    await admin.getByRole("button", { name: "Registrar ingreso" }).click();
+    await expect(formulario.locator(":not(.sr-only)").getByText(/no tiene fecha registrada y el insumo controla vencimiento/).first()).toBeVisible();
+    await expect(fecha).toHaveAttribute("aria-invalid", "true");
+    await expect(admin.getByRole("heading", { name: "Ingreso registrado" })).toBeHidden();
+
+    // Con la fecha se completa el lote existente (no crea otro) y suma al stock.
+    const vence = diaSantiago(180);
+    await fecha.fill(vence);
+    await admin.getByRole("button", { name: "Registrar ingreso" }).click();
+    const confirmacion = admin.getByRole("status").filter({ hasText: "Ingreso registrado" });
+    await expect(confirmacion).toContainText("Lote que ya existía");
+    expect(await disponibleEnFicha(admin, insumo)).toBe(7);
+    const fila = filaDeLote(admin, lote);
+    await expect(fila).toContainText(cajas(7), { useInnerText: true });
+    await expect(fila).toContainText(comoSeMuestra(vence));
+    await expect(admin.getByRole("region", { name: "Resumen de stock" })).toContainText("en 1 lote");
   });
 });

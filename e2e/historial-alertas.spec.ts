@@ -19,7 +19,7 @@ test.describe("Historial de movimientos", () => {
     const motivo = `Turno e2e ${insumo.sufijo}`;
     const bodeguero = await abrirComo("bodega");
     await registrarIngreso(bodeguero, { insumo, ubicacion: BODEGA, lote, vence: diaSantiago(75), cantidad: 9 });
-    await registrarRetiro(bodeguero, insumo, BODEGA, 4, motivo);
+    await registrarRetiro(bodeguero, insumo, BODEGA, 4, { motivo });
 
     await bodeguero.goto(`/movimientos?insumo=${insumo.id}`);
     await expect(bodeguero.getByRole("main").getByRole("status").filter({ hasText: /movimiento/ })).toContainText(/^2\s*movimientos/);
@@ -98,8 +98,21 @@ test.describe("Alertas de stock", () => {
     await registrarRetiro(bodeguero, insumo, BODEGA, 4);
     await bodeguero.goto(`/alertas?tab=bajo-minimo&q=${insumo.codigo}`);
     const bajo = filaVisible(bodeguero, insumo.codigo);
-    await expect(bajo).toContainText("Bajo mínimo");
+    // Para quien puede ingresar, el estado es el de la pestaña y la fila trae la acción.
+    await expect(principal.locator('a[aria-current="page"]')).toContainText("Bajo mínimo");
     await expect(bajo).toContainText(/4\s*de\s*5/, { useInnerText: true });
+    await expect(bajo).toContainText(/Falta\s*1\s*caja(?!s)|\b1\s*caja(?!s)/, { useInnerText: true });
+    await expect(bajo.getByRole("link", { name: `Ingresar ${insumo.nombre}` })).toHaveAttribute(
+      "href",
+      new RegExp(`^/movimientos/ingreso\\?insumo=${insumo.id}&ubicacion=[a-z0-9]+$`),
+    );
+    // Quien solo consulta ve el estado en la fila y ninguna acción.
+    const visita = await abrirComo("visita");
+    await visita.goto(`/alertas?tab=bajo-minimo&q=${insumo.codigo}`);
+    const bajoVisita = filaVisible(visita, insumo.codigo);
+    await expect(bajoVisita).toContainText("Bajo mínimo");
+    await expect(bajoVisita).toContainText(/4\s*de\s*5/, { useInnerText: true });
+    await expect(visita.getByRole("main").getByRole("link", { name: /^Ingresar/ })).toHaveCount(0);
     await bodeguero.goto(`/alertas?tab=sin-stock&q=${insumo.codigo}`);
     await expect(principal).not.toContainText(insumo.nombre);
     await expect(await filaDeInventario(bodeguero, insumo)).toContainText("Bajo mínimo");
@@ -107,12 +120,14 @@ test.describe("Alertas de stock", () => {
     await bodeguero.goto(`/inventario?estado=BAJO_MINIMO&q=${insumo.codigo}`);
     await expect(filaVisible(bodeguero, insumo.codigo)).toBeVisible();
 
-    // Retiro del resto → sin stock.
-    await registrarRetiro(bodeguero, insumo, BODEGA, 4);
+    // Retiro del resto (4 de 4: pide confirmación) → sin stock.
+    await registrarRetiro(bodeguero, insumo, BODEGA, 4, { masDeLaMitad: true });
     await bodeguero.goto(`/alertas?tab=sin-stock&q=${insumo.codigo}`);
     const sinStock = filaVisible(bodeguero, insumo.codigo);
-    await expect(sinStock).toContainText("Sin stock");
+    await expect(principal.locator('a[aria-current="page"]')).toContainText("Sin stock");
     await expect(sinStock).toContainText(/0\s*de\s*5/, { useInnerText: true });
+    await visita.goto(`/alertas?tab=sin-stock&q=${insumo.codigo}`);
+    await expect(filaVisible(visita, insumo.codigo)).toContainText("Sin stock");
     await bodeguero.goto(`/alertas?tab=bajo-minimo&q=${insumo.codigo}`);
     await expect(principal).not.toContainText(insumo.nombre);
     await expect(await filaDeInventario(bodeguero, insumo)).toContainText("Sin stock");

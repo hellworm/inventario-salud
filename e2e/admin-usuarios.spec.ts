@@ -1,59 +1,9 @@
-import type { Page } from "@playwright/test";
-import { CENTROS, sufijo } from "./soporte/entorno";
-import { desmarcar, marcar } from "./soporte/datos";
-import { expect, iniciarSesion, sesionDe, test } from "./soporte/fixtures";
+import { CENTROS, comoSeMuestra, diaSantiago, sufijo } from "./soporte/entorno";
+import { avisos, desmarcar, marcar } from "./soporte/datos";
+import { expect, iniciarSesion, ipDePrueba, sesionDe, test } from "./soporte/fixtures";
+import { crearUsuario, filaDeUsuario, primerIngreso } from "./soporte/usuarios";
 
-const ERROR_CREDENCIALES = "Email o contraseña incorrectos";
-
-interface UsuarioPrueba {
-  nombre: string;
-  email: string;
-  temporal: string;
-}
-
-type RolNuevo = "Administrador" | "Bodeguero" | "Visitante";
-
-/** Crea un usuario desde /admin/usuarios y devuelve su contraseña temporal. */
-async function crearUsuario(admin: Page, rol: RolNuevo, centros: string[] = [CENTROS.nunoa]): Promise<UsuarioPrueba> {
-  const s = sufijo().toLowerCase();
-  const usuario = { nombre: `Prueba E2E ${s}`, email: `e2e.${s}@redinsumos.cl` };
-  await admin.goto("/admin/usuarios");
-  await admin.getByRole("button", { name: "Nuevo usuario" }).click();
-  const dialogo = admin.getByRole("dialog", { name: "Nuevo usuario" });
-  await dialogo.getByLabel("Nombre y apellido").fill(usuario.nombre);
-  // Con mayúsculas y espacios: el correo se normaliza.
-  await dialogo.getByLabel("Email").fill(`  ${usuario.email.toUpperCase()} `);
-  await marcar(dialogo.getByRole("radio", { name: new RegExp(`^${rol}`) }));
-  if (rol !== "Administrador") {
-    for (const centro of centros) await marcar(dialogo.getByRole("checkbox", { name: centro }));
-  }
-  await dialogo.getByRole("button", { name: "Crear usuario" }).click();
-
-  const creado = admin.getByRole("dialog", { name: "Usuario creado" });
-  await expect(creado).toContainText(usuario.email);
-  const temporal = await creado.getByLabel("Contraseña temporal").inputValue();
-  expect(temporal.length).toBeGreaterThanOrEqual(10);
-  await creado.getByRole("button", { name: /Cerrar sin copiar|Listo/ }).click();
-  await expect(creado).toBeHidden();
-  return { ...usuario, temporal };
-}
-
-/** Fila del usuario en la tabla de /admin/usuarios (filtrada por su email). */
-async function filaDeUsuario(admin: Page, usuario: UsuarioPrueba) {
-  await admin.goto(`/admin/usuarios?q=${encodeURIComponent(usuario.email)}`);
-  return admin.getByRole("row").filter({ hasText: usuario.email });
-}
-
-/** Primer ingreso: cambia la contraseña temporal por una definitiva. */
-async function primerIngreso(pagina: Page, usuario: UsuarioPrueba, nueva: string): Promise<void> {
-  await iniciarSesion(pagina, usuario.email, usuario.temporal);
-  await expect(pagina).toHaveURL(/\/cambiar-password$/);
-  await pagina.getByLabel("Contraseña actual").fill(usuario.temporal);
-  await pagina.getByLabel("Nueva contraseña", { exact: true }).fill(nueva);
-  await pagina.getByLabel("Repite la nueva contraseña").fill(nueva);
-  await pagina.getByRole("button", { name: "Guardar nueva contraseña" }).click();
-  await expect(pagina).toHaveURL(/\/panel/);
-}
+const ERROR_CREDENCIALES = "Correo electrónico o contraseña incorrectos";
 
 test.describe("Administración de usuarios", () => {
   test.use(sesionDe("admin"));
@@ -66,6 +16,11 @@ test.describe("Administración de usuarios", () => {
     await expect(fila).toContainText(CENTROS.nunoa);
     await expect(fila).toContainText("Nunca ingresó");
     await expect(fila).toContainText("Activo");
+    // La contraseña temporal vence a las 72 horas y la lista lo dice (día 3 o 4 según la hora).
+    await expect(fila).toContainText(
+      new RegExp(`Contraseña temporal vence el (${comoSeMuestra(diaSantiago(3))}|${comoSeMuestra(diaSantiago(4))})`),
+    );
+    await expect(fila).not.toContainText("Contraseña temporal vencida");
 
     const nuevo = await abrirAnonimo();
     await iniciarSesion(nuevo, usuario.email, usuario.temporal);
@@ -81,6 +36,10 @@ test.describe("Administración de usuarios", () => {
     await nuevo.getByLabel("Repite la nueva contraseña").fill(definitiva);
     await nuevo.getByRole("button", { name: "Guardar nueva contraseña" }).click();
     await expect(nuevo.getByRole("main")).toContainText(/contraseña actual (no es correcta|es incorrecta|incorrecta)/i);
+    // B-12: el error no vacía lo que ya se escribió; solo la contraseña actual rechazada.
+    await expect(nuevo.getByLabel("Contraseña actual")).toHaveValue("");
+    await expect(nuevo.getByLabel("Nueva contraseña", { exact: true })).toHaveValue(definitiva);
+    await expect(nuevo.getByLabel("Repite la nueva contraseña")).toHaveValue(definitiva);
 
     // La nueva no puede ser igual a la temporal.
     await nuevo.getByLabel("Contraseña actual").fill(usuario.temporal);
@@ -110,7 +69,10 @@ test.describe("Administración de usuarios", () => {
     await iniciarSesion(nuevo, usuario.email, definitiva);
     await expect(nuevo).toHaveURL(/\/panel$/);
 
-    await expect(await filaDeUsuario(page, usuario)).not.toContainText("Nunca ingresó");
+    const despues = await filaDeUsuario(page, usuario);
+    await expect(despues).not.toContainText("Nunca ingresó");
+    // Ya cambió su contraseña: no queda nada "temporal" en la lista.
+    await expect(despues).not.toContainText("Contraseña temporal");
   });
 
   test("validaciones al crear: campos obligatorios, centros y correo duplicado", async ({ page }) => {
@@ -119,11 +81,11 @@ test.describe("Administración de usuarios", () => {
     const dialogo = page.getByRole("dialog", { name: "Nuevo usuario" });
     await dialogo.getByRole("button", { name: "Crear usuario" }).click();
     await expect(dialogo).toContainText("Ingresa el nombre y apellido");
-    await expect(dialogo).toContainText("Ingresa un email válido");
+    await expect(dialogo).toContainText("Ingresa un correo electrónico válido");
     await expect(dialogo).toContainText("Selecciona un rol");
 
     await dialogo.getByLabel("Nombre y apellido").fill("Duplicado E2E");
-    await dialogo.getByLabel("Email").fill("BODEGA@redinsumos.cl");
+    await dialogo.getByLabel("Correo electrónico").fill("BODEGA@redinsumos.cl");
     await marcar(dialogo.getByRole("radio", { name: /^Visitante/ }));
     await dialogo.getByRole("button", { name: "Crear usuario" }).click();
     await expect(dialogo).toContainText("Asigna al menos un centro");
@@ -177,7 +139,72 @@ test.describe("Administración de usuarios", () => {
     if ((await desactivar.count()) > 0) await expect(desactivar).toBeDisabled();
   });
 
-  test("cinco contraseñas incorrectas bloquean la cuenta aunque después se use la correcta", async ({ page, abrirAnonimo }) => {
+  test("cinco fallos desde una misma conexión bloquean la cuenta DESDE ESA conexión; el titular entra desde otra red", async ({ page, abrirDesdeIp }) => {
+    const usuario = await crearUsuario(page, "Visitante");
+    const ipIntruso = ipDePrueba();
+    const intruso = await abrirDesdeIp(ipIntruso);
+    for (let intento = 1; intento <= 5; intento++) {
+      await iniciarSesion(intruso, usuario.email, `Incorrecta.${intento}.2026`);
+      await expect(intruso.getByRole("alert").filter({ hasText: ERROR_CREDENCIALES })).toBeVisible();
+    }
+    // Desde la conexión del intruso ni siquiera la contraseña correcta entra (mismo mensaje genérico).
+    await iniciarSesion(intruso, usuario.email, usuario.temporal);
+    await expect(intruso.getByRole("alert").filter({ hasText: ERROR_CREDENCIALES })).toBeVisible();
+    await expect(intruso).toHaveURL(/\/login/);
+
+    // El titular, desde OTRA red, no quedó fuera: entra con su contraseña.
+    const titular = await abrirDesdeIp(ipDePrueba());
+    await iniciarSesion(titular, usuario.email, usuario.temporal);
+    await expect(titular).toHaveURL(/\/cambiar-password$/);
+
+    // La conexión bloqueada sigue bloqueada aunque el titular haya entrado desde otra parte.
+    await iniciarSesion(intruso, usuario.email, usuario.temporal);
+    await expect(intruso.getByRole("alert").filter({ hasText: ERROR_CREDENCIALES })).toBeVisible();
+
+    // El administrador ve el bloqueo y lo levanta; la auditoría registró el rechazo con su IP.
+    const fila = await filaDeUsuario(page, usuario);
+    await expect(fila).toContainText("Bloqueada");
+    await fila.getByRole("button", { name: `Acciones para ${usuario.nombre}` }).click();
+    await page.getByRole("menuitem", { name: "Desbloquear cuenta" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Desbloquear" }).click();
+    await expect(avisos(page)).toContainText(/desbloquead/i);
+    await expect(await filaDeUsuario(page, usuario)).not.toContainText("Bloqueada");
+    await iniciarSesion(intruso, usuario.email, usuario.temporal);
+    await expect(intruso).toHaveURL(/\/cambiar-password$/);
+
+    await page.goto(`/admin/auditoria?accion=LOGIN_BLOQUEADO&desde=${diaSantiago(0)}`);
+    const rechazo = page.getByRole("table", { name: "Registro de auditoría" }).locator("tbody tr").filter({ hasText: usuario.nombre }).first();
+    await expect(rechazo).toContainText("Ingreso rechazado por bloqueo");
+    await rechazo.getByRole("button", { name: /Ver detalle/ }).click();
+    const detalle = page.getByRole("dialog");
+    await expect(detalle).toContainText("Demasiados intentos fallidos con esta cuenta desde la misma dirección IP");
+    await expect(detalle).toContainText(ipIntruso);
+  });
+
+  test("veinte intentos desde una misma IP con cualquier correo frenan a esa IP, no a las demás", async ({ page, abrirDesdeIp }) => {
+    test.slow();
+    const usuario = await crearUsuario(page, "Visitante");
+    const ipRuidosa = ipDePrueba();
+    const ruidosa = await abrirDesdeIp(ipRuidosa);
+    // 20 intentos con correos que no existen (no tocan ninguna cuenta real).
+    for (let intento = 1; intento <= 20; intento++) {
+      await iniciarSesion(ruidosa, `nadie.${sufijo().toLowerCase()}@redinsumos.cl`, "Clave.Mala.2026");
+      await expect(ruidosa.getByRole("alert").filter({ hasText: ERROR_CREDENCIALES })).toBeVisible();
+      await expect(ruidosa.getByRole("button", { name: "Ingresar" })).toBeEnabled();
+    }
+    // El intento 21, aun con credenciales correctas, se rechaza desde esa IP.
+    await iniciarSesion(ruidosa, usuario.email, usuario.temporal);
+    await expect(ruidosa.getByRole("alert").filter({ hasText: ERROR_CREDENCIALES })).toBeVisible();
+    await expect(ruidosa).toHaveURL(/\/login/);
+    // Desde otra IP la misma cuenta entra sin problema: la cuenta no quedó bloqueada.
+    const otra = await abrirDesdeIp(ipDePrueba());
+    await iniciarSesion(otra, usuario.email, usuario.temporal);
+    await expect(otra).toHaveURL(/\/cambiar-password$/);
+    await expect(await filaDeUsuario(page, usuario)).not.toContainText("Bloqueada");
+  });
+
+  test("sin IP confiable el bloqueo es por cuenta: cinco fallos la bloquean y restablecer la contraseña la libera", async ({ page, abrirAnonimo }) => {
+    // Sin cabecera X-Forwarded-For el servidor no conoce la IP (como sin TRUST_PROXY).
     const usuario = await crearUsuario(page, "Visitante");
     const intruso = await abrirAnonimo();
     for (let intento = 1; intento <= 5; intento++) {
@@ -187,9 +214,14 @@ test.describe("Administración de usuarios", () => {
     await iniciarSesion(intruso, usuario.email, usuario.temporal);
     await expect(intruso.getByRole("alert").filter({ hasText: ERROR_CREDENCIALES })).toBeVisible();
     await expect(intruso).toHaveURL(/\/login/);
+    // En este modo el bloqueo alcanza a todos: tampoco entra desde otro navegador.
+    const otro = await abrirAnonimo();
+    await iniciarSesion(otro, usuario.email, usuario.temporal);
+    await expect(otro.getByRole("alert").filter({ hasText: ERROR_CREDENCIALES })).toBeVisible();
 
     // Restablecer la contraseña desde administración desbloquea la cuenta.
     const fila = await filaDeUsuario(page, usuario);
+    await expect(fila).toContainText("Bloqueada");
     await fila.getByRole("button", { name: `Acciones para ${usuario.nombre}` }).click();
     await page.getByRole("menuitem", { name: "Restablecer contraseña" }).click();
     const confirmar = page.getByRole("alertdialog");

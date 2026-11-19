@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { CENTROS } from "./soporte/entorno";
-import { bugConocido, expect, sesionDe, test } from "./soporte/fixtures";
+import { expect, sesionDe, test } from "./soporte/fixtures";
 
 /**
  * Los mismos números vistos desde distintos módulos deben cuadrar.
@@ -104,15 +104,36 @@ test.describe("Coherencia entre panel, alertas, inventario y reposición", () =>
     expect(await numero(page, /Disponible[^\d]*(\d[\d.]*)/, resumen)).toBe(0);
     expect(await numero(page, /Stock mínimo (\d[\d.]*)/, resumen)).toBe(minimo);
 
-    await page.getByRole("main").getByRole("link", { name: "Ingresar" }).first().click();
+    // Desde la ficha, "Registrar ingreso" lleva al formulario con el insumo ya elegido.
+    await page.getByRole("main").getByRole("link", { name: "Registrar ingreso" }).first().click();
     await expect(page).toHaveURL(/\/movimientos\/ingreso\?insumo=[a-z0-9]+/);
     await expect(page.getByRole("button", { name: new RegExp(`Cambiar insumo \\(seleccionado: ${nombre.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) })).toBeVisible();
   });
 
-  test("B-10: las cantidades se muestran con la unidad en plural", async ({ page }) => {
-    bugConocido("B-10: en alertas y panel la unidad no concuerda con la cantidad ('98 unidad', '4 frasco')");
-    await page.goto("/alertas?tab=sin-stock");
-    const faltante = page.getByRole("main").locator("tbody tr").first().getByRole("cell").nth(3);
-    await expect(faltante).toHaveText(/^\d[\d.]* (unidades|cajas|frascos|ampollas|bolsas|pares|paquetes|rollos|litros|bidones|cartuchos|kits)$/);
+  test("B-10: las cantidades se muestran con la unidad concordada (nunca '98 unidad' ni '1 cajas')", async ({ page }) => {
+    const UNIDADES = [
+      ["unidad", "unidades"], ["caja", "cajas"], ["frasco", "frascos"], ["ampolla", "ampollas"], ["bolsa", "bolsas"], ["par", "pares"],
+      ["paquete", "paquetes"], ["rollo", "rollos"], ["litro", "litros"], ["bidón", "bidones"], ["cartucho", "cartuchos"], ["kit", "kits"],
+    ] as const;
+    const singulares = UNIDADES.map(([s]) => s).join("|");
+    const plurales = UNIDADES.map(([, p]) => p).join("|");
+    // Cantidad distinta de 1 seguida de la unidad en singular, o exactamente 1 seguida del plural.
+    const pluralFaltante = new RegExp(`(?<![\\d.,])(?!1\\s)(\\d[\\d.]*)\\s+(${singulares})(?![\\p{L}])`, "giu");
+    const singularFaltante = new RegExp(`(?<![\\d.,])1\\s+(${plurales})(?![\\p{L}])`, "giu");
+    let cantidadesVistas = 0;
+    for (const ruta of ["/alertas?tab=sin-stock", "/alertas?tab=bajo-minimo", "/alertas?tab=vencidos", "/alertas?tab=por-vencer", "/panel", "/alertas/reposicion", "/inventario"]) {
+      await page.goto(ruta);
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      const texto = (await page.getByRole("main").innerText()).replace(/\s+/g, " ");
+      expect(texto.match(pluralFaltante) ?? [], `${ruta}: cantidad ≠ 1 con la unidad en singular`).toEqual([]);
+      expect(texto.match(singularFaltante) ?? [], `${ruta}: 1 con la unidad en plural`).toEqual([]);
+      cantidadesVistas += (texto.match(new RegExp(`\\d\\s+(${plurales}|${singulares})(?![\\p{L}])`, "giu")) ?? []).length;
+    }
+    // Sanidad: de verdad se revisaron cantidades con unidad (Valparaíso tiene alertas en el seed).
+    expect(cantidadesVistas).toBeGreaterThan(5);
+    // Y el caso original del informe: la columna "Falta" de las alertas de stock.
+    await page.goto("/alertas?tab=bajo-minimo");
+    const falta = page.getByRole("main").locator("tbody tr").first().getByRole("cell").nth(2);
+    await expect(falta).toHaveText(new RegExp(`^(1 (${singulares})|(?!1 )\\d[\\d.]* (${plurales}))$`, "u"));
   });
 });

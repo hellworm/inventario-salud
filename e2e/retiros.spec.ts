@@ -1,5 +1,19 @@
 import { diaSantiago, UBICACIONES } from "./soporte/entorno";
-import { abrirRetiro, cajas, crearInsumo, disponibleEnFicha, elegirUbicacion, esperarStockEnGrilla, filaDeLote, marcar, registrarIngreso, type InsumoPrueba } from "./soporte/datos";
+import {
+  abrirRetiro,
+  cajas,
+  confirmarEnDialogo,
+  crearInsumo,
+  disponibleEnFicha,
+  enviarRetiro,
+  esperarStockEnGrilla,
+  filaDeLote,
+  marcar,
+  registrarIngreso,
+  TITULO_RETIRO_GRANDE,
+  valorDeUbicacion,
+  type InsumoPrueba,
+} from "./soporte/datos";
 import { expect, test } from "./soporte/fixtures";
 import type { Page } from "@playwright/test";
 
@@ -14,6 +28,14 @@ async function insumoConDosLotes(admin: Page): Promise<{ insumo: InsumoPrueba; t
   await registrarIngreso(admin, { insumo, ubicacion: BODEGA, lote: tarde, vence: diaSantiago(200), cantidad: 10 });
   await registrarIngreso(admin, { insumo, ubicacion: BODEGA, lote: pronto, vence: diaSantiago(45), cantidad: 4 });
   return { insumo, tarde, pronto };
+}
+
+/** Id de un insumo del seed a partir de su código (por el enlace a su ficha en el inventario). */
+async function idDeInsumo(pagina: Page, codigo: string): Promise<string> {
+  await pagina.goto(`/inventario?q=${codigo}`);
+  await pagina.getByRole("main").locator("tbody tr").first().getByRole("button").first().click();
+  const href = await pagina.getByRole("dialog").getByRole("link", { name: "Ver ficha completa" }).getAttribute("href");
+  return (href ?? "").split("/").pop() as string;
 }
 
 test.describe("Retiros de stock", () => {
@@ -33,7 +55,8 @@ test.describe("Retiros de stock", () => {
     await expect(plan.nth(1)).toContainText(`Lote ${tarde}`);
     await expect(plan.nth(1)).toContainText("−2");
 
-    await bodeguero.getByRole("button", { name: "Registrar retiro" }).click();
+    // 6 de 14 no supera la mitad: se registra sin pedir confirmación.
+    await enviarRetiro(bodeguero);
     const confirmacion = bodeguero.getByRole("status").filter({ hasText: "Retiro registrado" });
     await expect(confirmacion).toContainText("Retiraste 6 cajas");
     await expect(confirmacion.getByRole("listitem").nth(0)).toContainText(new RegExp(`Lote ${pronto}\\s*−4\\s*· quedan 0`));
@@ -57,7 +80,7 @@ test.describe("Retiros de stock", () => {
     await marcar(bodeguero.getByRole("radio", { name: /Elegir lote/ }));
     await marcar(bodeguero.getByRole("radio", { name: new RegExp(`Lote ${tarde}`) }));
     await bodeguero.getByRole("textbox", { name: "Cantidad a retirar" }).fill("3");
-    await bodeguero.getByRole("button", { name: "Registrar retiro" }).click();
+    await enviarRetiro(bodeguero);
     const confirmacion = bodeguero.getByRole("status").filter({ hasText: "Retiro registrado" });
     await expect(confirmacion.getByRole("listitem")).toHaveCount(1);
     await expect(confirmacion.getByRole("listitem")).toContainText(new RegExp(`Lote ${tarde}\\s*−3\\s*· quedan 7`));
@@ -103,7 +126,7 @@ test.describe("Retiros de stock", () => {
     const { insumo } = await insumoConDosLotes(admin);
     await abrirRetiro(admin, insumo, BODEGA);
     await admin.getByRole("textbox", { name: "Cantidad a retirar" }).fill("14");
-    await admin.getByRole("button", { name: "Registrar retiro" }).click();
+    await enviarRetiro(admin, { masDeLaMitad: true });
     await expect(admin.getByRole("status").filter({ hasText: "Retiro registrado" })).toContainText("quedan 0 cajas");
     expect(await disponibleEnFicha(admin, insumo)).toBe(0);
 
@@ -116,10 +139,20 @@ test.describe("Retiros de stock", () => {
   test("un lote vencido no se puede retirar: solo sale como merma", async ({ abrirComo }) => {
     // Dato del seed: Lidocaína 2% (LID-2) tiene un lote vencido olvidado en la Sala 2 de Ñuñoa.
     const bodeguero = await abrirComo("bodega");
+    const insumoId = await idDeInsumo(bodeguero, "LID-2");
     await bodeguero.goto("/movimientos/retiro");
     await bodeguero.getByRole("combobox", { name: "Insumo" }).fill("LID-2");
     await bodeguero.getByRole("option", { name: /Lidocaína 2% 5 ml/ }).click();
-    await elegirUbicacion(bodeguero, "Desde la ubicación", UBICACIONES.nunoaSala2);
+    // Una ubicación sin stock vigente ni siquiera se puede elegir como origen.
+    const origen = bodeguero.getByRole("combobox", { name: "Desde la ubicación" });
+    const sala2 = await valorDeUbicacion(origen, UBICACIONES.nunoaSala2);
+    expect(sala2, "la Sala 2 figura entre las ubicaciones").toBeTruthy();
+    await expect(origen.locator(`option[value="${sala2}"]`)).toBeDisabled();
+    await expect(origen.locator(`option[value="${sala2}"]`)).toContainText("sin stock");
+
+    // Llegando con la ubicación en la URL (como desde una alerta o la ficha) se explica por qué no se puede.
+    await bodeguero.goto(`/movimientos/retiro?insumo=${insumoId}&ubicacion=${sala2}`);
+    await expect(bodeguero.getByText(`Disponible en ${UBICACIONES.nunoaSala2.nombre}`)).toBeVisible();
 
     const formulario = bodeguero.getByRole("form", { name: "Registrar retiro" });
     await expect(formulario).toContainText("No hay stock vigente para retirar aquí.");
@@ -132,11 +165,12 @@ test.describe("Retiros de stock", () => {
 
     // Al administrador sí se le ofrece el camino correcto (merma).
     const admin = await abrirComo("admin");
-    await admin.goto("/movimientos/retiro");
-    await admin.getByRole("combobox", { name: "Insumo" }).fill("LID-2");
-    await admin.getByRole("option", { name: /Lidocaína 2% 5 ml/ }).click();
-    await elegirUbicacion(admin, "Desde la ubicación", UBICACIONES.nunoaSala2);
-    await expect(admin.getByRole("link", { name: "Dar de baja ahora" })).toHaveAttribute("href", /\/movimientos\/ajuste\?tipo=merma/);
+    await admin.goto(`/movimientos/retiro?insumo=${insumoId}&ubicacion=${sala2}`);
+    await expect(admin.getByRole("button", { name: "Registrar retiro" })).toBeDisabled();
+    await expect(admin.getByRole("link", { name: "Dar de baja ahora" })).toHaveAttribute(
+      "href",
+      new RegExp(`^/movimientos/ajuste\\?tipo=merma&insumo=${insumoId}&ubicacion=${sala2}$`),
+    );
   });
 
   test("dos retiros simultáneos no pueden sacar más de lo que hay", async ({ abrirComo }) => {
@@ -150,9 +184,14 @@ test.describe("Retiros de stock", () => {
       await abrirRetiro(pagina, insumo, BODEGA);
       await pagina.getByRole("textbox", { name: "Cantidad a retirar" }).fill("3");
     }
+    // 3 de 4 es más de la mitad: ambos llegan a la confirmación y confirman a la vez.
+    for (const pagina of [admin, bodeguero]) {
+      await pagina.getByRole("button", { name: "Registrar retiro" }).click();
+      await expect(pagina.getByRole("alertdialog", { name: TITULO_RETIRO_GRANDE })).toBeVisible();
+    }
     await Promise.all([
-      admin.getByRole("button", { name: "Registrar retiro" }).click(),
-      bodeguero.getByRole("button", { name: "Registrar retiro" }).click(),
+      confirmarEnDialogo(admin, TITULO_RETIRO_GRANDE, "Registrar retiro"),
+      confirmarEnDialogo(bodeguero, TITULO_RETIRO_GRANDE, "Registrar retiro"),
     ]);
     const resultado = async (pagina: Page) => {
       const exito = pagina.getByRole("heading", { name: "Retiro registrado" });

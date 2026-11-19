@@ -49,15 +49,15 @@ test.describe("Administración del catálogo", () => {
     await expect(principal).toContainText("Ingresa el nombre del insumo");
     await expect(principal).toContainText("Selecciona una categoría");
 
-    await page.getByLabel("Código (SKU)").fill("con espacios");
+    await page.getByRole("textbox", { name: "Código", exact: true }).fill("con espacios");
     await page.getByLabel("Categoría").selectOption({ label: "Curación" });
-    await page.getByLabel("Nombre").fill("Duplicado e2e");
+    await page.getByRole("textbox", { name: "Nombre", exact: true }).fill("Duplicado e2e");
     await page.getByLabel("Unidad de medida").selectOption({ label: "Caja" });
     await page.getByRole("button", { name: "Crear insumo" }).click();
     await expect(principal).toContainText("Usa solo letras, números, guiones o puntos (sin espacios)");
 
     // Mismo código en minúsculas: sigue siendo duplicado.
-    await page.getByLabel("Código (SKU)").fill(insumo.codigo.toLowerCase());
+    await page.getByRole("textbox", { name: "Código", exact: true }).fill(insumo.codigo.toLowerCase());
     await page.getByRole("button", { name: "Crear insumo" }).click();
     await expect(principal).toContainText(`El código ${insumo.codigo} ya lo usa "${insumo.nombre}".`);
     await expect(page).toHaveURL(/\/admin\/insumos\/nuevo$/);
@@ -156,14 +156,14 @@ test.describe("Administración del catálogo", () => {
     const dvMalo = rut.canonico.endsWith("-1") ? "2" : "1";
     await dialogo.getByLabel("RUT").fill(`${rut.cuerpo}-${dvMalo}`);
     await dialogo.getByLabel("Razón social").fill(razon);
-    await dialogo.getByLabel("Email").fill("no-es-correo");
+    await dialogo.getByLabel("Correo electrónico").fill("no-es-correo");
     await dialogo.getByRole("button", { name: "Crear proveedor" }).click();
     await expect(dialogo).toContainText("El RUT no es válido");
-    await expect(dialogo).toContainText("Ingresa un email válido");
+    await expect(dialogo).toContainText("Ingresa un correo electrónico válido");
 
     // Válido, escrito sin puntos ni guion.
     await dialogo.getByLabel("RUT").fill(rut.canonico.replace("-", "").toLowerCase());
-    await dialogo.getByLabel("Email").fill(`ventas.${rut.cuerpo}@proveedor.example`);
+    await dialogo.getByLabel("Correo electrónico").fill(`ventas.${rut.cuerpo}@proveedor.example`);
     await dialogo.getByRole("button", { name: "Crear proveedor" }).click();
     await expect(dialogo).toBeHidden();
     await page.goto(`/admin/proveedores?q=${encodeURIComponent(razon)}`);

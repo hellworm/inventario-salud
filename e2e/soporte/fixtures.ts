@@ -14,6 +14,13 @@ interface Fixtures {
   abrirComo: (rol: Rol) => Promise<Page>;
   /** Abre una página sin sesión (contexto limpio). */
   abrirAnonimo: () => Promise<Page>;
+  /**
+   * Abre una página sin sesión cuyas solicitudes llegan "desde" la IP indicada
+   * (cabecera `X-Forwarded-For`; el servidor de la suite corre con
+   * `TRUST_PROXY=1`). Para probar el limitador de intentos por IP. Con `rol`,
+   * parte con la sesión guardada de ese rol.
+   */
+  abrirDesdeIp: (ip: string, rol?: Rol) => Promise<Page>;
   /** Opciones del proyecto (viewport, idioma…) para los contextos que crea la suite a mano. */
   opcionesContexto: BrowserContextOptions;
 }
@@ -69,6 +76,22 @@ export const test = base.extend<Fixtures>({
     await Promise.all(contextos.map((c) => c.close()));
   },
 
+  abrirDesdeIp: async ({ browser, opcionesContexto, vigilancia }, usar) => {
+    const contextos: BrowserContext[] = [];
+    await usar(async (ip, rol) => {
+      const contexto = await browser.newContext({
+        ...opcionesContexto,
+        storageState: rol ? rutaSesion(rol) : { cookies: [], origins: [] },
+        extraHTTPHeaders: { "X-Forwarded-For": ip },
+      });
+      contextos.push(contexto);
+      const pagina = await contexto.newPage();
+      vigilar(pagina, vigilancia.problemas);
+      return pagina;
+    });
+    await Promise.all(contextos.map((c) => c.close()));
+  },
+
   abrirAnonimo: async ({ browser, opcionesContexto, vigilancia }, usar) => {
     const contextos: BrowserContext[] = [];
     await usar(async () => {
@@ -95,6 +118,16 @@ export async function iniciarSesion(pagina: Page, email: string, password: strin
 export async function iniciarSesionComo(pagina: Page, rol: Rol): Promise<void> {
   await iniciarSesion(pagina, CUENTAS[rol].email, CUENTAS[rol].password);
   await pagina.waitForURL("**/panel");
+}
+
+/**
+ * IP privada al azar para un test del limitador de intentos. Cada test usa las
+ * suyas: los contadores por IP viven 5–15 minutos en la base y no deben
+ * mezclarse entre tests ni entre ejecuciones seguidas de la suite.
+ */
+export function ipDePrueba(): string {
+  const octeto = () => 1 + Math.floor(Math.random() * 254);
+  return `10.${octeto()}.${octeto()}.${octeto()}`;
 }
 
 /** Usa en un `describe`: todos sus tests parten con la sesión del rol. */

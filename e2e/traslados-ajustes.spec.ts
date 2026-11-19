@@ -1,7 +1,19 @@
 import type { Page } from "@playwright/test";
 import { CENTROS, CUENTAS, diaSantiago, UBICACIONES, type Ubicacion } from "./soporte/entorno";
-import { cajas, crearInsumo, disponibleEnFicha, elegirUbicacion, filaDeLote, filaVisible, marcar, opcionesDe, registrarIngreso, type InsumoPrueba } from "./soporte/datos";
-import { bugConocido, expect, sesionDe, test } from "./soporte/fixtures";
+import {
+  cajas,
+  confirmarEnDialogo,
+  crearInsumo,
+  disponibleEnFicha,
+  elegirUbicacion,
+  filaDeLote,
+  filaVisible,
+  marcar,
+  opcionesDe,
+  registrarIngreso,
+  type InsumoPrueba,
+} from "./soporte/datos";
+import { expect, sesionDe, test } from "./soporte/fixtures";
 
 const BODEGA = UBICACIONES.nunoaBodega;
 const SALA = UBICACIONES.nunoaSala1;
@@ -19,10 +31,10 @@ async function trasladar(pagina: Page, insumo: InsumoPrueba, origen: Ubicacion, 
 }
 
 type TipoAjuste = "Sumar stock" | "Restar stock" | "Dar de baja";
-const TEXTOS: Record<TipoAjuste, { cantidad: string; boton: string; confirmado: string }> = {
-  "Sumar stock": { cantidad: "Cantidad a sumar", boton: "Registrar ajuste", confirmado: "Ajuste registrado" },
-  "Restar stock": { cantidad: "Cantidad a restar", boton: "Registrar ajuste", confirmado: "Ajuste registrado" },
-  "Dar de baja": { cantidad: "Cantidad a dar de baja", boton: "Dar de baja", confirmado: "Merma registrada" },
+const TEXTOS: Record<TipoAjuste, { cantidad: string; boton: string; confirmado: string; pregunta: string; verbo: string }> = {
+  "Sumar stock": { cantidad: "Cantidad a sumar", boton: "Registrar ajuste", confirmado: "Ajuste registrado", pregunta: "¿Registrar este ajuste?", verbo: "sumar" },
+  "Restar stock": { cantidad: "Cantidad a restar", boton: "Registrar ajuste", confirmado: "Ajuste registrado", pregunta: "¿Registrar este ajuste?", verbo: "restar" },
+  "Dar de baja": { cantidad: "Cantidad a dar de baja", boton: "Dar de baja", confirmado: "Merma registrada", pregunta: "¿Dar de baja este stock?", verbo: "dar de baja" },
 };
 
 async function llenarAjuste(
@@ -42,9 +54,17 @@ async function llenarAjuste(
   await pagina.getByRole("combobox", { name: "Motivo" }).selectOption({ label: motivo });
 }
 
+/** Llena, envía y CONFIRMA: ajustes y mermas siempre piden confirmación antes de registrar. */
 async function ajustar(pagina: Page, insumo: InsumoPrueba, tipo: TipoAjuste, cantidad: number, motivo: string): Promise<void> {
   await llenarAjuste(pagina, insumo, tipo, BODEGA, cantidad, motivo);
   await pagina.getByRole("button", { name: TEXTOS[tipo].boton }).click();
+  await expect(pagina.getByRole("heading", { name: TEXTOS[tipo].confirmado }), "no se registra antes de confirmar").toBeHidden();
+  await confirmarEnDialogo(pagina, TEXTOS[tipo].pregunta, TEXTOS[tipo].boton, [
+    new RegExp(`Vas a ${TEXTOS[tipo].verbo}\\s+${cantidad} cajas?`),
+    insumo.nombre,
+    `Motivo: ${motivo}.`,
+    "No se puede editar ni borrar después",
+  ]);
   await expect(pagina.getByRole("heading", { name: TEXTOS[tipo].confirmado })).toBeVisible();
 }
 
@@ -167,10 +187,13 @@ test.describe("Traslados, ajustes y mermas (ADMIN)", () => {
     await page.getByRole("button", { name: "Registrar ajuste" }).click();
     await expect(page.getByRole("heading", { name: "Ajuste registrado" })).toBeHidden();
     await expect(formulario.getByRole("textbox", { name: "Cantidad a restar" })).toHaveAttribute("aria-invalid", "true");
+    // Un formulario inválido ni siquiera llega a pedir confirmación.
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
 
     await llenarAjuste(page, insumo, "Dar de baja", BODEGA, 4, "Vencimiento");
     await page.getByRole("button", { name: "Dar de baja" }).click();
     await expect(page.getByRole("heading", { name: "Merma registrada" })).toBeHidden();
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
 
     // Sin motivo no se registra.
     await page.goto(`/movimientos/ajuste?insumo=${insumo.id}`);
@@ -179,7 +202,51 @@ test.describe("Traslados, ajustes y mermas (ADMIN)", () => {
     await page.getByRole("textbox", { name: "Cantidad a restar" }).fill("1");
     await page.getByRole("button", { name: "Registrar ajuste" }).click();
     await expect(formulario).toContainText("Indica el motivo del ajuste");
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
     expect(await disponibleEnFicha(page, insumo)).toBe(3);
+  });
+
+  test("ajuste y merma piden confirmación: 'Volver a revisar' no registra nada y conserva lo escrito @movil", async ({ page }) => {
+    const insumo = await crearInsumo(page);
+    const lote = `CF-${insumo.sufijo}`;
+    await registrarIngreso(page, { insumo, ubicacion: BODEGA, lote, vence: diaSantiago(180), cantidad: 6 });
+
+    // Merma: el diálogo resume qué se dará de baja y cuánto quedará.
+    await llenarAjuste(page, insumo, "Dar de baja", BODEGA, 2, "Daño o rotura");
+    await page.getByRole("button", { name: "Dar de baja" }).click();
+    const dialogo = page.getByRole("alertdialog", { name: "¿Dar de baja este stock?" });
+    await expect(dialogo).toContainText(/Vas a dar de baja\s+2 cajas/);
+    await expect(dialogo).toContainText(`lote ${lote}`);
+    await expect(dialogo).toContainText(BODEGA.nombre);
+    await expect(dialogo).toContainText(/Quedarán\s+4\s+en ese lote/);
+    await expect(dialogo).toContainText("Motivo: Daño o rotura.");
+
+    // Cancelar: no se registró y el formulario sigue como estaba.
+    await dialogo.getByRole("button", { name: "Volver a revisar" }).click();
+    await expect(dialogo).toBeHidden();
+    await expect(page.getByRole("heading", { name: "Merma registrada" })).toBeHidden();
+    await expect(page.getByRole("textbox", { name: "Cantidad a dar de baja" })).toHaveValue("2");
+    await expect(page.getByRole("combobox", { name: "Motivo" })).toHaveValue("Daño o rotura");
+
+    // Motivo "Vencimiento" en un lote vigente: se advierte antes y dentro de la confirmación.
+    await page.getByRole("combobox", { name: "Motivo" }).selectOption({ label: "Vencimiento" });
+    await expect(page.getByRole("form", { name: "Registrar ajuste o merma" })).toContainText(`El lote ${lote} no está vencido`);
+    await page.getByRole("button", { name: "Dar de baja" }).click();
+    await expect(dialogo).toContainText("¿Seguro que el motivo es “Vencimiento”?");
+    await dialogo.getByRole("button", { name: "Volver a revisar" }).click();
+    expect(await disponibleEnFicha(page, insumo), "cancelar dos veces no descontó nada").toBe(6);
+
+    // Ajuste negativo: misma mecánica; al confirmar recién se registra.
+    await llenarAjuste(page, insumo, "Restar stock", BODEGA, 1, "Conteo de inventario");
+    await page.getByRole("button", { name: "Registrar ajuste" }).click();
+    const ajuste = page.getByRole("alertdialog", { name: "¿Registrar este ajuste?" });
+    await expect(ajuste).toContainText(/Vas a restar\s+1 caja(?!s)/);
+    await expect(ajuste).toContainText(/Quedarán\s+5\s+en ese lote/);
+    await ajuste.getByRole("button", { name: "Registrar ajuste" }).click();
+    await expect(page.getByRole("heading", { name: "Ajuste registrado" })).toBeVisible();
+    expect(await disponibleEnFicha(page, insumo)).toBe(5);
+    await page.goto(`/movimientos?insumo=${insumo.id}`);
+    await expect(page.getByRole("main").getByRole("status").filter({ hasText: /movimiento/ })).toContainText(/^2\s*movimientos/);
   });
 
   test("los enlaces 'Dar de baja' de la ficha abren el formulario en modo merma con el lote elegido", async ({ page }) => {
@@ -194,11 +261,22 @@ test.describe("Traslados, ajustes y mermas (ADMIN)", () => {
     await expect(page.getByRole("group", { name: "Lote" })).toContainText("Vencido");
   });
 
-  test("B-09: 'Registrar merma' (panel y alertas de vencidos) abre el formulario en modo merma", async ({ page }) => {
-    bugConocido("B-09: el enlace apunta a /movimientos/ajuste sin ?tipo=merma y el formulario parte en 'Restar stock'");
+  test("B-09: 'Dar de baja' desde el panel abre el formulario en modo merma con el lote vencido ya elegido", async ({ page }) => {
+    // Datos del seed: hay lotes vencidos con stock; el panel los lista en "Vencidos por dar de baja".
     await page.goto("/panel");
-    await page.getByRole("main").getByRole("link", { name: "Registrar merma" }).click();
-    await expect(page).toHaveURL(/\/movimientos\/ajuste/);
+    await expect(page.getByRole("main").getByRole("heading", { name: "Qué requiere atención hoy" })).toBeVisible();
+    const enlace = page.getByRole("main").getByRole("link", { name: /^Dar de baja el lote / }).first();
+    await expect(enlace).toHaveAttribute("href", /^\/movimientos\/ajuste\?tipo=merma&insumo=[a-z0-9]+&ubicacion=[a-z0-9]+&lote=[a-z0-9]+$/);
+    await enlace.click();
+    await expect(page).toHaveURL(/\/movimientos\/ajuste\?tipo=merma&insumo=.+&ubicacion=.+&lote=.+/);
+    // Nunca parte en "Restar stock": merma, lote vencido elegido, todo su saldo y motivo "Vencimiento".
     await expect(page.getByRole("radio", { name: /^Dar de baja/ })).toBeChecked();
+    await expect(page.getByRole("radio", { name: /^Restar stock/ })).not.toBeChecked();
+    const lote = page.getByRole("group", { name: "Lote" });
+    await expect(lote.getByRole("radio", { checked: true })).toHaveCount(1);
+    await expect(lote).toContainText("Vencido");
+    await expect(page.getByRole("combobox", { name: "Motivo" })).toHaveValue("Vencimiento");
+    await expect(page.getByRole("textbox", { name: "Cantidad a dar de baja" })).toHaveValue(/^[1-9]\d*$/);
+    await expect(page.getByRole("button", { name: "Dar de baja" })).toBeEnabled();
   });
 });

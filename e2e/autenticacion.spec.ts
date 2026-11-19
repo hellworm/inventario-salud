@@ -1,7 +1,7 @@
 import { CUENTA_PENDIENTE, CUENTAS } from "./soporte/entorno";
-import { bugConocido, expect, iniciarSesion, test } from "./soporte/fixtures";
+import { expect, iniciarSesion, test } from "./soporte/fixtures";
 
-const ERROR_CREDENCIALES = "Email o contraseña incorrectos";
+const ERROR_CREDENCIALES = "Correo electrónico o contraseña incorrectos";
 
 // Estos tests inician sesión de verdad: parten sin sesión guardada.
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -93,19 +93,29 @@ test.describe("Autenticación", () => {
     await expect(page.getByRole("main")).toContainText("Debe tener al menos 10 caracteres");
     await expect(page).toHaveURL(/\/cambiar-password$/);
 
-    // Tras un error el formulario vuelve vacío (ver B-12): se llenan otra vez los tres campos.
-    await page.getByLabel("Contraseña actual").fill(CUENTA_PENDIENTE.password);
+    // B-12: tras el error el formulario NO se vacía; se conserva lo escrito para corregirlo.
+    await expect(page.getByLabel("Contraseña actual")).toHaveValue(CUENTA_PENDIENTE.password);
+    await expect(page.getByLabel("Nueva contraseña", { exact: true })).toHaveValue("corta1");
+    await expect(page.getByLabel("Repite la nueva contraseña")).toHaveValue("corta1");
     await page.getByLabel("Nueva contraseña", { exact: true }).fill("Distinta.Clave.2026");
     await page.getByLabel("Repite la nueva contraseña").fill("Otra.Clave.2026");
     await page.getByRole("button", { name: "Guardar nueva contraseña" }).click();
     await expect(page.getByRole("main")).toContainText(/no coinciden/i);
+    await expect(page.getByLabel("Nueva contraseña", { exact: true })).toHaveValue("Distinta.Clave.2026");
+    // Contraseña actual equivocada: solo ese campo se vacía; la nueva se conserva.
+    await page.getByLabel("Contraseña actual").fill("No.Es.La.Actual.2026");
+    await page.getByLabel("Repite la nueva contraseña").fill("Distinta.Clave.2026");
+    await page.getByRole("button", { name: "Guardar nueva contraseña" }).click();
+    await expect(page.getByRole("main")).toContainText(/contraseña actual/i);
+    await expect(page.getByLabel("Contraseña actual")).toHaveValue("");
+    await expect(page.getByLabel("Nueva contraseña", { exact: true })).toHaveValue("Distinta.Clave.2026");
+    await expect(page.getByLabel("Repite la nueva contraseña")).toHaveValue("Distinta.Clave.2026");
 
     await page.getByRole("button", { name: "Salir" }).click();
     await expect(page).toHaveURL(/\/login/);
   });
 
-  test("B-07: si la sesión venció, al enviar un formulario se avisa y se pide iniciar sesión", async ({ abrirComo, vigilancia }) => {
-    bugConocido("B-07: con la cookie de sesión vencida el formulario dice 'No pudimos conectar con el servidor. Revisa tu conexión…'");
+  test("B-07: si la sesión venció, al enviar un formulario se avisa y se vuelve al login conservando la ruta", async ({ abrirComo, vigilancia }) => {
     vigilancia.tolerar();
     const bodeguero = await abrirComo("bodega");
     await bodeguero.goto("/movimientos/retiro");
@@ -118,10 +128,38 @@ test.describe("Autenticación", () => {
     await bodeguero.context().clearCookies();
     await bodeguero.getByRole("button", { name: "Registrar retiro" }).click();
 
-    const avisoDeSesion = bodeguero.getByText(/sesión (expiró|venció|caducó)|inicia(r)? sesión/i).first();
-    await expect(async () => {
-      expect(bodeguero.url().includes("/login") || (await avisoDeSesion.isVisible())).toBe(true);
-    }).toPass({ timeout: 8_000 });
+    // Aviso claro (nunca "No pudimos conectar con el servidor") y redirección al login.
+    await expect(bodeguero.getByText("Tu sesión venció", { exact: false }).first()).toBeVisible();
     await expect(bodeguero.getByText("No pudimos conectar con el servidor")).toHaveCount(0);
+    await bodeguero.waitForURL(/\/login\?/);
+    const url = new URL(bodeguero.url());
+    expect(url.searchParams.get("destino")).toBe("/movimientos/retiro");
+    await expect(bodeguero.getByRole("status").filter({ hasText: "Tu sesión venció" })).toBeVisible();
+
+    // Al ingresar de nuevo vuelve a la pantalla donde estaba.
+    await bodeguero.getByLabel("Correo electrónico").fill(CUENTAS.bodega.email);
+    await bodeguero.getByLabel("Contraseña", { exact: true }).fill(CUENTAS.bodega.password);
+    await bodeguero.getByRole("button", { name: "Ingresar" }).click();
+    await expect(bodeguero).toHaveURL(/\/movimientos\/retiro$/);
+    await expect(bodeguero.getByRole("heading", { level: 1, name: "Registrar retiro" })).toBeVisible();
+  });
+
+  test("B-07: sesión vencida con el insumo prellenado por URL: el destino conserva los parámetros y las consultas en vivo también avisan", async ({ abrirComo, vigilancia }) => {
+    vigilancia.tolerar();
+    const admin = await abrirComo("admin");
+    await admin.goto("/movimientos/ajuste?tipo=merma");
+    await expect(admin.getByRole("radio", { name: /^Dar de baja/ })).toBeChecked();
+    await admin.context().clearCookies();
+    // Buscar un insumo llama al servidor: sin sesión debe avisar, no decir "No pudimos buscar".
+    await admin.getByRole("combobox", { name: "Insumo" }).fill("heparina");
+    await expect(admin.getByText("Tu sesión venció", { exact: false }).first()).toBeVisible();
+    await admin.waitForURL(/\/login\?/);
+    expect(new URL(admin.url()).searchParams.get("destino")).toBe("/movimientos/ajuste?tipo=merma");
+    // Tras ingresar vuelve al formulario en el mismo modo.
+    await admin.getByLabel("Correo electrónico").fill(CUENTAS.admin.email);
+    await admin.getByLabel("Contraseña", { exact: true }).fill(CUENTAS.admin.password);
+    await admin.getByRole("button", { name: "Ingresar" }).click();
+    await expect(admin).toHaveURL(/\/movimientos\/ajuste\?tipo=merma$/);
+    await expect(admin.getByRole("radio", { name: /^Dar de baja/ })).toBeChecked();
   });
 });

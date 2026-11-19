@@ -26,9 +26,9 @@ export async function crearInsumo(pagina: Page, opciones: OpcionesInsumo = {}): 
   const codigo = `E2E-${s}`;
   const nombre = opciones.nombre ?? `Insumo e2e ${s}`;
   await pagina.goto("/admin/insumos/nuevo");
-  await pagina.getByLabel("Código (SKU)").fill(codigo);
+  await pagina.getByRole("textbox", { name: "Código", exact: true }).fill(codigo);
   await pagina.getByLabel("Categoría").selectOption({ label: opciones.categoria ?? "Curación" });
-  await pagina.getByLabel("Nombre").fill(nombre);
+  await pagina.getByRole("textbox", { name: "Nombre", exact: true }).fill(nombre);
   await pagina.getByLabel("Unidad de medida").selectOption({ label: "Caja" });
   if (opciones.controlaVencimiento === false) {
     await pagina.getByRole("checkbox", { name: /Controla fecha de vencimiento/ }).uncheck();
@@ -135,18 +135,50 @@ export async function abrirRetiro(pagina: Page, insumo: InsumoPrueba, ubicacion:
   await expect(pagina.getByText(`Disponible en ${ubicacion.nombre}`)).toBeVisible();
 }
 
+/**
+ * Diálogo de confirmación abierto (ajuste, merma, retiro grande…): comprueba
+ * su título y lo que debe decir, y pulsa el botón indicado.
+ */
+export async function confirmarEnDialogo(
+  pagina: Page,
+  titulo: string | RegExp,
+  boton: string | RegExp,
+  debeDecir: (string | RegExp)[] = [],
+): Promise<void> {
+  const dialogo = pagina.getByRole("alertdialog", { name: titulo });
+  await expect(dialogo).toBeVisible();
+  for (const texto of debeDecir) await expect(dialogo).toContainText(texto);
+  await dialogo.getByRole("button", { name: boton }).click();
+}
+
+export const TITULO_RETIRO_GRANDE = "¿Retirar más de la mitad del stock?";
+
+/**
+ * Envía el formulario de retiro ya lleno. Con `masDeLaMitad` EXIGE que el
+ * sistema pida confirmar (retiro de más del 50 % de lo disponible en la
+ * ubicación) y confirma; sin él, exige que NO la pida.
+ */
+export async function enviarRetiro(pagina: Page, opciones: { masDeLaMitad?: boolean } = {}): Promise<void> {
+  await pagina.getByRole("button", { name: "Registrar retiro" }).click();
+  if (opciones.masDeLaMitad) {
+    await confirmarEnDialogo(pagina, TITULO_RETIRO_GRANDE, "Registrar retiro", ["es más de la mitad"]);
+  } else {
+    await expect(pagina.getByRole("alertdialog")).toHaveCount(0);
+  }
+}
+
 /** Retiro automático (FEFO) por la interfaz; espera la confirmación. */
 export async function registrarRetiro(
   pagina: Page,
   insumo: InsumoPrueba,
   ubicacion: Ubicacion,
   cantidad: number,
-  motivo?: string,
+  opciones: { motivo?: string; masDeLaMitad?: boolean } = {},
 ): Promise<void> {
   await abrirRetiro(pagina, insumo, ubicacion);
   await pagina.getByRole("textbox", { name: "Cantidad a retirar" }).fill(String(cantidad));
-  if (motivo) await pagina.getByLabel("Destino o motivo").fill(motivo);
-  await pagina.getByRole("button", { name: "Registrar retiro" }).click();
+  if (opciones.motivo) await pagina.getByLabel("Destino o motivo").fill(opciones.motivo);
+  await enviarRetiro(pagina, opciones);
   await expect(pagina.getByRole("heading", { name: "Retiro registrado" })).toBeVisible();
 }
 

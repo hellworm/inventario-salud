@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { bugConocido, expect, sesionDe, test } from "./soporte/fixtures";
+import { expect, sesionDe, test } from "./soporte/fixtures";
 
 /**
  * Parámetros de URL inválidos: ninguna pantalla debe caer en la página de
@@ -90,10 +90,7 @@ test.describe("Robustez ante parámetros de URL inválidos", () => {
     }
   });
 
-  // --- Bugs conocidos (ver informe de QA). Quitar `test.fail` cuando se corrijan. ---
-
   test("B-02: un número de página gigantesco no debe provocar un error", async ({ page }) => {
-    bugConocido("B-02: ?pagina=99999999999999999999 o Infinity desbordan el OFFSET/skip y la página cae en 'Algo salió mal'");
     for (const url of [
       "/inventario?pagina=99999999999999999999",
       "/movimientos?pagina=99999999999999999999",
@@ -101,22 +98,49 @@ test.describe("Robustez ante parámetros de URL inválidos", () => {
       "/admin/insumos?pagina=99999999999999999999",
       "/admin/usuarios?pagina=Infinity",
       "/admin/auditoria?pagina=Infinity",
+      "/reportes/vencimientos?paginaMermas=99999999999999999999",
     ]) {
       await debeCargar(page, url);
     }
+    // Lo absurdo cae en la primera página, con datos.
+    await page.goto("/admin/insumos?pagina=99999999999999999999");
+    const paginacion = page.getByRole("navigation", { name: "Paginación" });
+    await expect(paginacion).toContainText(/Página 1 de \d+/);
+    await expect(page.getByRole("main").locator("tbody tr").first()).toBeVisible();
+
+    // Una página válida pero más allá del final: sin filas, con salida hacia la última página.
+    await debeCargar(page, "/admin/insumos?pagina=999999");
+    await expect(paginacion).toContainText("No hay resultados en esta página");
+    await paginacion.getByRole("link", { name: "Ir a la última página" }).click();
+    await expect(paginacion).toContainText(/Página (\d+) de \1/);
+    await expect(page.getByRole("main").locator("tbody tr").first()).toBeVisible();
   });
 
   test("B-03: un byte nulo en la búsqueda no debe provocar un error", async ({ page }) => {
-    bugConocido("B-03: ?q=%00 llega a PostgreSQL ('invalid byte sequence for encoding UTF8: 0x00') y la página cae en 'Algo salió mal'");
     for (const ruta of ["/inventario", "/movimientos", "/reportes/existencias", "/admin/insumos", "/admin/usuarios", "/admin/proveedores"]) {
       await debeCargar(page, `${ruta}?q=%00`);
+    }
+    // Un byte nulo en medio del texto se descarta y la búsqueda sigue funcionando.
+    await page.goto("/inventario?q=HEP%00-5000");
+    await expect(page.getByRole("heading", { level: 1, name: "Inventario" })).toBeVisible();
+    await expect(page.getByText("Algo salió mal")).toHaveCount(0);
+    // Las exportaciones guardan el texto buscado en la auditoría: tampoco deben fallar.
+    for (const csv of ["/reportes/exportar/movimientos?q=%00", "/reportes/exportar/existencias?q=gua%00nte", "/alertas/reposicion/exportar?q=%00"]) {
+      expect((await page.request.get(csv)).status(), csv).toBe(200);
     }
   });
 
   test("B-04: una fecha 'desde' en el año 9999 no debe provocar un error en los reportes", async ({ page }) => {
-    bugConocido("B-04: ?desde=9999-12-31 genera una fecha fuera de rango (finDelDia → año 10000) y el reporte cae en 'Algo salió mal'");
-    for (const ruta of ["/reportes/movimientos", "/reportes/consumo", "/reportes/vencimientos"]) {
+    for (const ruta of ["/reportes/movimientos", "/reportes/consumo", "/reportes/vencimientos", "/movimientos", "/admin/auditoria"]) {
       await debeCargar(page, `${ruta}?desde=9999-12-31`);
+      await debeCargar(page, `${ruta}?hasta=9999-12-31`);
+      await debeCargar(page, `${ruta}?desde=0001-01-01&hasta=9999-12-31`);
     }
+    for (const csv of ["movimientos", "consumo", "mermas"]) {
+      expect((await page.request.get(`/reportes/exportar/${csv}?desde=9999-12-31`)).status(), csv).toBe(200);
+    }
+    // La fecha absurda se ignora: el reporte muestra su período por defecto, con movimientos.
+    await page.goto("/reportes/movimientos?desde=9999-12-31");
+    await expect(page.getByRole("main").locator("tbody tr").first()).toBeVisible();
   });
 });

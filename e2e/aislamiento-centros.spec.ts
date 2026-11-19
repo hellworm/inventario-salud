@@ -11,7 +11,7 @@ import {
   registrarIngreso,
   type InsumoPrueba,
 } from "./soporte/datos";
-import { bugConocido, expect, test } from "./soporte/fixtures";
+import { expect, test } from "./soporte/fixtures";
 
 const NUNOA = UBICACIONES.nunoaBodega;
 const VALPO = UBICACIONES.valpoBodega;
@@ -187,7 +187,6 @@ test.describe("Aislamiento por centro", () => {
   });
 
   test("B-08: el formulario de ingreso no sugiere lotes que solo existen en otro centro", async ({ abrirComo }) => {
-    bugConocido("B-08: las sugerencias '¿Es un lote que ya tienes?' incluyen números de lote y vencimientos de otros centros");
     const admin = await abrirComo("admin");
     const e = await prepararEscenario(admin);
     const nunoa = await abrirComo("bodega");

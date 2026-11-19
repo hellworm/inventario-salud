@@ -25,6 +25,8 @@ const lanzamiento = rutaChromium ? { executablePath: rutaChromium } : {};
 
 /** Flujos principales que también se ejecutan en móvil (390 px). */
 const ETIQUETA_MOVIL = /@movil/;
+/** Pruebas propias de tablet horizontal (1024 × 768, táctil): solo corren en el proyecto `tablet`. */
+const ETIQUETA_TABLET = /@tablet/;
 
 export default defineConfig({
   testDir: "e2e",
@@ -50,6 +52,7 @@ export default defineConfig({
     {
       name: "escritorio",
       dependencies: ["preparacion"],
+      grepInvert: ETIQUETA_TABLET,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, launchOptions: lanzamiento },
     },
     {
@@ -65,6 +68,18 @@ export default defineConfig({
         launchOptions: lanzamiento,
       },
     },
+    {
+      name: "tablet",
+      dependencies: ["preparacion"],
+      grep: ETIQUETA_TABLET,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1024, height: 768 },
+        hasTouch: true,
+        deviceScaleFactor: 2,
+        launchOptions: lanzamiento,
+      },
+    },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined
@@ -74,7 +89,9 @@ export default defineConfig({
         url: `${URL_BASE}/login`,
         reuseExistingServer: true,
         timeout: 120_000,
-        env: { DATABASE_URL: BASE_E2E },
+        // TRUST_PROXY=1: los tests del limitador de login envían su propia X-Forwarded-For
+        // (una IP distinta por test); el resto de la suite no la envía y queda sin IP.
+        env: { DATABASE_URL: BASE_E2E, TRUST_PROXY: "1" },
         stdout: "ignore",
         // E2E_VER_SERVIDOR=1 muestra los errores que el servidor escribe durante la suite.
         stderr: process.env.E2E_VER_SERVIDOR ? "pipe" : "ignore",

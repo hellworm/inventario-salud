@@ -2,6 +2,7 @@ import type { APIResponse, Page } from "@playwright/test";
 import { CENTROS, CUENTAS, diaSantiago, UBICACIONES } from "./soporte/entorno";
 import { crearInsumo, definirMinimo, registrarIngreso, registrarRetiro } from "./soporte/datos";
 import { expect, test } from "./soporte/fixtures";
+import { crearUsuario } from "./soporte/usuarios";
 
 const REPORTES = ["existencias", "movimientos", "consumo", "vencimientos", "mermas"] as const;
 const BOM = [0xef, 0xbb, 0xbf];
@@ -125,13 +126,16 @@ test.describe("Auditoría", () => {
     const idDeMovimiento = async (tipo: "Ingreso" | "Retiro") => {
       await bodeguero.goto(`/movimientos?insumo=${insumo.id}`);
       await bodeguero.getByRole("main").locator("tbody tr").filter({ hasText: tipo }).getByRole("button").first().click();
-      const id = await bodeguero.getByRole("dialog").locator("dt", { hasText: "Identificador" }).locator("xpath=following-sibling::dd[1]").innerText();
+      const id = await bodeguero.getByRole("dialog").getByText("Identificador del registro:").locator("span").innerText();
+      await bodeguero.getByRole("dialog").getByRole("button", { name: "Cerrar" }).first().click();
+      expect(id.trim()).toMatch(/^[a-z0-9]{20,}$/);
       return id.trim();
     };
     const ingreso = await registrosDeAuditoria(admin, `entidad=Movimiento&entidadId=${await idDeMovimiento("Ingreso")}`);
     await expect(ingreso).toHaveCount(1);
     await expect(ingreso).toContainText("Ingreso de stock");
-    await expect(ingreso).toContainText(`6 × ${insumo.codigo}`);
+    // La auditoría muestra el insumo por su nombre (el código queda en el detalle).
+    await expect(ingreso).toContainText(`6 × ${insumo.nombre}`);
     await expect(ingreso).toContainText(lote);
     await expect(ingreso).toContainText(CUENTAS.bodega.nombre);
     await expect(ingreso).toContainText(CENTROS.nunoa);
@@ -140,25 +144,37 @@ test.describe("Auditoría", () => {
     await ingreso.getByRole("button", { name: /Ver detalle/ }).click();
     const detalle = admin.getByRole("dialog");
     await expect(detalle).toContainText(lote);
+    await expect(detalle).toContainText(insumo.codigo);
     await expect(detalle).toContainText(CUENTAS.bodega.nombre);
 
     const retiro = await registrosDeAuditoria(admin, `entidad=Movimiento&entidadId=${await idDeMovimiento("Retiro")}`);
     await expect(retiro).toHaveCount(1);
     await expect(retiro).toContainText("Retiro de stock");
-    await expect(retiro).toContainText(`2 × ${insumo.codigo}`);
+    await expect(retiro).toContainText(`2 × ${insumo.nombre}`);
 
     const exportaciones = await registrosDeAuditoria(admin, `desde=${hoy}&hasta=${hoy}&accion=REPORTE_EXPORTADO`);
     await expect(exportaciones.first()).toContainText(CUENTAS.admin.nombre);
-    await expect(exportaciones.first()).toContainText("Reporte exportado");
+    await expect(exportaciones.first()).toContainText("Exportación a CSV");
   });
 
   test("registra inicios de sesión y altas de usuarios; es de solo lectura", async ({ abrirComo }) => {
     const admin = await abrirComo("admin");
     const hoy = diaSantiago(0);
+    // Alta propia de este test: no depende de lo que hayan creado otros.
+    const usuario = await crearUsuario(admin, "Visitante");
     const sesiones = await registrosDeAuditoria(admin, `desde=${hoy}&hasta=${hoy}&accion=LOGIN_OK`);
     await expect(sesiones.first()).toContainText("Inicio de sesión");
-    const altas = await registrosDeAuditoria(admin, "accion=USUARIO_CREADO");
+    const altas = await registrosDeAuditoria(admin, `accion=USUARIO_CREADO&desde=${hoy}&hasta=${hoy}`);
+    await expect(altas.first()).toContainText("Usuario creado");
     await expect(altas.first()).toContainText(CUENTAS.admin.nombre);
+    const alta = altas.filter({ hasText: usuario.nombre }).first();
+    await expect(alta).toContainText(CUENTAS.admin.nombre);
+    await alta.getByRole("button", { name: /Ver detalle/ }).click();
+    const detalle = admin.getByRole("dialog");
+    await expect(detalle).toContainText(usuario.email);
+    // Nunca queda la contraseña temporal en la auditoría.
+    await expect(detalle).not.toContainText(usuario.temporal);
+    await detalle.getByRole("button", { name: "Cerrar" }).first().click();
     // Un filtro sin coincidencias muestra el estado vacío, no un error.
     await registrosDeAuditoria(admin, "accion=NO_EXISTE_ESTA_ACCION");
     await expect(admin.getByRole("heading", { name: "Sin eventos para estos filtros" })).toBeVisible();
