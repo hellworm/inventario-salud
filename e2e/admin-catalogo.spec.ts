@@ -87,6 +87,29 @@ test.describe("Administración del catálogo", () => {
     await expect(page.getByRole("region", { name: "Resumen de stock" })).toContainText(/4\s*cajas/);
   });
 
+  test("un insumo sin movimientos se puede eliminar (aunque tenga mínimos); desaparece del inventario", async ({ page, abrirComo }) => {
+    const insumo = await crearInsumo(page);
+    await definirMinimo(page, insumo, CENTROS.nunoa, 3, 9);
+    const nunoa = await abrirComo("bodega");
+    await nunoa.goto(`/inventario?q=${insumo.codigo}`);
+    await expect(filaVisible(nunoa, insumo.codigo)).toBeVisible();
+
+    await page.goto(`/admin/insumos/${insumo.id}`);
+    await page.getByRole("button", { name: "Eliminar" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: /Eliminar/ }).click();
+    await expect(page).toHaveURL(/\/admin\/insumos(\?.*)?$/);
+    await page.goto(`/admin/insumos?q=${insumo.codigo}`);
+    await expect(page.getByRole("heading", { level: 1, name: "Insumos" })).toBeVisible();
+    await expect(page.getByRole("main")).not.toContainText(insumo.nombre);
+
+    await nunoa.goto(`/inventario?q=${insumo.codigo}`);
+    await expect(nunoa.getByRole("heading", { level: 1, name: "Inventario" })).toBeVisible();
+    await expect(nunoa.getByRole("main")).not.toContainText(insumo.nombre);
+    await nunoa.goto(`/alertas?tab=sin-stock&q=${insumo.codigo}`);
+    await expect(nunoa.getByRole("heading", { level: 1, name: "Alertas" })).toBeVisible();
+    await expect(nunoa.getByRole("main")).not.toContainText(insumo.nombre);
+  });
+
   test("categorías: crear, rechazar duplicados (aunque cambien mayúsculas o espacios) y eliminar la vacía", async ({ page }) => {
     const nombre = `Categoría e2e ${sufijo()}`;
     await page.goto("/admin/categorias");

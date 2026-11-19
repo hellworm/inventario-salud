@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { CENTROS, sufijo } from "./soporte/entorno";
+import { desmarcar, marcar } from "./soporte/datos";
 import { expect, iniciarSesion, sesionDe, test } from "./soporte/fixtures";
 
 const ERROR_CREDENCIALES = "Email o contraseña incorrectos";
@@ -22,9 +23,9 @@ async function crearUsuario(admin: Page, rol: RolNuevo, centros: string[] = [CEN
   await dialogo.getByLabel("Nombre y apellido").fill(usuario.nombre);
   // Con mayúsculas y espacios: el correo se normaliza.
   await dialogo.getByLabel("Email").fill(`  ${usuario.email.toUpperCase()} `);
-  await dialogo.getByRole("radio", { name: new RegExp(`^${rol}`) }).check({ force: true });
+  await marcar(dialogo.getByRole("radio", { name: new RegExp(`^${rol}`) }));
   if (rol !== "Administrador") {
-    for (const centro of centros) await dialogo.getByRole("checkbox", { name: centro }).check({ force: true });
+    for (const centro of centros) await marcar(dialogo.getByRole("checkbox", { name: centro }));
   }
   await dialogo.getByRole("button", { name: "Crear usuario" }).click();
 
@@ -123,10 +124,10 @@ test.describe("Administración de usuarios", () => {
 
     await dialogo.getByLabel("Nombre y apellido").fill("Duplicado E2E");
     await dialogo.getByLabel("Email").fill("BODEGA@redinsumos.cl");
-    await dialogo.getByRole("radio", { name: /^Visitante/ }).check({ force: true });
+    await marcar(dialogo.getByRole("radio", { name: /^Visitante/ }));
     await dialogo.getByRole("button", { name: "Crear usuario" }).click();
     await expect(dialogo).toContainText("Asigna al menos un centro");
-    await dialogo.getByRole("checkbox", { name: CENTROS.valpo }).check({ force: true });
+    await marcar(dialogo.getByRole("checkbox", { name: CENTROS.valpo }));
     await dialogo.getByRole("button", { name: "Crear usuario" }).click();
     await expect(dialogo).toContainText(/Ya existe un usuario con (ese|este) (email|correo)/i);
     await expect(page.getByRole("dialog", { name: "Usuario creado" })).toHaveCount(0);
@@ -212,9 +213,9 @@ test.describe("Administración de usuarios", () => {
     await fila.getByRole("button", { name: `Acciones para ${usuario.nombre}` }).click();
     await page.getByRole("menuitem", { name: "Editar datos, rol y centros" }).click();
     const dialogo = page.getByRole("dialog", { name: "Editar usuario" });
-    await dialogo.getByRole("radio", { name: /^Visitante/ }).check({ force: true });
-    await dialogo.getByRole("checkbox", { name: CENTROS.nunoa }).uncheck({ force: true });
-    await dialogo.getByRole("checkbox", { name: CENTROS.valpo }).check({ force: true });
+    await marcar(dialogo.getByRole("radio", { name: /^Visitante/ }));
+    await desmarcar(dialogo.getByRole("checkbox", { name: CENTROS.nunoa }));
+    await marcar(dialogo.getByRole("checkbox", { name: CENTROS.valpo }));
     await dialogo.getByRole("button", { name: "Guardar cambios" }).click();
     await expect(dialogo).toBeHidden();
     const actualizada = page.getByRole("row").filter({ hasText: usuario.email });

@@ -76,6 +76,7 @@ export default defineConfig({
         timeout: 120_000,
         env: { DATABASE_URL: BASE_E2E },
         stdout: "ignore",
-        stderr: "pipe",
+        // E2E_VER_SERVIDOR=1 muestra los errores que el servidor escribe durante la suite.
+        stderr: process.env.E2E_VER_SERVIDOR ? "pipe" : "ignore",
       },
 });

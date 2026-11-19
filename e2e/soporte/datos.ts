@@ -201,3 +201,17 @@ export function filaDeLote(pagina: Page, lote: string, ubicacion?: Ubicacion): L
   if (ubicacion) filas = filas.filter({ hasText: ubicacion.nombre });
   return filas.first();
 }
+
+/**
+ * Marca un radio o checkbox del kit haciendo clic en su etiqueta (el `<input>`
+ * real está visualmente oculto) y espera a que quede marcado.
+ */
+export async function marcar(control: Locator): Promise<void> {
+  if (!(await control.isChecked())) await control.locator("xpath=ancestor::label[1]").click();
+  await expect(control).toBeChecked();
+}
+
+export async function desmarcar(control: Locator): Promise<void> {
+  if (await control.isChecked()) await control.locator("xpath=ancestor::label[1]").click();
+  await expect(control).not.toBeChecked();
+}

@@ -1,16 +1,6 @@
 import type { Page } from "@playwright/test";
 import { CENTROS, CUENTAS, diaSantiago, UBICACIONES, type Ubicacion } from "./soporte/entorno";
-import {
-  cajas,
-  crearInsumo,
-  disponibleEnFicha,
-  elegirUbicacion,
-  filaDeLote,
-  filaVisible,
-  opcionesDe,
-  registrarIngreso,
-  type InsumoPrueba,
-} from "./soporte/datos";
+import { cajas, crearInsumo, disponibleEnFicha, elegirUbicacion, filaDeLote, filaVisible, marcar, opcionesDe, registrarIngreso, type InsumoPrueba } from "./soporte/datos";
 import { bugConocido, expect, sesionDe, test } from "./soporte/fixtures";
 
 const BODEGA = UBICACIONES.nunoaBodega;
@@ -44,7 +34,7 @@ async function llenarAjuste(
   motivo: string,
 ): Promise<void> {
   await pagina.goto(`/movimientos/ajuste?insumo=${insumo.id}`);
-  await pagina.getByRole("radio", { name: new RegExp(`^${tipo}`) }).check({ force: true });
+  await marcar(pagina.getByRole("radio", { name: new RegExp(`^${tipo}`) }));
   await elegirUbicacion(pagina, "Ubicación", ubicacion);
   // Las existencias del insumo se cargan aparte: hasta que aparece el lote el formulario no se puede enviar.
   await expect(pagina.getByRole("group", { name: "Lote" }).getByRole("radio").first()).toBeChecked();

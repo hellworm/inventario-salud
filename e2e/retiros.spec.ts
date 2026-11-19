@@ -1,15 +1,5 @@
 import { diaSantiago, UBICACIONES } from "./soporte/entorno";
-import {
-  abrirRetiro,
-  cajas,
-  crearInsumo,
-  disponibleEnFicha,
-  elegirUbicacion,
-  esperarStockEnGrilla,
-  filaDeLote,
-  registrarIngreso,
-  type InsumoPrueba,
-} from "./soporte/datos";
+import { abrirRetiro, cajas, crearInsumo, disponibleEnFicha, elegirUbicacion, esperarStockEnGrilla, filaDeLote, marcar, registrarIngreso, type InsumoPrueba } from "./soporte/datos";
 import { expect, test } from "./soporte/fixtures";
 import type { Page } from "@playwright/test";
 
@@ -64,8 +54,8 @@ test.describe("Retiros de stock", () => {
     const bodeguero = await abrirComo("bodega");
 
     await abrirRetiro(bodeguero, insumo, BODEGA);
-    await bodeguero.getByRole("radio", { name: /Elegir lote/ }).check({ force: true });
-    await bodeguero.getByRole("radio", { name: new RegExp(`Lote ${tarde}`) }).check({ force: true });
+    await marcar(bodeguero.getByRole("radio", { name: /Elegir lote/ }));
+    await marcar(bodeguero.getByRole("radio", { name: new RegExp(`Lote ${tarde}`) }));
     await bodeguero.getByRole("textbox", { name: "Cantidad a retirar" }).fill("3");
     await bodeguero.getByRole("button", { name: "Registrar retiro" }).click();
     const confirmacion = bodeguero.getByRole("status").filter({ hasText: "Retiro registrado" });
@@ -93,15 +83,15 @@ test.describe("Retiros de stock", () => {
     await enviar.click();
     await expect(bodeguero.getByRole("heading", { name: "Retiro registrado" })).toBeHidden();
 
-    await bodeguero.getByRole("radio", { name: /Elegir lote/ }).check({ force: true });
-    await bodeguero.getByRole("radio", { name: new RegExp(`Lote ${pronto}`) }).check({ force: true });
+    await marcar(bodeguero.getByRole("radio", { name: /Elegir lote/ }));
+    await marcar(bodeguero.getByRole("radio", { name: new RegExp(`Lote ${pronto}`) }));
     await cantidad.fill("5");
     await expect(formulario).toContainText(`El lote ${pronto} tiene solo 4 cajas aquí.`);
     await enviar.click();
     await expect(bodeguero.getByRole("heading", { name: "Retiro registrado" })).toBeHidden();
 
     // Exactamente el total sí se puede: el borde superior es inclusivo.
-    await bodeguero.getByRole("radio", { name: /Automático/ }).check({ force: true });
+    await marcar(bodeguero.getByRole("radio", { name: /Automático/ }));
     await cantidad.fill("14");
     await expect(formulario).not.toContainText("Solo hay");
     // …pero no se envía: el stock debe seguir intacto.

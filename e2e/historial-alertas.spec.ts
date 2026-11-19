@@ -74,7 +74,7 @@ test.describe("Historial de movimientos", () => {
 });
 
 test.describe("Alertas de stock", () => {
-  test("un retiro que cruza el mínimo genera 'bajo mínimo'; al agotarse pasa a 'sin stock' @movil", async ({ abrirComo }) => {
+  test("un retiro que cruza el mínimo genera 'bajo mínimo'; al agotarse pasa a 'sin stock' @movil", async ({ abrirComo, isMobile }) => {
     const admin = await abrirComo("admin");
     const insumo = await crearInsumo(admin);
     await definirMinimo(admin, insumo, CENTROS.nunoa, 5, 20);
@@ -119,7 +119,12 @@ test.describe("Alertas de stock", () => {
 
     // La lista de reposición sugiere reponer hasta el máximo (20).
     await bodeguero.goto(`/alertas/reposicion?q=${insumo.codigo}`);
-    await expect(filaVisible(bodeguero, insumo.codigo)).toContainText("20");
+    const reposicion = filaVisible(bodeguero, insumo.codigo);
+    await expect(reposicion).toContainText("Sin stock");
+    if (!isMobile) {
+      // Disponible 0 · mínimo 5 · máximo 20 · falta mínimo 5 · falta máximo 20 · sugerido 20
+      await expect(reposicion).toContainText(/Sin stock\s+0\s+5\s+20\s+5\s+20\s+20\s*$/, { useInnerText: true });
+    }
 
     // La alerta es del centro de Ñuñoa: Valparaíso no la ve.
     const valpo = await abrirComo("valpo");
