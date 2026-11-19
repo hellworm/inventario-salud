@@ -4,11 +4,11 @@
  * Acciones de SOLO LECTURA para los formularios de movimientos (buscador de
  * insumos, existencias en vivo). No cambian datos, así que no revalidan.
  */
-import { esquemaBuscarInsumos, esquemaExistenciasInsumo } from "@/lib/esquemas/consultas";
+import { esquemaBuscarInsumos, esquemaBuscarPorCodigo, esquemaExistenciasInsumo } from "@/lib/esquemas/consultas";
 import type { DiaISO } from "@/lib/fechas";
 import { puede } from "@/lib/permisos";
 import { accionSegura } from "@/server/accion-segura";
-import { buscarInsumos, detalleInsumo, lotesDeInsumo, type ExistenciaDetalle } from "@/server/servicios";
+import { buscarInsumoPorCodigo, buscarInsumos, detalleInsumo, lotesDeInsumo, type ExistenciaDetalle } from "@/server/servicios";
 
 /** Máximo de sugerencias del buscador de insumos. */
 const LIMITE_SUGERENCIAS = 20;
@@ -21,6 +21,15 @@ export const buscarInsumosAccion = accionSegura(
       limite: LIMITE_SUGERENCIAS,
       priorizarRetirosDeCentroId: datos.priorizarRetirosDeCentroId,
     }),
+);
+
+/**
+ * Insumo de un código escaneado o escrito (GTIN, cadena GS1 o código propio).
+ * La usan el escáner y los formularios; la autorización es la del catálogo.
+ */
+export const buscarPorCodigoAccion = accionSegura(
+  { esquema: esquemaBuscarPorCodigo, permiso: "catalogo:ver", revalidar: false },
+  ({ actor, datos }) => buscarInsumoPorCodigo(actor, datos.codigo),
 );
 
 export interface ExistenciasInsumo {

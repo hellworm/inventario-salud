@@ -49,9 +49,12 @@ function Seccion({ titulo, descripcion, children }: { titulo: string; descripcio
 export function FormularioInsumo({
   insumo,
   categorias,
+  codigoBarrasInicial,
 }: {
   insumo?: ValoresInsumo;
   categorias: { id: string; nombre: string }[];
+  /** Código de barras ya leído con el escáner (solo al crear). */
+  codigoBarrasInicial?: string;
 }) {
   const router = useRouter();
   const crear = useAccion(crearInsumoAccion, {
@@ -178,7 +181,7 @@ export function FormularioInsumo({
         <Field label="Código de barras" opcional error={e.codigoBarras} ayuda="Puedes escanearlo con el lector.">
           <Input
             name="codigoBarras"
-            defaultValue={insumo?.codigoBarras ?? ""}
+            defaultValue={insumo?.codigoBarras ?? codigoBarrasInicial ?? ""}
             maxLength={64}
             inputMode="numeric"
             autoComplete="off"

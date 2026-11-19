@@ -13,6 +13,15 @@ export const esquemaBuscarInsumos = z.object({
 });
 export type EntradaBuscarInsumos = z.input<typeof esquemaBuscarInsumos>;
 
+export const esquemaBuscarPorCodigo = z.object({
+  /**
+   * Lo leído por el escáner o escrito a mano: código de barras, GTIN o cadena
+   * GS1 (puede traer el separador GS, ASCII 29). Máximo 300 caracteres.
+   */
+  codigo: z.string().min(1, "Escanea o escribe un código.").max(300, "El código es demasiado largo."),
+});
+export type EntradaBuscarPorCodigo = z.input<typeof esquemaBuscarPorCodigo>;
+
 export const esquemaExistenciasInsumo = z.object({
   insumoId: zId,
   /** Centro a consultar; vacío = todos los centros visibles del usuario. */

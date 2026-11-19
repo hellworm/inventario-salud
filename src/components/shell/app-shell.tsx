@@ -16,6 +16,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   X,
+  ScanBarcode,
 } from "lucide-react";
 import { cambiarCentroActivoAccion, cerrarSesionAccion } from "@/acciones/auth";
 import {
@@ -33,7 +34,8 @@ import {
 import { cn } from "@/lib/cn";
 import { ETIQUETA_TIPO_CENTRO, type TipoCentro } from "@/lib/estados";
 import { hrefActivo, navegacionInferior, navegacionPara, type GrupoNavegacion } from "@/lib/navegacion";
-import { NOMBRE_ROL, type Rol } from "@/lib/permisos";
+import { NOMBRE_ROL, puede, type Rol } from "@/lib/permisos";
+import { BotonEscanear } from "@/components/escaner/boton-escanear";
 import { Isotipo, Logo } from "./logo";
 
 const COOKIE_SIDEBAR = "ri_sidebar";
@@ -517,6 +519,17 @@ export function AppShell({
               </li>
             );
           })}
+          {puede(usuario.rol, "movimientos:ingreso") ? (
+            <li className="flex-1">
+              <BotonEscanear
+                data-accion="escanear"
+                className="flex min-h-[3.75rem] w-full flex-col items-center justify-center gap-1 px-1 text-[0.6875rem] font-semibold text-marca-700"
+              >
+                <ScanBarcode className="size-[1.375rem]" aria-hidden />
+                <span>Escanear</span>
+              </BotonEscanear>
+            </li>
+          ) : null}
           <li className="flex-1">
             <button
               type="button"

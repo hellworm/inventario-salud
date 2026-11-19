@@ -2,6 +2,7 @@ import "server-only";
 import { Prisma, type TipoUbicacion } from "@prisma/client";
 import { calcularEstadoVencimiento, diasParaVencer, type EstadoVencimiento } from "@/lib/estados";
 import { dateADia, hoyEnSantiago, type DiaISO } from "@/lib/fechas";
+import { interpretarCodigo, type CodigoInterpretado } from "@/lib/gs1";
 import type { Actor } from "@/lib/permisos";
 import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { db } from "../db";
@@ -295,4 +296,59 @@ export async function obtenerOpcionInsumo(
   if (!fila) return null;
   const { categoria, ...resto } = fila;
   return { ...resto, categoria: categoria.nombre };
+}
+
+// ---------------------------------------------------------------------------
+// Búsqueda por código escaneado
+// ---------------------------------------------------------------------------
+
+export interface BusquedaPorCodigo {
+  /** Cómo se interpretó lo leído (GTIN, lote, vencimiento…); `null` si no es un código utilizable. */
+  codigo: CodigoInterpretado | null;
+  /** Insumos del catálogo con ese código (lo normal: uno o ninguno). Incluye inactivos, marcados. */
+  coincidencias: (OpcionInsumo & { activo: boolean })[];
+}
+
+/**
+ * Busca en el catálogo el insumo de un código escaneado o escrito: código de
+ * barras (GTIN en cualquiera de sus formas: EAN-13, UPC-A, GTIN-14), cadena
+ * GS1 (se usa su GTIN y se devuelven lote y fechas) o, si no es un GTIN, el
+ * código de barras o el código interno exactos. Permiso: `catalogo:ver`.
+ */
+export async function buscarInsumoPorCodigo(
+  actor: Actor,
+  textoLeido: string,
+  opciones: { ahora?: Date } = {},
+): Promise<BusquedaPorCodigo> {
+  verificarPermiso(actor, "catalogo:ver");
+  const codigo = interpretarCodigo(textoLeido, hoyEnSantiago(opciones.ahora));
+  if (!codigo) return { codigo: null, coincidencias: [] };
+  const filas = await db.insumo.findMany({
+    where: {
+      OR: [
+        { codigoBarras: { in: codigo.candidatos } },
+        // Un Code 128 o QR propio puede traer el código interno del insumo.
+        // (Los códigos internos se guardan en mayúsculas; comparación exacta, sin comodines.)
+        ...(codigo.tipo === "TEXTO" ? [{ codigo: { in: [codigo.codigo, codigo.codigo.toUpperCase()] } }] : []),
+      ],
+    },
+    select: {
+      id: true,
+      codigo: true,
+      nombre: true,
+      presentacion: true,
+      unidadMedida: true,
+      controlaVencimiento: true,
+      requiereCadenaFrio: true,
+      codigoBarras: true,
+      activo: true,
+      categoria: { select: { nombre: true } },
+    },
+    orderBy: [{ activo: "desc" }, { nombre: "asc" }],
+    take: 10,
+  });
+  return {
+    codigo,
+    coincidencias: filas.map(({ categoria, ...resto }) => ({ ...resto, categoria: categoria.nombre })),
+  };
 }

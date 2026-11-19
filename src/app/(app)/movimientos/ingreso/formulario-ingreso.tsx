@@ -2,8 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowDownToLine, CalendarCheck, PackagePlus, Plus } from "lucide-react";
+import { ArrowDownToLine, CalendarCheck, PackagePlus, Plus, ScanBarcode } from "lucide-react";
+import { buscarPorCodigoAccion } from "@/acciones/consultas";
 import { registrarIngresoAccion, type StockActual } from "@/acciones/movimientos";
+import { BotonEscanear } from "@/components/escaner/boton-escanear";
+import { hrefEscaneo } from "@/lib/escaneo";
 import {
   Alert,
   Badge,
@@ -15,6 +18,9 @@ import {
   Input,
   Select,
   Textarea,
+  avisarSesionVencida,
+  esSesionVencida,
+  toast,
   useAccion,
 } from "@/components/ui";
 import {
@@ -46,6 +52,7 @@ import { MONTO_MAXIMO, nuevaClaveIdempotencia, zMontoOpcional } from "@/lib/esqu
 import { formatearMonto } from "@/lib/formato";
 import type { ErroresCampo } from "@/lib/resultado";
 import { cantidadConUnidad } from "@/lib/unidades";
+import { cn } from "@/lib/cn";
 
 interface ProveedorOpcion {
   id: string;
@@ -84,7 +91,26 @@ export interface FormularioIngresoProps {
   /** Día de hoy en Santiago (lo calcula el servidor). */
   hoy: DiaISO;
   puedeVerMovimientos: boolean;
-  inicial: { insumo: InsumoOpcion | null; ubicacionId: string | null; numeroLote: string | null };
+  inicial: {
+    insumo: InsumoOpcion | null;
+    ubicacionId: string | null;
+    numeroLote: string | null;
+    /** Vencimiento y fabricación leídos de un código GS1 (escáner). */
+    fechaVencimiento?: DiaISO | null;
+    fechaFabricacion?: DiaISO | null;
+    /** Se llegó desde el escáner: se avisa qué se leyó y el foco va a la cantidad. */
+    escaneado?: boolean;
+  };
+}
+
+/** Qué se completó a partir del último código escaneado (para que la persona lo revise). */
+interface DatosLeidos {
+  /** `null` si el código no coincidió con ningún insumo del catálogo. */
+  insumo: string | null;
+  codigo: string;
+  lote: string | null;
+  vence: DiaISO | null;
+  fab: DiaISO | null;
 }
 
 export function FormularioIngreso({
@@ -101,7 +127,20 @@ export function FormularioIngreso({
   const [insumo, setInsumo] = React.useState<InsumoOpcion | null>(inicial.insumo);
   const [ubicacionId, setUbicacionId] = React.useState(() => ubicacionPorDefecto(ubicaciones, inicial.ubicacionId));
   const [numeroLote, setNumeroLote] = React.useState(inicial.numeroLote ?? "");
-  const [fechaVencimiento, setFechaVencimiento] = React.useState("");
+  const [fechaVencimiento, setFechaVencimiento] = React.useState<string>(inicial.fechaVencimiento ?? "");
+  const [fechaFabricacion, setFechaFabricacion] = React.useState<string>(inicial.fechaFabricacion ?? "");
+  const [leido, setLeido] = React.useState<DatosLeidos | null>(
+    inicial.escaneado && inicial.insumo
+      ? {
+          insumo: inicial.insumo.nombre,
+          codigo: inicial.insumo.codigoBarras ?? "",
+          lote: inicial.numeroLote,
+          vence: inicial.fechaVencimiento ?? null,
+          fab: inicial.fechaFabricacion ?? null,
+        }
+      : null,
+  );
+  const [buscandoCodigo, setBuscandoCodigo] = React.useState(false);
   const [cantidad, setCantidad] = React.useState("");
   const [proveedorId, setProveedorId] = React.useState("");
   const [documentoRef, setDocumentoRef] = React.useState("");
@@ -142,6 +181,8 @@ export function FormularioIngreso({
     insumoId: insumo?.id ?? "",
     numeroLote,
     fechaVencimiento: fechaFija ? (loteExistente?.fechaVencimiento ?? "") : fechaVencimiento,
+    // La fabricación solo llega desde un código escaneado y solo aplica a un lote nuevo.
+    fechaFabricacion: loteExistente ? "" : fechaFabricacion,
     cantidad,
     proveedorId,
     documentoRef,
@@ -226,12 +267,57 @@ export function FormularioIngreso({
     existencias.recargar();
   };
 
+  const enfocarCantidad = React.useCallback(() => {
+    window.setTimeout(() => refFormulario.current?.querySelector<HTMLInputElement>('input[name="cantidad"]')?.focus(), 60);
+  }, []);
+
+  // Al llegar desde el escáner con el insumo ya reconocido, solo falta la cantidad.
+  const llegoEscaneado = Boolean(inicial.escaneado && inicial.insumo);
+  React.useEffect(() => {
+    if (llegoEscaneado) enfocarCantidad();
+  }, [llegoEscaneado, enfocarCantidad]);
+
+  /**
+   * Código leído con la cámara dentro del formulario: se busca en el servidor
+   * y se completan insumo, lote y fechas SIN perder lo ya escrito (ubicación,
+   * proveedor, documento). Si no coincide con ningún insumo, se conservan el
+   * lote y las fechas y se pide elegir el insumo a mano.
+   */
+  const alEscanear = async (texto: string) => {
+    if (ingreso.error) ingreso.limpiar();
+    setBuscandoCodigo(true);
+    let r: Awaited<ReturnType<typeof buscarPorCodigoAccion>>;
+    try {
+      r = await buscarPorCodigoAccion({ codigo: texto });
+    } catch {
+      r = { ok: false, error: "No pudimos conectar con el servidor. Revisa tu conexión e intenta de nuevo." };
+    }
+    setBuscandoCodigo(false);
+    if (esSesionVencida(r)) return avisarSesionVencida();
+    if (!r.ok) return void toast.error(r.error);
+    const { codigo, coincidencias } = r.datos;
+    if (!codigo) return void toast.error("Ese código no se puede leer. Inténtalo de nuevo.");
+    const activos = coincidencias.filter((c) => c.activo);
+    const encontrado = activos.length === 1 && coincidencias.length === 1 ? activos[0]! : null;
+    const vence = codigo.vencimiento;
+    if (encontrado) setInsumo(encontrado);
+    else if (coincidencias.length === 0) setInsumo(null);
+    setNumeroLote(codigo.lote ? normalizarNumeroLote(codigo.lote).slice(0, 60) : "");
+    setFechaVencimiento(vence ?? "");
+    setFechaFabricacion(codigo.fabricacion ?? "");
+    setLeido({ insumo: encontrado?.nombre ?? null, codigo: codigo.codigo, lote: codigo.lote, vence, fab: codigo.fabricacion });
+    if (encontrado) enfocarCantidad();
+    else if (coincidencias.length > 0) toast.info("Ese código coincide con más de un insumo o con uno inactivo: elige el insumo a mano.");
+  };
+
   /** Deja el formulario listo para otra línea de la misma guía o factura. */
   const registrarOtro = () => {
     setClaveIdempotencia(nuevaClaveIdempotencia());
     setInsumo(null);
     setNumeroLote("");
     setFechaVencimiento("");
+    setFechaFabricacion("");
+    setLeido(null);
     setCantidad("");
     setCostoUnitario("");
     setNota("");
@@ -325,19 +411,84 @@ export function FormularioIngreso({
             {errorGeneral ? <Alert tono="peligro">{errorGeneral}</Alert> : null}
             <ResumenErrores errores={ingreso.erroresCampo} camposVisibles={camposVisibles} />
 
-            <Field label="Insumo" requerido error={errores.insumoId}>
-              <ComboboxInsumo
-                key={ronda}
-                valor={insumo}
-                onCambiar={alEditar((nuevo: InsumoOpcion | null) => {
-                  setInsumo(nuevo);
-                  setNumeroLote("");
-                  setFechaVencimiento("");
-                })}
-                iniciales={insumosIniciales}
-                autoFocus={ronda > 0}
-              />
-            </Field>
+            <div className="flex items-start gap-2">
+              <Field label="Insumo" requerido error={errores.insumoId} className="min-w-0 flex-1">
+                <ComboboxInsumo
+                  key={ronda}
+                  valor={insumo}
+                  onCambiar={alEditar((nuevo: InsumoOpcion | null) => {
+                    setInsumo(nuevo);
+                    // Si el código escaneado no se reconoció, el lote y las fechas leídos se conservan para el insumo elegido a mano.
+                    if (leido && leido.insumo === null && nuevo) return;
+                    setNumeroLote("");
+                    setFechaVencimiento("");
+                    setFechaFabricacion("");
+                    setLeido(null);
+                  })}
+                  iniciales={insumosIniciales}
+                  autoFocus={ronda > 0}
+                />
+              </Field>
+              {/* Alineado con el control (bajo la etiqueta del campo). */}
+              <BotonEscanear
+                alLeer={(texto) => void alEscanear(texto)}
+                disabled={buscandoCodigo}
+                aria-label="Escanear el código del envase"
+                titulo="Escanear el insumo"
+                className={cn(buttonClasses({ variant: "secundario" }), "mt-[1.625rem] shrink-0 max-sm:px-3")}
+              >
+                <ScanBarcode aria-hidden />
+                <span className="max-sm:sr-only">Escanear</span>
+              </BotonEscanear>
+            </div>
+
+            {leido ? (
+              <Alert
+                tono={leido.vence && leido.vence < hoy ? "peligro" : leido.insumo ? "info" : "alerta"}
+                titulo={
+                  leido.vence && leido.vence < hoy
+                    ? "El código indica un lote vencido"
+                    : leido.insumo
+                      ? "Datos leídos del código"
+                      : "No reconocemos este código"
+                }
+                data-datos-escaneados
+              >
+                {leido.vence && leido.vence < hoy ? (
+                  <>
+                    Según el código, {leido.lote ? `el lote ${leido.lote}` : "este lote"} venció el {formatearDia(leido.vence)}: no se
+                    pueden ingresar lotes vencidos. Si la fecha del envase es otra, corrígela abajo.
+                  </>
+                ) : leido.insumo ? (
+                  <>
+                    {leido.lote || leido.vence ? (
+                      <>
+                        Se completó{" "}
+                        {[
+                          leido.lote ? `el lote ${leido.lote}` : null,
+                          leido.vence ? `el vencimiento ${formatearDia(leido.vence)}` : null,
+                          leido.fab ? `la fabricación ${formatearDia(leido.fab)}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                        . Revisa que coincidan con el envase e indica la cantidad.
+                      </>
+                    ) : (
+                      "El código identifica el insumo, pero no trae lote ni vencimiento: complétalos como aparecen en el envase."
+                    )}
+                  </>
+                ) : (
+                  <>
+                    Ningún insumo tiene el código <span className="cifras font-semibold break-all">{leido.codigo}</span>. Elige el insumo
+                    a mano en el campo de arriba
+                    {leido.lote || leido.vence ? "; ya completamos el lote y el vencimiento leídos" : ""}.{" "}
+                    <Link href={hrefEscaneo(leido.codigo) ?? "/movimientos/escanear"} className="font-semibold underline underline-offset-2">
+                      Qué hacer con este código
+                    </Link>
+                  </>
+                )}
+              </Alert>
+            ) : null}
 
             <Field label="Ubicación de destino" requerido error={errores.ubicacionId}>
               <SelectUbicacion name="ubicacionId" ubicaciones={ubicaciones} valor={ubicacionId} onCambiar={alEditar(setUbicacionId)} />
@@ -424,6 +575,19 @@ export function FormularioIngreso({
                 </Field>
               )}
             </div>
+
+            {fechaFabricacion && !loteExistente ? (
+              <p className="-mt-2 flex flex-wrap items-center gap-x-2 text-sm text-texto-suave" data-fabricacion-leida>
+                Fabricación leída del código: <strong className="cifras font-semibold text-texto">{formatearDia(fechaFabricacion)}</strong>
+                <button
+                  type="button"
+                  onClick={() => setFechaFabricacion("")}
+                  className="min-h-11 font-medium text-marca-700 underline underline-offset-2 pointer-fine:min-h-0"
+                >
+                  Quitar
+                </button>
+              </p>
+            ) : null}
 
             {insumo && sugerenciasLote.length > 0 && !loteExistente ? (
               <div className="-mt-2 space-y-1.5">
