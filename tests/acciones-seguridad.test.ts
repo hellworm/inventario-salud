@@ -44,7 +44,7 @@ import { corregirVencimientoLoteAccion, registrarIngresoAccion } from "@/accione
 import { iniciarSesion } from "@/server/auth/autenticacion";
 import { COOKIE_CENTRO, COOKIE_SESION } from "@/server/auth/constantes";
 import { hashearPassword } from "@/server/auth/password";
-import { obtenerMetaSolicitud } from "@/server/auth/sesion";
+import { obtenerCentroActivo, obtenerMetaSolicitud, obtenerSesion } from "@/server/auth/sesion";
 import { db } from "@/server/db";
 import { responderCsv } from "@/server/respuesta-csv";
 import { MAXIMO_EXPORTACIONES_POR_MINUTO, registrarIngreso } from "@/server/servicios";
@@ -102,6 +102,30 @@ describe("B10 — cambiarCentroActivoAccion", () => {
     await expect(cambiarCentroActivoAccion(e.centroA)).rejects.toThrow("REDIRECT:/login");
     expect(estado.borradas).toContain(COOKIE_SESION);
     expect(estado.cookies.has(COOKIE_CENTRO)).toBe(false);
+  });
+});
+
+describe("B-11 — sin centro activo no es lo mismo que toda la red", () => {
+  it("distingue al usuario cuyo único centro quedó inactivo del administrador que ve toda la red", async () => {
+    await entrarComo(e.bodeguero.usuarioId);
+    expect(await obtenerCentroActivo((await obtenerSesion())!)).toMatchObject({
+      centroId: e.centroA,
+      sinCentro: false,
+      puedeVerTodaLaRed: false,
+    });
+
+    await db.centro.update({ where: { id: e.centroA }, data: { activo: false } });
+    const sinCentro = await obtenerCentroActivo((await obtenerSesion())!);
+    expect(sinCentro).toMatchObject({ centroId: null, centro: null, centros: [], sinCentro: true, puedeVerTodaLaRed: false });
+
+    // El administrador también tiene centroId null ("Toda la red"), pero NO está sin centro.
+    estado.cookies.clear();
+    await entrarComo(e.admin.usuarioId);
+    expect(await obtenerCentroActivo((await obtenerSesion())!)).toMatchObject({
+      centroId: null,
+      sinCentro: false,
+      puedeVerTodaLaRed: true,
+    });
   });
 });
 

@@ -223,7 +223,8 @@ describe("resumenPanel", () => {
     expect(p).toMatchObject({ insumosConStock: 2, lotesConStock: 4, unidadesTotales: 45, puedeVerMovimientos: true, movimientosHoy: 6 });
     expect(p.alertas).toMatchObject({ sinStock: 1, bajoMinimo: 1, vencidos: 1, porVencer30: 1 });
     expect(p.actividad).toHaveLength(7);
-    expect(p.actividad.at(-1)).toEqual({ dia: e.hoy, entradas: 6 + 12 + 10 + 25, salidas: 10 + 2, movimientos: 6 });
+    // Número de movimientos (no unidades): 4 de entrada y 2 de salida.
+    expect(p.actividad.at(-1)).toEqual({ dia: e.hoy, entradas: 4, salidas: 2, movimientos: 6 });
     expect(p.ultimosMovimientos).toHaveLength(3);
     expect(p.porCentro).toEqual([
       { centroId: e.centroA, centro: "Centro A", sinStock: 1, bajoMinimo: 1, vencidos: 1, porVencer: 1 },

@@ -252,20 +252,20 @@ describe("B4 — enteros estrictos en los esquemas", () => {
 
   it("zCantidad conserva los mensajes útiles para la persona", () => {
     const mensaje = (v: unknown) => zCantidad.safeParse(v).error?.issues[0]?.message;
-    expect(mensaje("1.5")).toBe("La cantidad debe ser un número entero");
-    expect(mensaje("1,5")).toBe("La cantidad debe ser un número entero");
-    expect(mensaje(1.5)).toBe("La cantidad debe ser un número entero");
-    expect(mensaje("0")).toBe("La cantidad debe ser mayor que cero");
-    expect(mensaje("-3")).toBe("La cantidad debe ser mayor que cero");
-    expect(mensaje("1000001")).toBe("La cantidad es demasiado grande");
-    expect(mensaje("0x10")).toBe("Ingresa una cantidad válida");
-    expect(mensaje(true)).toBe("Ingresa una cantidad válida");
+    expect(mensaje("1.5")).toBe("La cantidad debe ser un número entero.");
+    expect(mensaje("1,5")).toBe("La cantidad debe ser un número entero.");
+    expect(mensaje(1.5)).toBe("La cantidad debe ser un número entero.");
+    expect(mensaje("0")).toBe("La cantidad debe ser mayor que cero.");
+    expect(mensaje("-3")).toBe("La cantidad debe ser mayor que cero.");
+    expect(mensaje("1000001")).toBe("La cantidad es demasiado grande.");
+    expect(mensaje("0x10")).toBe("Ingresa una cantidad válida.");
+    expect(mensaje(true)).toBe("Ingresa una cantidad válida.");
   });
 
   it("zEnteroNoNegativo aplica las mismas reglas y admite cero", () => {
     expect(zEnteroNoNegativo.parse("0")).toBe(0);
     expect(zEnteroNoNegativo.parse(15)).toBe(15);
-    expect(zEnteroNoNegativo.safeParse("-1").error?.issues[0]?.message).toBe("No puede ser negativo");
+    expect(zEnteroNoNegativo.safeParse("-1").error?.issues[0]?.message).toBe("No puede ser negativo.");
     for (const valor of ["0x10", "1e3", "", true, [5], null, 2.5]) {
       expect(zEnteroNoNegativo.safeParse(valor).success, JSON.stringify(valor)).toBe(false);
     }
