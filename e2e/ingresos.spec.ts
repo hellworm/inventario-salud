@@ -99,7 +99,10 @@ test.describe("Ingresos de stock", () => {
     expect(await disponibleEnFicha(admin, insumo)).toBe(3);
     const fila = filaDeLote(admin, `LH-${insumo.sufijo}`);
     await expect(fila).toContainText(comoSeMuestra(hoy));
-    await expect(fila).toContainText("Vence hoy");
+    // Semáforo: el día del vencimiento el lote está en rojo (todavía se puede usar), no vencido.
+    await expect(fila).toContainText("Rojo");
+    await expect(fila).toContainText(/vence\s+hoy/);
+    await expect(fila).not.toContainText("Vencido");
     await expect(admin.getByRole("region", { name: "Resumen de stock" })).toContainText("Sin stock vencido");
   });
 

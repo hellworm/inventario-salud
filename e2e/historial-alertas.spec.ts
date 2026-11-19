@@ -148,23 +148,62 @@ test.describe("Alertas de stock", () => {
     await expect(valpo.getByRole("main")).not.toContainText(insumo.nombre);
   });
 
-  test("un lote por vencer aparece en la pestaña 'por vencer' con su tramo", async ({ abrirComo }) => {
+  test("semáforo: un lote que vence en 20 días está en la pestaña Rojo y uno a 4 meses en Amarillo; el verde no es alerta", async ({ abrirComo }) => {
     const admin = await abrirComo("admin");
     const insumo = await crearInsumo(admin);
-    const lote = `PV-${insumo.sufijo}`;
-    await registrarIngreso(admin, { insumo, ubicacion: BODEGA, lote, vence: diaSantiago(20), cantidad: 2 });
+    const rojo = `RJ-${insumo.sufijo}`;
+    const amarillo = `AM-${insumo.sufijo}`;
+    const verde = `VD-${insumo.sufijo}`;
+    await registrarIngreso(admin, { insumo, ubicacion: BODEGA, lote: rojo, vence: diaSantiago(20), cantidad: 2 });
+    await registrarIngreso(admin, { insumo, ubicacion: BODEGA, lote: amarillo, vence: diaSantiago(125), cantidad: 3 });
+    await registrarIngreso(admin, { insumo, ubicacion: BODEGA, lote: verde, vence: diaSantiago(300), cantidad: 4 });
 
     const bodeguero = await abrirComo("bodega");
-    await bodeguero.goto(`/alertas?tab=por-vencer&q=${insumo.codigo}`);
-    const fila = filaVisible(bodeguero, lote);
+    const principal = bodeguero.getByRole("main");
+    await bodeguero.goto(`/alertas?tab=rojo&q=${insumo.codigo}`);
+    const fila = filaVisible(bodeguero, rojo);
     await expect(fila).toContainText(insumo.nombre);
-    await expect(fila).toContainText("Vence en 20 días");
-    // Tramos excluyentes: está en 30 días, no en 31–60.
+    // Color + nombre del color + días: nunca solo color.
+    await expect(fila).toContainText("Rojo");
+    await expect(fila).toContainText("20 días");
+    await expect(principal).not.toContainText(amarillo);
+    await expect(principal).not.toContainText(verde);
+    // Leyenda del semáforo a la vista.
+    await expect(principal.getByRole("list", { name: "Semáforo de vencimiento" })).toContainText("vence en menos de 3 meses");
+
+    await bodeguero.goto(`/alertas?tab=amarillo&q=${insumo.codigo}`);
+    await expect(filaVisible(bodeguero, amarillo)).toContainText("Amarillo");
+    await expect(filaVisible(bodeguero, amarillo)).toContainText("125 días");
+    await expect(principal).not.toContainText(rojo);
+    await expect(principal).not.toContainText(verde);
+
+    // Los contadores de las pestañas con ese filtro: 1 rojo, 1 amarillo, 0 vencidos.
+    const pestanas = bodeguero.getByRole("navigation", { name: "Tipos de alerta" });
+    await expect(pestanas.getByRole("link", { name: /^Rojo/ })).toContainText("1");
+    await expect(pestanas.getByRole("link", { name: /^Amarillo/ })).toContainText("1");
+    await expect(pestanas.getByRole("link", { name: /^Vencidos/ })).toContainText("0");
+
+    // Enlace antiguo (tramos de 30/60/90 días): abre la pestaña Rojo.
     await bodeguero.goto(`/alertas?tab=por-vencer&tramo=30&q=${insumo.codigo}`);
-    await expect(filaVisible(bodeguero, lote)).toBeVisible();
-    await bodeguero.goto(`/alertas?tab=por-vencer&tramo=60&q=${insumo.codigo}`);
-    await expect(bodeguero.getByRole("heading", { level: 1, name: "Alertas" })).toBeVisible();
-    await expect(bodeguero.getByRole("main")).not.toContainText(lote);
-    await expect(await filaDeInventario(bodeguero, insumo)).toContainText("Vence en 20 días");
+    await expect(pestanas.getByRole("link", { name: /^Rojo/ })).toHaveAttribute("aria-current", "page");
+    await expect(filaVisible(bodeguero, rojo)).toBeVisible();
+
+    // Inventario: el insumo toma el color de su lote que vence antes (rojo) y muestra el desglose.
+    const enGrilla = await filaDeInventario(bodeguero, insumo);
+    await expect(enGrilla).toContainText("Rojo");
+    await expect(enGrilla.getByRole("img", { name: "Lotes: 1 en rojo, 1 en amarillo, 1 en verde" }).first()).toBeVisible();
+    // El filtro por color muestra los insumos con ALGÚN lote de ese color.
+    for (const color of ["rojo", "amarillo", "verde"]) {
+      await bodeguero.goto(`/inventario?semaforo=${color}&q=${insumo.codigo}`);
+      await expect(filaVisible(bodeguero, insumo.codigo), `filtro ${color}`).toBeVisible();
+    }
+    await bodeguero.goto(`/inventario?semaforo=vencido&q=${insumo.codigo}`);
+    await expect(principal).toContainText("Ningún insumo coincide");
+
+    // La ficha muestra cada lote con su color.
+    await bodeguero.goto(`/inventario/${insumo.id}`);
+    await expect(filaVisible(bodeguero, rojo)).toContainText("Rojo");
+    await expect(filaVisible(bodeguero, amarillo)).toContainText("Amarillo");
+    await expect(filaVisible(bodeguero, verde)).toContainText("Verde");
   });
 });
