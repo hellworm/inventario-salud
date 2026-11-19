@@ -6,3 +6,9 @@ export * from "./alertas";
 export * from "./panel";
 export * from "./catalogo";
 export * from "./usuarios";
+// Administración
+export * from "./insumos";
+export * from "./categorias";
+export * from "./centros";
+export * from "./proveedores";
+export * from "./auditoria-consultas";
