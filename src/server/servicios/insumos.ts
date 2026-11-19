@@ -212,8 +212,11 @@ async function exigirInsumoValido(tx: Tx, datos: DatosInsumo, exceptoId?: string
     throw new ErrorDominio("DUPLICADO", `El código ${datos.codigo} ya lo usa "${mismoCodigo.nombre}".`, { campo: "codigo" });
   }
   if (datos.codigoBarras) {
+    // El mismo producto no puede quedar en dos insumos, aunque el código venga escrito de
+    // otra forma (EAN-13 / GTIN-14): el escáner no sabría cuál elegir.
+    const equivalentes = [...new Set([datos.codigoBarras, ...variantesGtin(datos.codigoBarras)])];
     const mismaBarra = await tx.insumo.findFirst({
-      where: { codigoBarras: datos.codigoBarras, ...otro },
+      where: { codigoBarras: { in: equivalentes }, ...otro },
       select: { nombre: true },
     });
     if (mismaBarra) {
