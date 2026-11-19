@@ -6,3 +6,5 @@ export * from "./alertas";
 export * from "./panel";
 export * from "./catalogo";
 export * from "./usuarios";
+export * from "./exportaciones";
+export * from "./reportes";

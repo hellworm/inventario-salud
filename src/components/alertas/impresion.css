@@ -1,0 +1,47 @@
+/*
+ * Impresión de vistas marcadas con [data-imprimible] (p. ej. la lista de
+ * reposición): se oculta la navegación de la aplicación y el contenido ocupa
+ * toda la hoja. Solo aplica cuando la página contiene una vista imprimible.
+ */
+@page {
+  size: A4 portrait;
+  margin: 14mm 12mm 16mm;
+}
+
+@media print {
+  body:has([data-imprimible]) {
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  body:has([data-imprimible]) aside,
+  body:has([data-imprimible]) header:has(+ main),
+  body:has([data-imprimible]) main ~ nav,
+  body:has([data-imprimible]) nav[aria-label="Accesos rápidos"],
+  body:has([data-imprimible]) a[href="#contenido"],
+  body:has([data-imprimible]) [data-radix-portal],
+  body:has([data-imprimible]) [role="region"][aria-label*="otificaciones"] {
+    display: none !important;
+  }
+  body:has([data-imprimible]) div:has(> main) {
+    padding-left: 0 !important;
+  }
+  body:has([data-imprimible]) main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  [data-imprimible] table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  [data-imprimible] thead {
+    display: table-header-group;
+  }
+  [data-imprimible] tr,
+  [data-imprimible] [data-no-cortar] {
+    break-inside: avoid;
+  }
+  [data-imprimible] h2 {
+    break-after: avoid;
+  }
+}

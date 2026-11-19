@@ -6,10 +6,16 @@ import {
   Boxes,
   CalendarClock,
   CalendarX2,
+  ChevronRight,
+  Eye,
   History,
   PackageX,
   TriangleAlert,
 } from "lucide-react";
+import { AccesosRapidos, AccionesPrincipales } from "@/components/panel/accesos-rapidos";
+import { AtencionHoy } from "@/components/panel/atencion-hoy";
+import { GraficoActividad, type DiaActividad } from "@/components/panel/grafico-actividad";
+import { GraficoVencimientos } from "@/components/panel/grafico-vencimientos";
 import {
   Alert,
   BadgeTipoMovimiento,
@@ -22,12 +28,13 @@ import {
   StatCard,
   type Columna,
 } from "@/components/ui";
+import { cn } from "@/lib/cn";
 import { SIGNO_MOVIMIENTO } from "@/lib/estados";
-import { formatearDia, formatearFechaHora, hoyEnSantiago } from "@/lib/fechas";
+import { diaADate, formatearDia, formatearFechaHora, hoyEnSantiago } from "@/lib/fechas";
 import { formatearNumero, pluralizar } from "@/lib/formato";
 import { puede } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
-import { resumenPanel, type ActividadDia, type FilaMovimiento } from "@/server/servicios";
+import { resumenPanel, type ActividadDia, type FilaMovimiento, type ResumenCentro } from "@/server/servicios";
 
 export const metadata: Metadata = { title: "Panel" };
 
@@ -67,47 +74,93 @@ const COLUMNAS_MOVIMIENTOS: Columna<FilaMovimiento>[] = [
   },
 ];
 
-function GraficoActividad({ actividad }: { actividad: ActividadDia[] }) {
-  const maximo = Math.max(1, ...actividad.flatMap((d) => [d.entradas, d.salidas]));
-  const totalEntradas = actividad.reduce((s, d) => s + d.entradas, 0);
-  const totalSalidas = actividad.reduce((s, d) => s + d.salidas, 0);
-  if (totalEntradas + totalSalidas === 0) {
-    return <EmptyState compacto icono={History} titulo="Sin actividad en el período" />;
-  }
+const fmtDiaSemana = new Intl.DateTimeFormat("es-CL", { weekday: "long", timeZone: "UTC" });
+
+/** Prepara los días para el gráfico (etiquetas ya formateadas: el componente cliente solo dibuja). */
+function diasParaGrafico(actividad: ActividadDia[]): DiaActividad[] {
+  return actividad.map((d) => {
+    const semana = fmtDiaSemana.format(diaADate(d.dia));
+    return {
+      dia: d.dia,
+      etiqueta: formatearDia(d.dia).slice(0, 5),
+      titulo: `${semana.charAt(0).toUpperCase()}${semana.slice(1)} ${formatearDia(d.dia)}`,
+      entradas: d.entradas,
+      salidas: d.salidas,
+      movimientos: d.movimientos,
+    };
+  });
+}
+
+/** Conteo de la tabla "Alertas por centro": enlaza a /alertas ya filtrado por centro y tipo. */
+function ConteoCentro({ valor, href, tono, etiqueta }: { valor: number; href: string; tono: "peligro" | "alerta"; etiqueta: string }) {
+  if (valor === 0) return <span className="cifras inline-block min-w-9 text-center text-texto-tenue">0</span>;
   return (
-    <figure>
-      <div className="flex h-36 items-end gap-1 sm:gap-1.5" aria-hidden>
-        {actividad.map((d) => (
-          <div key={d.dia} className="flex h-full min-w-0 flex-1 items-end justify-center gap-px sm:gap-0.5" title={`${formatearDia(d.dia)}: +${formatearNumero(d.entradas)} / −${formatearNumero(d.salidas)}`}>
-            <span className="w-1/2 max-w-3 rounded-t-sm bg-marca-500" style={{ height: `${Math.max((d.entradas / maximo) * 100, d.entradas > 0 ? 3 : 0)}%` }} />
-            <span className="w-1/2 max-w-3 rounded-t-sm bg-alerta-500" style={{ height: `${Math.max((d.salidas / maximo) * 100, d.salidas > 0 ? 3 : 0)}%` }} />
-          </div>
-        ))}
-      </div>
-      <div className="mt-1.5 flex justify-between border-t border-borde pt-1.5 text-xs text-texto-tenue" aria-hidden>
-        <span>{formatearDia(actividad[0]?.dia).slice(0, 5)}</span>
-        <span>Hoy</span>
-      </div>
-      <figcaption className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-texto-suave">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-2.5 rounded-sm bg-marca-500" aria-hidden />
-          Entradas: <strong className="cifras font-semibold text-texto">{formatearNumero(totalEntradas)}</strong>
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-2.5 rounded-sm bg-alerta-500" aria-hidden />
-          Salidas: <strong className="cifras font-semibold text-texto">{formatearNumero(totalSalidas)}</strong>
-        </span>
-      </figcaption>
-    </figure>
+    <Link
+      href={href}
+      aria-label={etiqueta}
+      className={cn(
+        "cifras inline-flex min-h-8 min-w-9 items-center justify-center rounded-full px-2.5 text-sm font-semibold ring-1 ring-inset hover:ring-2",
+        tono === "peligro" ? "bg-peligro-50 text-peligro-800 ring-peligro-600/25" : "bg-alerta-50 text-alerta-800 ring-alerta-500/40",
+      )}
+    >
+      {formatearNumero(valor)}
+    </Link>
   );
 }
 
+const COLUMNAS_CENTROS: Columna<ResumenCentro>[] = [
+  { clave: "centro", encabezado: "Centro", movil: "titulo", celda: (c) => <span className="font-medium">{c.centro}</span> },
+  {
+    clave: "sinStock",
+    encabezado: "Sin stock",
+    alinear: "derecha",
+    celda: (c) => (
+      <ConteoCentro valor={c.sinStock} tono="peligro" href={`/alertas?tab=sin-stock&centro=${c.centroId}`} etiqueta={`${c.sinStock} sin stock en ${c.centro}`} />
+    ),
+  },
+  {
+    clave: "bajoMinimo",
+    encabezado: "Bajo mínimo",
+    alinear: "derecha",
+    celda: (c) => (
+      <ConteoCentro valor={c.bajoMinimo} tono="alerta" href={`/alertas?tab=bajo-minimo&centro=${c.centroId}`} etiqueta={`${c.bajoMinimo} bajo el mínimo en ${c.centro}`} />
+    ),
+  },
+  {
+    clave: "vencidos",
+    encabezado: "Vencidos",
+    alinear: "derecha",
+    celda: (c) => (
+      <ConteoCentro valor={c.vencidos} tono="peligro" href={`/alertas?tab=vencidos&centro=${c.centroId}`} etiqueta={`${c.vencidos} lotes vencidos en ${c.centro}`} />
+    ),
+  },
+  {
+    clave: "porVencer",
+    encabezado: "Por vencer (90 días)",
+    alinear: "derecha",
+    celda: (c) => (
+      <ConteoCentro valor={c.porVencer} tono="alerta" href={`/alertas?tab=por-vencer&centro=${c.centroId}`} etiqueta={`${c.porVencer} lotes por vencer en ${c.centro}`} />
+    ),
+  },
+];
+
+/** Atajos al inventario con el filtro de estado aplicado (`/inventario?estado=`). */
+const ESTADOS_INVENTARIO = [
+  { estado: "SIN_STOCK", etiqueta: "Sin stock" },
+  { estado: "BAJO_MINIMO", etiqueta: "Bajo mínimo" },
+  { estado: "POR_VENCER", etiqueta: "Por vencer" },
+  { estado: "VENCIDO", etiqueta: "Vencidos" },
+] as const;
+
 export default async function PaginaPanel({ searchParams }: PageProps<"/panel">) {
-  const { sesion, actor, centroId, centro } = await contextoPagina("panel:ver");
+  const { sesion, actor, centroId, centro, centros } = await contextoPagina("panel:ver");
   const [{ aviso }, resumen] = await Promise.all([searchParams, resumenPanel(actor, { centroId })]);
   const { alertas } = resumen;
   const nombre = sesion.usuario.nombre.split(" ")[0];
   const porVencerMasAdelante = alertas.porVencer60 + alertas.porVencer90;
+  const esAdmin = actor.rol === "ADMIN";
+  const puedeRegistrar = puede(actor.rol, "movimientos:ingreso") || puede(actor.rol, "movimientos:retiro");
+  const totalMovimientos = resumen.actividad.reduce((s, d) => s + d.movimientos, 0);
 
   return (
     <>
@@ -119,20 +172,18 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
           </>
         }
         acciones={
-          <>
-            {puede(actor.rol, "movimientos:retiro") ? (
+          esAdmin ? (
+            <>
               <Link href="/movimientos/retiro" className={buttonClasses({ variant: "secundario" })}>
                 <ArrowUpFromLine aria-hidden />
                 Registrar retiro
               </Link>
-            ) : null}
-            {puede(actor.rol, "movimientos:ingreso") ? (
               <Link href="/movimientos/ingreso" className={buttonClasses()}>
                 <ArrowDownToLine aria-hidden />
                 Registrar ingreso
               </Link>
-            ) : null}
-          </>
+            </>
+          ) : undefined
         }
       />
 
@@ -142,6 +193,9 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
         </Alert>
       ) : null}
 
+      {/* Bodeguero: sus dos tareas del día, grandes y arriba. */}
+      {!esAdmin && puedeRegistrar ? <AccionesPrincipales rol={actor.rol} className="mb-4" /> : null}
+
       <section aria-label="Indicadores" className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard
           etiqueta="Sin stock"
@@ -149,7 +203,7 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
           detalle={alertas.sinStock === 0 ? "Todo con existencias" : "Requieren reposición"}
           icono={PackageX}
           tono={alertas.sinStock > 0 ? "peligro" : "exito"}
-          href="/alertas"
+          href="/alertas?tab=sin-stock"
         />
         <StatCard
           etiqueta="Bajo el mínimo"
@@ -157,7 +211,7 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
           detalle={alertas.bajoMinimo === 0 ? "Sobre el mínimo" : "Conviene reponer pronto"}
           icono={TriangleAlert}
           tono={alertas.bajoMinimo > 0 ? "alerta" : "exito"}
-          href="/alertas"
+          href="/alertas?tab=bajo-minimo"
         />
         <StatCard
           etiqueta="Lotes vencidos"
@@ -165,7 +219,7 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
           detalle={alertas.vencidos === 0 ? "Sin vencidos en stock" : "Retirar y dar de baja"}
           icono={CalendarX2}
           tono={alertas.vencidos > 0 ? "peligro" : "exito"}
-          href="/alertas"
+          href="/alertas?tab=vencidos"
         />
         <StatCard
           etiqueta="Vencen en 30 días"
@@ -173,74 +227,130 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
           detalle={`${formatearNumero(porVencerMasAdelante)} más entre 31 y 90 días`}
           icono={CalendarClock}
           tono={alertas.porVencer30 > 0 ? "alerta" : "exito"}
-          href="/alertas"
+          href="/alertas?tab=por-vencer&tramo=30"
         />
       </section>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-1">
-          <CardHeader titulo="Existencias" descripcion={centro ? "En este centro" : "En toda la red"} />
-          <div className="flex items-center gap-4">
-            <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-marca-50 text-marca-700">
-              <Boxes className="size-6" aria-hidden />
-            </span>
-            <div>
-              <p className="cifras text-3xl font-semibold tracking-tight">{formatearNumero(resumen.insumosConStock)}</p>
-              <p className="text-sm text-texto-suave">insumos con stock</p>
-            </div>
-          </div>
-          <dl className="mt-5 grid grid-cols-2 gap-3 border-t border-borde pt-4 text-sm">
-            <div>
-              <dt className="text-texto-tenue">Lotes</dt>
-              <dd className="cifras text-lg font-semibold">{formatearNumero(resumen.lotesConStock)}</dd>
-            </div>
-            <div>
-              <dt className="text-texto-tenue">Unidades</dt>
-              <dd className="cifras text-lg font-semibold">{formatearNumero(resumen.unidadesTotales)}</dd>
-            </div>
-          </dl>
-          <Link href="/inventario" className={buttonClasses({ variant: "secundario", bloque: true }) + " mt-5"}>
-            Ver inventario
-          </Link>
-        </Card>
+      <div className="mt-4 grid items-start gap-4 lg:grid-cols-3">
+        <AtencionHoy
+          className="lg:col-span-2"
+          atencion={resumen.atencion}
+          mostrarCentro={!centro && centros.length > 1}
+          puedeIngresar={puede(actor.rol, "movimientos:ingreso")}
+          puedeDarDeBaja={puede(actor.rol, "movimientos:merma")}
+        />
 
+        <div className="grid gap-4">
+          <Card>
+            <CardHeader
+              titulo="Vencimientos"
+              descripcion="Lotes con stock, por días restantes"
+              acciones={
+                <Link href="/alertas?tab=por-vencer" className={buttonClasses({ variant: "fantasma", size: "sm" })}>
+                  Ver todos
+                </Link>
+              }
+            />
+            <GraficoVencimientos tramos={resumen.vencimientos} />
+          </Card>
+
+          <Card>
+            <CardHeader titulo="Existencias" descripcion={centro ? "En este centro" : "En toda la red"} />
+            <div className="flex items-center gap-4">
+              <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-marca-50 text-marca-700">
+                <Boxes className="size-6" aria-hidden />
+              </span>
+              <div>
+                <p className="cifras text-3xl font-semibold tracking-tight">{formatearNumero(resumen.insumosConStock)}</p>
+                <p className="text-sm text-texto-suave">insumos con stock</p>
+              </div>
+              <dl className="ml-auto grid grid-cols-2 gap-x-5 text-right text-sm">
+                <div>
+                  <dt className="text-texto-tenue">Lotes</dt>
+                  <dd className="cifras text-lg font-semibold">{formatearNumero(resumen.lotesConStock)}</dd>
+                </div>
+                <div>
+                  <dt className="text-texto-tenue">Unidades</dt>
+                  <dd className="cifras text-lg font-semibold">{formatearNumero(resumen.unidadesTotales)}</dd>
+                </div>
+              </dl>
+            </div>
+            <div className="mt-4 border-t border-borde pt-3">
+              <p className="text-xs font-medium text-texto-suave">Ver en inventario</p>
+              <ul className="mt-2 flex flex-wrap gap-1.5">
+                {ESTADOS_INVENTARIO.map((e) => (
+                  <li key={e.estado}>
+                    <Link
+                      href={`/inventario?estado=${e.estado}`}
+                      className="inline-flex min-h-9 items-center rounded-full border border-borde-fuerte/70 bg-superficie px-3 text-sm font-medium text-texto-suave hover:border-marca-400 hover:text-marca-800"
+                    >
+                      {e.etiqueta}
+                    </Link>
+                  </li>
+                ))}
+                <li>
+                  <Link
+                    href="/inventario"
+                    className="inline-flex min-h-9 items-center gap-0.5 rounded-full px-2 text-sm font-medium text-marca-700 underline-offset-4 hover:underline"
+                  >
+                    Todo
+                    <ChevronRight className="size-4" aria-hidden />
+                  </Link>
+                </li>
+              </ul>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      <div className="mt-4 grid items-start gap-4 lg:grid-cols-3">
         {resumen.puedeVerMovimientos ? (
           <Card className="lg:col-span-2">
             <CardHeader
               titulo="Actividad de los últimos 14 días"
-              descripcion={`${pluralizar(resumen.movimientosHoy, "movimiento")} hoy · unidades que entran y salen por día`}
+              descripcion={`${pluralizar(resumen.movimientosHoy, "movimiento")} hoy · ${pluralizar(totalMovimientos, "movimiento")} en el período`}
             />
-            <GraficoActividad actividad={resumen.actividad} />
+            {totalMovimientos === 0 ? (
+              <EmptyState compacto icono={History} titulo="Sin actividad en el período" />
+            ) : (
+              <GraficoActividad dias={diasParaGrafico(resumen.actividad)} />
+            )}
           </Card>
         ) : (
           <Card className="lg:col-span-2">
-            <CardHeader titulo="Tu acceso" descripcion="Perfil de solo lectura" />
-            <p className="text-[0.9375rem] text-texto-suave">
-              Puedes consultar qué hay en inventario, qué falta y qué está por vencer en tus centros. Para registrar
-              movimientos, pide a un administrador que cambie tu rol.
-            </p>
-            <Link href="/alertas" className={buttonClasses({ variant: "secundario" }) + " mt-5"}>
-              Ver alertas
-            </Link>
+            <div className="flex items-start gap-4">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-info-50 text-info-700">
+                <Eye className="size-[1.375rem]" aria-hidden />
+              </span>
+              <div>
+                <h2 className="text-base font-semibold tracking-tight">Tu acceso es de solo lectura</h2>
+                <p className="mt-1 max-w-prose text-[0.9375rem] text-texto-suave">
+                  Puedes consultar qué hay en inventario, qué falta y qué está por vencer en tus centros, e imprimir o descargar la lista
+                  de reposición. Para registrar movimientos, pide a un administrador que cambie tu rol.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Link href="/alertas" className={buttonClasses()}>
+                    Ver qué falta
+                  </Link>
+                  <Link href="/inventario" className={buttonClasses({ variant: "secundario" })}>
+                    Ver inventario
+                  </Link>
+                </div>
+              </div>
+            </div>
           </Card>
         )}
+
+        <Card>
+          <CardHeader titulo="Accesos rápidos" />
+          <AccesosRapidos rol={actor.rol} incluirRegistro={esAdmin} />
+        </Card>
       </div>
 
       {!centro && resumen.porCentro.length > 0 ? (
         <Card relleno={false} className="mt-4 overflow-hidden">
           <CardHeader className="mb-0 p-4 sm:p-5" titulo="Alertas por centro" descripcion="Dónde poner atención primero" />
-          <DataTable
-            titulo="Alertas por centro"
-            filas={resumen.porCentro}
-            claveFila={(c) => c.centroId}
-            columnas={[
-              { clave: "centro", encabezado: "Centro", movil: "titulo", celda: (c) => <span className="font-medium">{c.centro}</span> },
-              { clave: "sinStock", encabezado: "Sin stock", alinear: "derecha", celda: (c) => <span className="cifras">{formatearNumero(c.sinStock)}</span> },
-              { clave: "bajoMinimo", encabezado: "Bajo mínimo", alinear: "derecha", celda: (c) => <span className="cifras">{formatearNumero(c.bajoMinimo)}</span> },
-              { clave: "vencidos", encabezado: "Vencidos", alinear: "derecha", celda: (c) => <span className="cifras">{formatearNumero(c.vencidos)}</span> },
-              { clave: "porVencer", encabezado: "Por vencer (90 días)", alinear: "derecha", celda: (c) => <span className="cifras">{formatearNumero(c.porVencer)}</span> },
-            ]}
-          />
+          <DataTable titulo="Alertas por centro" filas={resumen.porCentro} claveFila={(c) => c.centroId} columnas={COLUMNAS_CENTROS} />
         </Card>
       ) : null}
 
@@ -248,7 +358,8 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
         <Card relleno={false} className="mt-4 overflow-hidden">
           <CardHeader
             className="mb-0 p-4 sm:p-5"
-            titulo="Últimos movimientos"
+            titulo="Actividad reciente"
+            descripcion="Últimos movimientos registrados"
             acciones={
               <Link href="/movimientos" className={buttonClasses({ variant: "fantasma", size: "sm" })}>
                 Ver todos
