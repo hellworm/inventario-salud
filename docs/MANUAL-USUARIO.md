@@ -27,8 +27,9 @@ tu rol.
    contraseña temporal por una propia. Debe tener **al menos 10 caracteres, con letras y números**,
    y ser distinta de la anterior.
 
-Si te equivocas 5 veces seguidas, la cuenta se bloquea por 15 minutos. Si olvidaste tu contraseña,
-pide a un administrador que la restablezca: te dará una temporal.
+Si te equivocas 5 veces seguidas, el acceso a tu cuenta desde ese lugar se bloquea por 15 minutos.
+Si olvidaste tu contraseña, pide a un administrador que la restablezca: te dará una temporal, que
+debes usar **dentro de 72 horas** (después vence y hay que pedir otra).
 
 ### Orientarse en la pantalla
 
@@ -235,10 +236,12 @@ usuario desactivado deja de usarse pero sus registros se conservan.
 
 - **Crear:** botón **Nuevo usuario**. Indica nombre, email, rol y centros. El sistema muestra una
   **contraseña temporal una sola vez**: entrégasela a la persona por un medio seguro. Deberá
-  cambiarla al entrar.
+  cambiarla al entrar, y tiene **72 horas** para hacerlo: después la temporal vence y hay que
+  restablecerla.
 - **Menú ⋮ de cada usuario:**
   - **Editar datos, rol y centros.**
-  - **Restablecer contraseña:** genera una nueva temporal (para quien olvidó la suya).
+  - **Restablecer contraseña:** genera una nueva temporal, válida por 72 horas (para quien olvidó
+    la suya o dejó vencer la anterior).
   - **Desbloquear cuenta:** si quedó bloqueada por intentos fallidos.
   - **Desactivar usuario:** para quien ya no debe entrar; queda fuera de inmediato. Se puede
     reactivar después.
@@ -273,7 +276,8 @@ periódicamente, en especial los ajustes, las mermas y los intentos de ingreso f
 correo.
 
 **Me dice "Email o contraseña incorrectos" y estoy seguro de la clave.** Puede que la cuenta esté
-bloqueada por intentos fallidos (espera 15 minutos o pide que la desbloqueen) o desactivada.
+bloqueada por intentos fallidos (espera 15 minutos o pide que la desbloqueen), desactivada, o que
+tu contraseña temporal haya vencido (pide que te la restablezcan).
 
 **No veo un centro o un botón que otro compañero sí ve.** Depende del rol y de los centros
 asignados a cada persona. Consulta a un administrador.

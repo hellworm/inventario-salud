@@ -10,7 +10,13 @@
 
 name: redinsumos
 
+# Conexión del DUEÑO de la base: migraciones y respaldos.
 x-database-url: &database-url "postgresql://${POSTGRES_USER:-redinsumos}:${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en el archivo .env}@db:5432/${POSTGRES_DB:-redinsumos}?schema=public"
+
+# Conexión de la APLICACIÓN. Por defecto es la misma del dueño; si se definen
+# APP_DB_USER y APP_DB_PASSWORD usa ese rol de privilegios mínimos, que no puede
+# modificar ni borrar movimientos ni auditoría (docs/DESPLIEGUE.md, sección 6.1).
+x-database-url-app: &database-url-app "postgresql://${APP_DB_USER:-${POSTGRES_USER:-redinsumos}}:${APP_DB_PASSWORD:-${POSTGRES_PASSWORD}}@db:5432/${POSTGRES_DB:-redinsumos}?schema=public"
 
 services:
   # Base de datos. No publica puertos: solo la ven los demás servicios.
@@ -53,8 +59,12 @@ services:
     image: redinsumos-app
     restart: unless-stopped
     environment:
-      DATABASE_URL: *database-url
+      DATABASE_URL: *database-url-app
       SESION_HORAS: ${SESION_HORAS:-12}
+      # Proxies inversos de confianza delante de la app. Aquí siempre hay uno
+      # (Caddy u otro proxy en el propio servidor): el puerto solo escucha en
+      # 127.0.0.1. Si además hay un CDN o balanceador delante, sube a 2.
+      TRUST_PROXY: ${TRUST_PROXY:-1}
     # Solo accesible desde el propio servidor: hacia internet se publica por
     # HTTPS mediante el proxy (perfil "https") u otro proxy inverso.
     ports:
@@ -71,7 +81,8 @@ services:
       retries: 3
       start_period: 30s
 
-  # Mantenimiento: borra las sesiones vencidas una vez al día.
+  # Mantenimiento: borra las sesiones vencidas y los contadores de intentos
+  # vencidos una vez al día.
   # También sirve para tareas puntuales, por ejemplo crear el primer administrador:
   #   docker compose run --rm mantenimiento npm run admin:crear -- --email ana@miclinica.cl
   mantenimiento:
@@ -80,7 +91,7 @@ services:
     restart: unless-stopped
     command: ["sh", "-c", "while true; do npm run --silent sesiones:limpiar || echo 'sesiones:limpiar falló; se reintenta en el próximo ciclo'; sleep 86400; done"]
     environment:
-      DATABASE_URL: *database-url
+      DATABASE_URL: *database-url-app
     depends_on:
       db:
         condition: service_healthy

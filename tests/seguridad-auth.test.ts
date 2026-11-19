@@ -411,6 +411,29 @@ describe("B10 — contraseñas temporales, cambio de contraseña y cookie", () =
     }
   });
 
+  it("B8 — el proxy envía una CSP con nonce distinto por solicitud y sin 'unsafe-inline' en scripts", () => {
+    const pedir = (ruta: string, cookie?: string) =>
+      proxy(new NextRequest(`http://localhost${ruta}`, cookie ? { headers: { cookie } } : undefined));
+    const nonces = new Set<string>();
+    for (const respuesta of [pedir("/login"), pedir("/login"), pedir("/panel", `${COOKIE_SESION}=${"a".repeat(43)}`), pedir("/panel")]) {
+      const csp = respuesta.headers.get("content-security-policy") ?? "";
+      const scripts = csp.split("; ").find((d) => d.startsWith("script-src")) ?? "";
+      const nonce = /'nonce-([A-Za-z0-9+/=]{20,})'/.exec(scripts)?.[1];
+      expect(nonce, csp).toBeDefined();
+      nonces.add(nonce!);
+      expect(scripts).toContain("'strict-dynamic'");
+      expect(scripts).not.toContain("'unsafe-inline'");
+      expect(csp).toContain("object-src 'none'");
+      expect(csp).toContain("frame-ancestors 'none'");
+      expect(csp).toContain("base-uri 'self'");
+    }
+    expect(nonces.size).toBe(4);
+    // Next toma el nonce de la cabecera de la SOLICITUD que reenvía el proxy.
+    const respuesta = pedir("/login");
+    const reenviada = respuesta.headers.get("x-middleware-request-content-security-policy");
+    expect(reenviada).toBe(respuesta.headers.get("content-security-policy"));
+  });
+
   it("validarTokenSesion rechaza tokens mal formados sin consultar la base", async () => {
     expect(await validarTokenSesion("token con espacios y más de veinte caracteres")).toBeNull();
     expect(await validarTokenSesion("'; DROP TABLE sesiones; --........")).toBeNull();

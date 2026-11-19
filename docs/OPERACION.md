@@ -57,14 +57,36 @@ No hay recuperación por correo: la restablece un administrador.
 2. Se muestra una nueva contraseña temporal (una sola vez) y se cierran las sesiones de esa persona.
 3. Entrégasela; deberá cambiarla al ingresar.
 
+Las contraseñas temporales (de un usuario nuevo o restablecidas) **vencen a las 72 horas**. Si la
+persona no alcanzó a usarla verá el mensaje genérico "Email o contraseña incorrectos": restablécela
+de nuevo. En la lista de usuarios, una cuenta con la temporal vencida sigue marcada como pendiente
+de cambio de contraseña.
+
 Un administrador no puede restablecer **su propia** contraseña desde ahí: la cambia en el menú de
 su nombre (arriba a la derecha) → **Cambiar contraseña**, o se la restablece otro administrador.
 
 ### Desbloquear una cuenta
 
-Tras 5 intentos fallidos, la cuenta se bloquea por 15 minutos y se desbloquea sola. Para no
-esperar: menú **⋮** → **Desbloquear cuenta**. Si la persona no recuerda la clave, además
-restablécela.
+El sistema limita los intentos de inicio de sesión de tres maneras, siempre con el mismo mensaje
+("Email o contraseña incorrectos") y todas se levantan solas:
+
+- **Por conexión (IP) y cuenta:** 5 fallos seguidos bloquean por 15 minutos esa cuenta *desde esa
+  conexión*. Desde otra red (por ejemplo, el titular en su centro) la cuenta sigue funcionando.
+- **Por conexión (IP):** 20 intentos en 5 minutos desde una misma IP, con cualquier cuenta, frenan a
+  esa IP por unos minutos.
+- **Por cuenta, ante un ataque repartido:** si una cuenta acumula 30 fallos seguidos desde muchas
+  redes, se le aplica una espera que crece de 30 segundos hasta un máximo de 15 minutos. No afecta a
+  las redes desde las que esa persona ya ha ingresado en los últimos 30 días.
+
+Para no esperar: menú **⋮** → **Desbloquear cuenta** quita todos los bloqueos de esa cuenta (en
+todas las conexiones). Si la persona no recuerda la clave, además restablécela.
+
+Si la aplicación no conoce la IP real de los visitantes (`TRUST_PROXY` sin definir; ver
+[`DESPLIEGUE.md` §2.3](DESPLIEGUE.md#la-ip-real-de-cada-persona-trust_proxy)), solo existe el
+bloqueo clásico: 5 fallos bloquean la cuenta completa por 15 minutos.
+
+Cambiar la propia contraseña también tiene límite: 5 intentos fallidos con la contraseña actual
+obligan a esperar 15 minutos.
 
 ### Cambiar rol o centros
 
@@ -164,14 +186,22 @@ Al abrir un registro se ve su detalle.
 Qué mirar periódicamente:
 
 - **Ingresos fallidos o cuentas bloqueadas** repetidos sobre una misma cuenta: posible intento de
-  acceso indebido. Confirma con la persona y restablece su contraseña.
+  acceso indebido. Confirma con la persona y restablece su contraseña. Para que una ráfaga no
+  inunde la auditoría, se anotan como máximo 10 intentos fallidos por IP y minuto; el resto aparece
+  resumido en un único registro `LOGIN_FALLIDO_AGREGADO` con la cantidad
+  omitida. El primer rechazo de cada bloqueo siempre se anota.
+- **Lotes corregidos** (`LOTE_ACTUALIZADO`): cambios de fecha de vencimiento de un lote, con el
+  valor anterior y el nuevo.
 - **Ajustes y mermas**: son las operaciones que corrigen el stock. Revisa que tengan un motivo
   razonable y que no se concentren en una persona o insumo.
 - **Cambios de usuarios** (creaciones, cambios de rol, contraseñas restablecidas): deben
   corresponder a solicitudes reales.
 
-El historial de movimientos es inalterable: la propia base de datos rechaza cualquier modificación o
-borrado. Un error se corrige con un movimiento nuevo (un ajuste), nunca editando el anterior.
+El historial de movimientos y la auditoría son inalterables: la propia base de datos rechaza
+cualquier modificación, borrado o vaciado de esas tablas. Un error se corrige con un movimiento
+nuevo (un ajuste), nunca editando el anterior. Para reforzarlo, la aplicación puede conectarse con
+un usuario de base de datos de privilegios mínimos
+([`DESPLIEGUE.md` §6.1](DESPLIEGUE.md#61-endurecimiento-recomendado-de-la-base-de-datos)).
 
 ---
 
@@ -179,7 +209,10 @@ borrado. Un error se corrige con un movimiento nuevo (un ajuste), nunca editando
 
 - Una sesión se cierra tras `SESION_HORAS` de inactividad (12 por defecto) y, en cualquier caso, a
   los 7 días.
-- Las sesiones vencidas se borran a diario (servicio `mantenimiento`). A mano:
+- La sesión se guarda en una cookie que dura 7 días y no se renueva: lo que cierra una sesión
+  inactiva es el servidor, no el navegador.
+- Las sesiones vencidas y los contadores de intentos vencidos se borran a diario (servicio
+  `mantenimiento`). A mano:
 
   ```bash
   docker compose run --rm mantenimiento npm run sesiones:limpiar
@@ -256,9 +289,12 @@ curl -s http://127.0.0.1:3000/api/salud
 
 ### No se puede iniciar sesión
 
-- **"Email o contraseña incorrectos"**: es el mismo mensaje para clave errada, cuenta bloqueada o
-  usuario desactivado (a propósito, para no dar pistas). Revisa el estado del usuario en
-  **Administración → Usuarios** y desbloquea o restablece.
+- **"Email o contraseña incorrectos"**: es el mismo mensaje para clave errada, cuenta o conexión
+  bloqueada, contraseña temporal vencida (72 horas) o usuario desactivado (a propósito, para no dar
+  pistas). Revisa el estado del usuario en **Administración → Usuarios** y desbloquea o restablece.
+- **Nadie de un centro puede entrar durante unos minutos**: probablemente se superaron los 20
+  intentos en 5 minutos desde la conexión de ese centro (todas las personas salen con la misma IP).
+  Se levanta solo a los 5 minutos.
 - **Ingresa la clave correcta y vuelve a la pantalla de ingreso, sin mensaje de error**: el sitio
   se está abriendo por HTTP y no por HTTPS. En producción la sesión solo funciona por HTTPS
   ([`DESPLIEGUE.md` §6](DESPLIEGUE.md#6-https-es-obligatorio)).

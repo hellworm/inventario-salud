@@ -9,6 +9,8 @@
 	encode zstd gzip
 
 	# La aplicación ya envía sus cabeceras de seguridad (CSP, HSTS, etc.).
+	# Caddy escribe X-Forwarded-For con la IP de quien se conecta y descarta la
+	# que mande el cliente; la aplicación la lee con TRUST_PROXY=1 (Compose).
 	reverse_proxy app:3000 {
 		health_uri /api/salud
 		health_interval 30s
