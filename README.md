@@ -8,7 +8,7 @@ tablet o teléfono) y conecta a todos los centros de una misma red. La red puede
 instituciones**: cada una ve y administra solo lo suyo, y el operador de la plataforma ve el
 conjunto.
 
-![Panel del administrador](docs/capturas/02-panel-administrador.png)
+![Panel del administrador de la red: indicadores, la red por institución y el semáforo de vencimientos](docs/capturas/02-panel-administrador.png)
 
 ## Qué hace
 
@@ -37,11 +37,15 @@ conjunto.
 
 | Inventario | Registrar un retiro |
 |---|---|
-| ![Inventario](docs/capturas/03-inventario.png) | ![Retiro](docs/capturas/06-retiro.png) |
+| ![Inventario con el semáforo de vencimiento](docs/capturas/03-inventario.png) | ![Retiro](docs/capturas/06-retiro.png) |
 
-| Alertas | En el teléfono | Escáner |
-|---|---|---|
-| ![Alertas](docs/capturas/08-alertas.png) | <img src="docs/capturas/13-panel-movil.png" alt="Panel en el teléfono" width="260"> | <img src="docs/capturas/14-escaner-movil.png" alt="Escáner de códigos en el teléfono" width="260"> |
+| Alertas (pestaña Rojo) | Administración de instituciones |
+|---|---|
+| ![Alertas](docs/capturas/08-alertas.png) | ![Instituciones](docs/capturas/11-instituciones.png) |
+
+| En el teléfono | Escáner |
+|---|---|
+| <img src="docs/capturas/13-panel-movil.png" alt="Panel en el teléfono, con el botón Escanear" width="260"> | <img src="docs/capturas/14-escaner-movil.png" alt="Escanear para ingresar en el teléfono" width="260"> |
 
 ## Roles
 
@@ -244,6 +248,9 @@ npm run test:e2e          # todo; agrega p. ej. `retiros`, `--project=movil` o `
   esa sesión. `e2e/instituciones.spec.ts` cubre el aislamiento entre instituciones (menú, URL
   directa con ids ajenos, selector de centro, exportación CSV y Server Actions manipuladas), el
   resumen de la red por institución y el alta de una institución con su primer administrador.
+  `e2e/roles-semaforo-escaner.spec.ts` cubre lo que cruza ambas funciones: el administrador de
+  institución en el escáner (crea el insumo con el código, no lo asocia a uno existente), el
+  visitante viendo proveedores y el semáforo por institución del administrador de la red.
 - **Límite de intentos de ingreso.** El servidor de la suite corre con `TRUST_PROXY=1` (lo fija
   `playwright.config.ts`; es solo de ese servidor de pruebas) y cada test envía su propia
   `X-Forwarded-For` con una IP distinta (`ipDelTest`, en `e2e/soporte/fixtures.ts`), como personas
@@ -271,6 +278,18 @@ La aplicación está completa para el alcance descrito arriba y pasa todas sus v
 - **Bloqueo de cuentas sin proxy declarado:** sin `TRUST_PROXY` la aplicación no conoce la IP de
   cada persona y el bloqueo por intentos fallidos es por cuenta (un tercero podría bloquearla 15
   minutos). En producción con Docker Compose ya viene configurado.
+- **Asociar códigos de barras a insumos existentes** es solo del administrador de la red (el
+  catálogo es compartido). Un administrador de institución puede crear un insumo nuevo con el
+  código escaneado, pero si el insumo ya existe debe pedirle la asociación al administrador de la
+  red: no hay un flujo de "solicitud" dentro de la aplicación.
+- **Proveedores compartidos:** el directorio y sus datos de contacto son comunes a toda la red;
+  cualquier administrador (de la red o de una institución) puede editarlos, y el cambio lo ven
+  todas las instituciones (queda en la auditoría). Solo el orden "más usados primero" es propio
+  de cada institución.
+- **Detrás de un proxy o túnel que cambia el dominio** (por ejemplo una vista previa) el inicio de
+  sesión falla si el proxy no reenvía el host público; se resuelve en el proxy o compilando con
+  `SERVER_ACTIONS_ORIGENES` (ver [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md) §2.3). La aplicación
+  no se puede incrustar en un `<iframe>`.
 - **Escáner:** probado con la cámara simulada de Chromium y con imágenes generadas (EAN-13,
   Code 128, DataMatrix GS1 y QR); conviene validarlo con los teléfonos reales del centro (iPhone/
   Safari y Android/Chrome) y con los envases que más se reciben antes de darlo por bueno. Requiere

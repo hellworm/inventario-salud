@@ -133,8 +133,8 @@ test.describe("Visitante: proveedores", () => {
     // Nada de edición ni de administración.
     await expect(directorio.getByRole("link", { name: /Editar/ })).toHaveCount(0);
     await expect(directorio.getByRole("link", { name: "Administrar proveedores" })).toHaveCount(0);
-    const admin = await visita.request.get("/admin/proveedores", { maxRedirects: 0 });
-    expect(admin.status()).not.toBe(200);
+    await visita.goto("/admin/proveedores");
+    await expect(visita).toHaveURL(/\/sin-permiso$/);
   });
 
   test("«Editar» es de los dos administradores (de la red y de institución), no del bodeguero", async ({ abrirComo }) => {
@@ -151,7 +151,7 @@ test.describe("Visitante: proveedores", () => {
 });
 
 test.describe("Administrador de la red: semáforo por institución", () => {
-  test("@movil cada institución muestra vencidos, rojo y amarillo; al desplegarla, sus centros con enlaces a la pestaña correcta", async ({ abrirComo }) => {
+  test("@movil cada institución muestra vencidos, rojo y amarillo; al desplegarla, sus centros con enlaces a la pestaña correcta", async ({ abrirComo, isMobile }) => {
     const red = await abrirComo("admin");
     await red.goto("/panel");
     const resumen = red.locator("[data-resumen-instituciones]");
@@ -198,8 +198,12 @@ test.describe("Administrador de la red: semáforo por institución", () => {
     await nunoa.getByRole("link", { name: new RegExp(`lotes en rojo en ${CENTROS.nunoa}`) }).click();
     await expect(red).toHaveURL(/\/alertas\?tab=rojo&centro=/);
     await expect(red.getByRole("main").locator('a[aria-current="page"]')).toContainText("Rojo");
-    await expect(red.getByRole("banner")).toContainText(CENTROS.nunoa);
-    await expect(red.getByRole("main")).not.toContainText(CENTROS.valpo);
+    await expect(red.getByRole("combobox", { name: "Centro" }).locator("option:checked")).toHaveText(CENTROS.nunoa);
+    // La tabla (escritorio) o la lista (celular) solo trae lotes de ese centro.
+    const lotes = isMobile ? red.getByRole("list", { name: "Lotes en rojo" }) : red.getByRole("main").locator("tbody");
+    await expect(lotes).toContainText("Lote");
+    await expect(lotes).not.toContainText(CENTROS.valpo);
+    await expect(lotes).not.toContainText(CENTROS.conce);
   });
 
   test("la suma del semáforo de las instituciones del seed no supera el de toda la red, y un administrador de institución ve solo el suyo", async ({ abrirComo }) => {

@@ -143,6 +143,30 @@ administrador de su institución, desde **Usuarios**.)
 
 ---
 
+## Catálogo compartido, códigos de barras y proveedores
+
+El catálogo de insumos y los proveedores son **comunes a toda la red**; el stock, los mínimos y el
+semáforo de vencimientos son de cada institución (cada una ve solo los suyos; el administrador de
+la red ve el total y, en el Panel, el desglose por institución).
+
+| Tarea | Quién |
+|---|---|
+| Crear un insumo o una categoría (también desde el escáner, **Crear insumo con este código**) | Administrador de la red o de institución |
+| Editar o desactivar un insumo existente, o **asociarle un código de barras** (desde el escáner o en su ficha) | Solo el administrador de la red |
+| Crear, editar o desactivar proveedores (teléfono, correo, **sitio web para comprar**) | Administrador de la red o de institución; el cambio lo ven todas las instituciones |
+| Ver el directorio de proveedores (Panel y **Proveedores**) | Todos los roles |
+
+- Cuando un bodeguero o un administrador de institución avisa que un código "no se reconoce" y el
+  insumo **ya existe**, el administrador de la red lo resuelve escaneando el mismo código y
+  marcando **Asociar este código a ese insumo**, o escribiéndolo en **Administración → Insumos**.
+  El mismo producto no puede quedar en dos insumos (aunque el código venga como EAN-13 o GTIN-14).
+- El sitio web de un proveedor solo admite direcciones `http(s)`; lo que se escribe sin
+  `https://` se completa solo.
+- Los límites del semáforo (rojo: menos de 3 meses; amarillo: de 3 a 6) son fijos y no se
+  configuran.
+
+---
+
 ## Respaldos
 
 ### Verificar que se están haciendo
@@ -332,12 +356,23 @@ curl -s http://127.0.0.1:3000/api/salud
 - **Nadie puede entrar tras una restauración**: las cuentas son las del momento del respaldo. Usa
   `admin:crear --restablecer`.
 
+### El escáner no abre la cámara
+
+- **"La cámara necesita una conexión segura"**: el sitio se abrió por HTTP. La cámara solo funciona
+  por HTTPS ([`DESPLIEGUE.md` §6](DESPLIEGUE.md#6-https-es-obligatorio)).
+- **"Falta el permiso para usar la cámara"**: se negó el permiso en el navegador; se cambia desde
+  el candado junto a la dirección (en iPhone, «aA»).
+- Si un proxy propio agrega la cabecera `Permissions-Policy: camera=()`, bloquea la cámara: debe
+  dejar pasar la de la aplicación (`camera=(self)`).
+- Siempre queda la alternativa **Escribir el código** o un lector USB/Bluetooth.
+
 ### Un usuario no ve un centro, un menú o un botón
 
 Es por su rol, su institución o sus centros asignados. Revisa **Editar datos, rol y centros**.
 Recuerda que solo los administradores hacen traslados, ajustes y mermas, y ven reportes y
 administración; que nadie ve centros de otra institución; y que solo el administrador de la red ve
-**Instituciones** y puede modificar insumos y categorías existentes.
+**Instituciones** y puede modificar insumos y categorías existentes (incluido asociarles un código
+de barras). **Escanear** aparece solo a quien registra ingresos (no al visitante).
 
 ### "Ocurrió un error inesperado"
 

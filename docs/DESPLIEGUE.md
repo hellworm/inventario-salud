@@ -516,6 +516,11 @@ En la opción B el flujo es el mismo en concepto: respaldo → migraciones → p
 
 ### Actualizar desde una versión anterior al nivel Institución
 
+Esta actualización trae dos migraciones, que `prisma migrate deploy` aplica en orden:
+`proveedor_sitio_web` (una columna opcional en proveedores con su `CHECK`; no toca datos) e
+`instituciones`. Ambas se probaron sobre una copia de una base en la versión anterior (con su
+historial de movimientos y auditoría) y sobre una base nueva.
+
 La migración `instituciones` convierte una instalación de una sola organización sin perder datos:
 
 - crea la institución **"Institución principal"** y le asigna todos los centros y todos los
