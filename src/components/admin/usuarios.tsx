@@ -310,11 +310,10 @@ function DialogoUsuario({
       centroIds:
         rol !== "" && rolRequiereCentros(rol) ? centrosVisibles.filter((c) => centroIds.has(c.id)).map((c) => c.id) : [],
     };
-    if (!validacion.validar(valores)) return;
-    if (llevaInstitucion && !institucionId) {
-      setFaltaInstitucion(true);
-      return;
-    }
+    // La institución va primero: sin ella no se muestran los centros (ni su error).
+    const sinInstitucion = llevaInstitucion && !institucionId;
+    setFaltaInstitucion(sinInstitucion);
+    if (!validacion.validar(valores) || sinInstitucion) return;
     if (usuario) void actualizar.ejecutar({ ...valores, id: usuario.id });
     else void crear.ejecutar(valores);
   }

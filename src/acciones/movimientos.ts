@@ -110,7 +110,7 @@ export const registrarTrasladoAccion = accionSegura(
 );
 
 /**
- * Corrige la fecha de vencimiento de un lote (solo ADMIN; auditado como
+ * Corrige la fecha de vencimiento de un lote (solo administradores; auditado como
  * LOTE_ACTUALIZADO). Entrada: `{ loteId, fechaVencimiento?, motivo }`;
  * `fechaVencimiento` vacío deja el lote sin fecha. Devuelve
  * `{ loteId, numeroLote, fechaVencimientoAnterior, fechaVencimiento, cambiado }`.

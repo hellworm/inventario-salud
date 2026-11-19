@@ -95,7 +95,7 @@ export const esquemaTraslado = z
 export type EntradaTraslado = z.input<typeof esquemaTraslado>;
 export type DatosTraslado = z.output<typeof esquemaTraslado>;
 
-/** Corrección administrativa del vencimiento de un lote (solo ADMIN). */
+/** Corrección administrativa del vencimiento de un lote (solo administradores). */
 export const esquemaCorregirVencimientoLote = z.object({
   loteId: zId,
   /** Nueva fecha de vencimiento; vacío = el lote queda sin fecha. */

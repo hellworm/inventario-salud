@@ -14,7 +14,7 @@ export interface LoteCorregible {
 }
 
 /**
- * Corrección administrativa del vencimiento de un lote (solo ADMIN): fecha
+ * Corrección administrativa del vencimiento de un lote (solo administradores): fecha
  * nueva + motivo obligatorio y un paso de confirmación. La fecha es del LOTE,
  * así que cambia en todas las ubicaciones y centros donde esté. Queda en la
  * auditoría (LOTE_ACTUALIZADO) con la fecha anterior, la nueva y el motivo.
