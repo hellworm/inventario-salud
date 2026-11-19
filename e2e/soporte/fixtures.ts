@@ -101,3 +101,13 @@ export async function iniciarSesionComo(pagina: Page, rol: Rol): Promise<void> {
 export function sesionDe(rol: Rol): { storageState: string } {
   return { storageState: rutaSesion(rol) };
 }
+
+/**
+ * Marca un test que hoy falla por un bug real de la aplicación (ver el informe
+ * de QA): se espera que falle y la suite sigue en verde. Con
+ * `E2E_EXIGIR_BUGS=1` se ejecuta como un test normal, para ver el fallo o
+ * comprobar un arreglo. Al corregir el bug, quitar la llamada.
+ */
+export function bugConocido(motivo: string): void {
+  test.fail(!process.env.E2E_EXIGIR_BUGS, motivo);
+}

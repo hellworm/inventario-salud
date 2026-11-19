@@ -11,7 +11,7 @@ import {
   registrarIngreso,
   type InsumoPrueba,
 } from "./soporte/datos";
-import { expect, test } from "./soporte/fixtures";
+import { bugConocido, expect, test } from "./soporte/fixtures";
 
 const NUNOA = UBICACIONES.nunoaBodega;
 const VALPO = UBICACIONES.valpoBodega;
@@ -184,5 +184,16 @@ test.describe("Aislamiento por centro", () => {
     await expect(nunoa.getByRole("banner")).not.toContainText("Toda la red");
     await expect(nunoa.getByRole("main")).not.toContainText(CENTROS.valpo);
     await expect(nunoa.getByRole("main")).not.toContainText(CENTROS.conce);
+  });
+
+  test("B-08: el formulario de ingreso no sugiere lotes que solo existen en otro centro", async ({ abrirComo }) => {
+    bugConocido("B-08: las sugerencias '¿Es un lote que ya tienes?' incluyen números de lote y vencimientos de otros centros");
+    const admin = await abrirComo("admin");
+    const e = await prepararEscenario(admin);
+    const nunoa = await abrirComo("bodega");
+    await nunoa.goto(`/movimientos/ingreso?insumo=${e.insumo.id}`);
+    const sugerencias = nunoa.getByRole("group", { name: "Lotes registrados de este insumo" });
+    await expect(sugerencias).toContainText(e.loteNunoa);
+    await expect(sugerencias).not.toContainText(e.loteValpo);
   });
 });

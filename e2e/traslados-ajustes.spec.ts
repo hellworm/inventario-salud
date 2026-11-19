@@ -11,7 +11,7 @@ import {
   registrarIngreso,
   type InsumoPrueba,
 } from "./soporte/datos";
-import { expect, sesionDe, test } from "./soporte/fixtures";
+import { bugConocido, expect, sesionDe, test } from "./soporte/fixtures";
 
 const BODEGA = UBICACIONES.nunoaBodega;
 const SALA = UBICACIONES.nunoaSala1;
@@ -190,5 +190,25 @@ test.describe("Traslados, ajustes y mermas (ADMIN)", () => {
     await page.getByRole("button", { name: "Registrar ajuste" }).click();
     await expect(formulario).toContainText("Indica el motivo del ajuste");
     expect(await disponibleEnFicha(page, insumo)).toBe(3);
+  });
+
+  test("los enlaces 'Dar de baja' de la ficha abren el formulario en modo merma con el lote elegido", async ({ page }) => {
+    // Dato del seed: lote vencido de Clorhexidina jabonosa (CLO-JAB) en la Sala 1 de Ñuñoa.
+    await page.goto("/inventario?q=CLO-JAB");
+    await page.getByRole("main").locator("tbody tr").first().getByRole("button").first().click();
+    await page.getByRole("dialog").getByRole("link", { name: "Ver ficha completa" }).click();
+    await page.getByRole("main").getByRole("link", { name: "Dar de baja" }).first().click();
+    await expect(page).toHaveURL(/\/movimientos\/ajuste\?tipo=merma&insumo=.+&ubicacion=.+&lote=.+/);
+    await expect(page.getByRole("radio", { name: /^Dar de baja/ })).toBeChecked();
+    await expect(page.getByRole("group", { name: "Lote" }).getByRole("radio", { checked: true })).toHaveCount(1);
+    await expect(page.getByRole("group", { name: "Lote" })).toContainText("Vencido");
+  });
+
+  test("B-09: 'Registrar merma' (panel y alertas de vencidos) abre el formulario en modo merma", async ({ page }) => {
+    bugConocido("B-09: el enlace apunta a /movimientos/ajuste sin ?tipo=merma y el formulario parte en 'Restar stock'");
+    await page.goto("/panel");
+    await page.getByRole("main").getByRole("link", { name: "Registrar merma" }).click();
+    await expect(page).toHaveURL(/\/movimientos\/ajuste/);
+    await expect(page.getByRole("radio", { name: /^Dar de baja/ })).toBeChecked();
   });
 });

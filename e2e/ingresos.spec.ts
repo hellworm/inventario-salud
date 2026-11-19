@@ -8,7 +8,7 @@ import {
   llenarIngreso,
   registrarIngreso,
 } from "./soporte/datos";
-import { expect, test } from "./soporte/fixtures";
+import { bugConocido, expect, test } from "./soporte/fixtures";
 
 const BODEGA = UBICACIONES.nunoaBodega;
 
@@ -127,5 +127,48 @@ test.describe("Ingresos de stock", () => {
     await expect(ultimos.getByRole("row").nth(1)).toContainText("Ingreso");
     await expect(ultimos.getByRole("row").nth(1)).toContainText("+11");
     await expect(ultimos.getByRole("row").nth(1)).toContainText(CUENTAS.bodega.nombre);
+  });
+
+  // --- Bugs conocidos (ver informe de QA). Quitar `test.fail` cuando se corrijan. ---
+
+  test("B-01: el costo unitario escrito con punto decimal se guarda tal cual", async ({ abrirComo }) => {
+    bugConocido("B-01: '1250.5' se guarda como 12.505 (el punto se toma siempre como separador de miles)");
+    const admin = await abrirComo("admin");
+    const insumo = await crearInsumo(admin);
+    const lote = `CO-${insumo.sufijo}`;
+    await llenarIngreso(admin, { insumo, ubicacion: BODEGA, lote, vence: diaSantiago(120), cantidad: 2 });
+    await admin.getByLabel(/Costo unitario/).fill("1250.5");
+    await admin.getByRole("button", { name: "Registrar ingreso" }).click();
+    await expect(admin.getByRole("heading", { name: "Ingreso registrado" })).toBeVisible();
+
+    const csv = await (await admin.request.get(`/reportes/exportar/existencias?q=${insumo.codigo}`)).text();
+    const [encabezados, fila] = csv.replace(/^\ufeff/, "").split("\r\n").map((l) => l.split(";"));
+    expect(fila[encabezados.indexOf("Lote")]).toBe(lote);
+    // 1.250,5 por caja × 2 cajas = 2.501
+    expect(fila[encabezados.indexOf("Costo unitario (CLP)")]).toBe("1250,5");
+    expect(fila[encabezados.indexOf("Valor (CLP)")]).toBe("2501");
+  });
+
+  test("B-06: se puede ingresar a un lote sin fecha después de activar el control de vencimiento", async ({ abrirComo }) => {
+    bugConocido("B-06: el formulario no deja indicar la fecha de un lote existente sin vencimiento y el rechazo del servidor no se muestra");
+    const admin = await abrirComo("admin");
+    const insumo = await crearInsumo(admin, { controlaVencimiento: false });
+    const lote = `SF-${insumo.sufijo}`;
+    await registrarIngreso(admin, { insumo, ubicacion: BODEGA, lote, cantidad: 5 });
+
+    await admin.goto(`/admin/insumos/${insumo.id}`);
+    await admin.getByRole("checkbox", { name: /Controla fecha de vencimiento/ }).check();
+    await admin.getByRole("button", { name: "Guardar cambios" }).click();
+    await expect(admin.getByRole("region", { name: /Notifications/ })).toContainText(/guardad|actualizad/i);
+
+    // Segundo ingreso al mismo lote: debe poder completarse (indicando la fecha que faltaba)
+    // o, como mínimo, explicar a la vista por qué no se registra.
+    await llenarIngreso(admin, { insumo, ubicacion: BODEGA, lote, cantidad: 2 });
+    await expect(admin.getByText("Lote existente")).toBeVisible();
+    await admin.getByRole("button", { name: "Registrar ingreso" }).click();
+    const formulario = admin.getByRole("form", { name: "Registrar ingreso" });
+    const fecha = admin.getByLabel("Vencimiento");
+    const mensajeVisible = formulario.locator(":not(.sr-only)").getByText(/controla vencimiento/).first();
+    await expect(fecha.or(mensajeVisible).or(admin.getByRole("heading", { name: "Ingreso registrado" })).first()).toBeVisible();
   });
 });
