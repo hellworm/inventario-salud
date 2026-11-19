@@ -7,6 +7,7 @@ import {
   Building2,
   ChartColumn,
   History,
+  Landmark,
   LayoutDashboard,
   PackageSearch,
   ScrollText,
@@ -57,8 +58,9 @@ export const NAVEGACION: readonly GrupoNavegacion[] = [
   {
     titulo: "Administración",
     items: [
-      { href: "/admin/insumos", etiqueta: "Insumos", icono: PackageSearch, permiso: "catalogo:gestionar" },
-      { href: "/admin/categorias", etiqueta: "Categorías", icono: Tags, permiso: "catalogo:gestionar" },
+      { href: "/admin/instituciones", etiqueta: "Instituciones", icono: Landmark, permiso: "instituciones:gestionar" },
+      { href: "/admin/insumos", etiqueta: "Insumos", icono: PackageSearch, permiso: "catalogo:crear" },
+      { href: "/admin/categorias", etiqueta: "Categorías", icono: Tags, permiso: "catalogo:crear" },
       { href: "/admin/centros", etiqueta: "Centros y ubicaciones", icono: Building2, permiso: "centros:gestionar" },
       { href: "/admin/proveedores", etiqueta: "Proveedores", icono: Truck, permiso: "proveedores:gestionar" },
       { href: "/admin/usuarios", etiqueta: "Usuarios", icono: Users, permiso: "usuarios:gestionar" },

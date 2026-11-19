@@ -103,8 +103,8 @@ describe("permisos de administración", () => {
         actualizarProveedor(actor, { id: e.proveedor, rut: "77.777.777-7", razonSocial: "X" }),
         establecerProveedorActivo(actor, e.proveedor, false),
         listarUsuarios(actor),
-        crearUsuario(actor, { nombre: "Otro Admin", email: "otro@test.cl", rol: "ADMIN" }),
-        actualizarUsuario(actor, { id: actor.usuarioId, nombre: "Yo Mismo", email: "yo@test.cl", rol: "ADMIN" }),
+        crearUsuario(actor, { nombre: "Otro Admin", email: "otro@test.cl", rol: "ADMIN_RED" }),
+        actualizarUsuario(actor, { id: actor.usuarioId, nombre: "Yo Mismo", email: "yo@test.cl", rol: "ADMIN_RED" }),
         establecerUsuarioActivo(actor, e.admin.usuarioId, false),
         restablecerPasswordUsuario(actor, e.admin.usuarioId),
         desbloquearUsuario(actor, e.admin.usuarioId),
@@ -115,7 +115,7 @@ describe("permisos de administración", () => {
     }
     // Nada cambió ni quedó auditado.
     expect(await db.registroAuditoria.count()).toBe(0);
-    expect(await db.usuario.count({ where: { rol: "ADMIN" } })).toBe(1);
+    expect(await db.usuario.count({ where: { rol: "ADMIN_RED" } })).toBe(1);
   });
 });
 
@@ -342,19 +342,19 @@ describe("categorías", () => {
 // ---------------------------------------------------------------------------
 describe("centros y ubicaciones", () => {
   it("crea un centro con RUT normalizado y una bodega inicial", async () => {
-    const centro = await crearCentro(e.admin, centroBase);
+    const centro = await crearCentro(e.admin, { ...centroBase, institucionId: e.institucion });
     const ficha = await obtenerCentroAdmin(e.admin, centro.id);
     expect(ficha).toMatchObject({ rut: "76543210-3", comuna: "Temuco", activo: true, existencias: 0 });
     expect(ficha.ubicaciones).toMatchObject([{ nombre: "Bodega principal", tipo: "BODEGA", activo: true }]);
   });
 
   it("valida RUT, región y nombre único", async () => {
-    const error = await esperarError(crearCentro(e.admin, { ...centroBase, rut: "76.543.210-9", region: "Narnia" }), "VALIDACION");
+    const error = await esperarError(crearCentro(e.admin, { ...centroBase, institucionId: e.institucion, rut: "76.543.210-9", region: "Narnia" }), "VALIDACION");
     expect(Object.keys(error.detalle?.erroresCampo as object).sort()).toEqual(["region", "rut"]);
-    const dup = await esperarError(crearCentro(e.admin, { ...centroBase, nombre: "centro a" }), "DUPLICADO");
+    const dup = await esperarError(crearCentro(e.admin, { ...centroBase, institucionId: e.institucion, nombre: "centro a" }), "DUPLICADO");
     expect(dup.campo).toBe("nombre");
     // El RUT es opcional.
-    await crearCentro(e.admin, { ...centroBase, rut: "" });
+    await crearCentro(e.admin, { ...centroBase, institucionId: e.institucion, rut: "" });
   });
 
   it("no desactiva un centro con existencias ni el último centro activo", async () => {
@@ -481,7 +481,7 @@ describe("usuarios", () => {
     const inexistente = await esperarError(crearUsuario(e.admin, { ...nuevo(), email: "otra@test.cl", centroIds: ["no-existe"] }), "NO_ENCONTRADO");
     expect(inexistente.campo).toBe("centroIds");
 
-    const admin2 = await crearUsuario(e.admin, { nombre: "Rosa Díaz", email: "rosa@test.cl", rol: "ADMIN", centroIds: [e.centroA] });
+    const admin2 = await crearUsuario(e.admin, { nombre: "Rosa Díaz", email: "rosa@test.cl", rol: "ADMIN_RED", centroIds: [e.centroA] });
     expect(await db.usuarioCentro.count({ where: { usuarioId: admin2.id } })).toBe(0);
   });
 
@@ -511,24 +511,24 @@ describe("usuarios", () => {
   });
 
   it("un admin no puede desactivarse ni quitarse el rol a sí mismo", async () => {
-    await crearUsuario(e.admin, { nombre: "Rosa Díaz", email: "rosa@test.cl", rol: "ADMIN" }); // hay otro admin: igual se rechaza
+    await crearUsuario(e.admin, { nombre: "Rosa Díaz", email: "rosa@test.cl", rol: "ADMIN_RED" }); // hay otro admin: igual se rechaza
     await esperarError(establecerUsuarioActivo(e.admin, e.admin.usuarioId, false), "OPERACION_INVALIDA");
     const error = await esperarError(
       actualizarUsuario(e.admin, { id: e.admin.usuarioId, nombre: "Admin", email: "admin@test.cl", rol: "BODEGUERO", centroIds: [e.centroA] }),
       "OPERACION_INVALIDA",
     );
     expect(error.campo).toBe("rol");
-    expect(await db.usuario.findUniqueOrThrow({ where: { id: e.admin.usuarioId } })).toMatchObject({ rol: "ADMIN", activo: true });
+    expect(await db.usuario.findUniqueOrThrow({ where: { id: e.admin.usuarioId } })).toMatchObject({ rol: "ADMIN_RED", activo: true });
     // Sí puede editar sus otros datos sin perder la sesión.
-    const r = await actualizarUsuario(e.admin, { id: e.admin.usuarioId, nombre: "Admin Principal", email: "admin@test.cl", rol: "ADMIN" });
+    const r = await actualizarUsuario(e.admin, { id: e.admin.usuarioId, nombre: "Admin Principal", email: "admin@test.cl", rol: "ADMIN_RED" });
     expect(r).toMatchObject({ nombre: "Admin Principal", sesionesCerradas: 0 });
   });
 
   it("la red nunca queda sin un ADMIN activo", async () => {
     // Un segundo administrador cuya cuenta fue desactivada, pero que aún conserva una identidad de ADMIN
     // (p. ej. una solicitud en curso): no puede dejar la red sin administradores activos.
-    const rosa = await crearUsuario(e.admin, { nombre: "Rosa Díaz", email: "rosa@test.cl", rol: "ADMIN" });
-    const actorRosa: Actor = { usuarioId: rosa.id, rol: "ADMIN", centroIds: [] };
+    const rosa = await crearUsuario(e.admin, { nombre: "Rosa Díaz", email: "rosa@test.cl", rol: "ADMIN_RED" });
+    const actorRosa: Actor = { usuarioId: rosa.id, rol: "ADMIN_RED", institucionId: null, centroIds: [] };
     await establecerUsuarioActivo(e.admin, rosa.id, false);
 
     await esperarError(establecerUsuarioActivo(actorRosa, e.admin.usuarioId, false), "OPERACION_INVALIDA");
@@ -536,25 +536,25 @@ describe("usuarios", () => {
       actualizarUsuario(actorRosa, { id: e.admin.usuarioId, nombre: "Admin", email: "admin@test.cl", rol: "VISITANTE", centroIds: [e.centroA] }),
       "OPERACION_INVALIDA",
     );
-    expect(await db.usuario.count({ where: { rol: "ADMIN", activo: true } })).toBe(1);
+    expect(await db.usuario.count({ where: { rol: "ADMIN_RED", activo: true } })).toBe(1);
 
     // Con otro administrador activo sí se puede degradar o desactivar.
     await establecerUsuarioActivo(e.admin, rosa.id, true);
     await actualizarUsuario(actorRosa, { id: e.admin.usuarioId, nombre: "Admin", email: "admin@test.cl", rol: "VISITANTE", centroIds: [e.centroA] });
-    expect(await db.usuario.count({ where: { rol: "ADMIN", activo: true } })).toBe(1);
+    expect(await db.usuario.count({ where: { rol: "ADMIN_RED", activo: true } })).toBe(1);
     // Ahora Rosa es la única administradora activa: tampoco se la puede desactivar.
     await esperarError(establecerUsuarioActivo(e.admin, rosa.id, false), "OPERACION_INVALIDA");
   });
 
   it("dos desactivaciones cruzadas simultáneas no dejan la red sin administrador", async () => {
-    const rosa = await crearUsuario(e.admin, { nombre: "Rosa Díaz", email: "rosa@test.cl", rol: "ADMIN" });
-    const actorRosa: Actor = { usuarioId: rosa.id, rol: "ADMIN", centroIds: [] };
+    const rosa = await crearUsuario(e.admin, { nombre: "Rosa Díaz", email: "rosa@test.cl", rol: "ADMIN_RED" });
+    const actorRosa: Actor = { usuarioId: rosa.id, rol: "ADMIN_RED", institucionId: null, centroIds: [] };
     const resultados = await Promise.allSettled([
       establecerUsuarioActivo(e.admin, rosa.id, false),
       establecerUsuarioActivo(actorRosa, e.admin.usuarioId, false),
     ]);
     expect(resultados.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    expect(await db.usuario.count({ where: { rol: "ADMIN", activo: true } })).toBe(1);
+    expect(await db.usuario.count({ where: { rol: "ADMIN_RED", activo: true } })).toBe(1);
   });
 
   it("desactivar invalida las sesiones y bloquea el ingreso; reactivar lo restituye", async () => {

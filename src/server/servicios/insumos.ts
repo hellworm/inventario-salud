@@ -12,7 +12,7 @@ import {
 import type { Actor } from "@/lib/permisos";
 import type { Paginado } from "@/lib/resultado";
 import { registrarAuditoria } from "../auditoria";
-import { verificarPermiso } from "../autorizacion";
+import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { db, enTransaccion, type Tx } from "../db";
 import { ErrorDominio, noEncontrado } from "../errores";
 import { validar } from "../validacion";
@@ -53,10 +53,18 @@ export interface FiltrosInsumosAdmin extends OpcionesPagina {
 /**
  * Catálogo completo (activos e inactivos) para administración. Busca por
  * nombre, código, fabricante o código de barras, sin distinguir tildes.
- * Permiso: `catalogo:gestionar`.
+ * `centrosConParametro` cuenta solo los centros del alcance del actor.
+ * Permiso: `catalogo:crear`.
  */
 export async function listarInsumosAdmin(actor: Actor, filtros: FiltrosInsumosAdmin = {}): Promise<Paginado<FilaInsumoAdmin>> {
-  verificarPermiso(actor, "catalogo:gestionar");
+  verificarPermiso(actor, "catalogo:crear");
+  const alcance = alcanceDeCentros(actor);
+  const enAlcance =
+    alcance === null
+      ? Prisma.empty
+      : alcance.length === 0
+        ? Prisma.sql`AND FALSE`
+        : Prisma.sql`AND p."centroId" IN (${Prisma.join(alcance)})`;
   const { pagina, porPagina, saltar } = normalizarPagina(filtros);
   const texto = textoDeBusqueda(filtros.texto);
 
@@ -80,7 +88,7 @@ export async function listarInsumosAdmin(actor: Actor, filtros: FiltrosInsumosAd
     db.$queryRaw<(Omit<FilaInsumoAdmin, "centrosConParametro"> & { centrosConParametro: bigint })[]>(Prisma.sql`
       SELECT i."id", i."codigo", i."nombre", i."categoriaId", c."nombre" AS "categoria", i."unidadMedida",
              i."presentacion", i."fabricante", i."requiereCadenaFrio", i."controlaVencimiento", i."activo",
-             (SELECT COUNT(*) FROM "parametros_stock" p WHERE p."insumoId" = i."id") AS "centrosConParametro"
+             (SELECT COUNT(*) FROM "parametros_stock" p WHERE p."insumoId" = i."id" ${enAlcance}) AS "centrosConParametro"
       FROM "insumos" i
       JOIN "categorias" c ON c."id" = i."categoriaId"
       WHERE ${donde}
@@ -99,6 +107,7 @@ export async function listarInsumosAdmin(actor: Actor, filtros: FiltrosInsumosAd
 export interface ParametroCentro {
   centroId: string;
   centro: string;
+  institucion: string;
   centroActivo: boolean;
   stockMinimo: number | null;
   stockMaximo: number | null;
@@ -124,27 +133,42 @@ export interface InsumoAdmin {
   actualizadoEn: Date;
   /** Tiene lotes o movimientos: no se puede eliminar, solo desactivar. */
   tieneHistoria: boolean;
-  /** Unidades físicas en toda la red. */
+  /** Unidades físicas en los centros del alcance del actor (toda la red para ADMIN_RED). */
   stockTotal: number;
-  /** Una fila por centro (los inactivos solo si ya tienen parámetro). */
+  /** Una fila por centro del alcance del actor (los inactivos solo si ya tienen parámetro). */
   parametros: ParametroCentro[];
 }
 
-/** Ficha de un insumo para editar, con sus parámetros de stock por centro. Permiso: `catalogo:gestionar`. */
+/**
+ * Ficha de un insumo, con sus parámetros de stock por centro. Los datos del
+ * insumo son del catálogo común; el stock y los parámetros se limitan a los
+ * centros del alcance del actor (su institución para un ADMIN).
+ * Permiso: `catalogo:crear`.
+ */
 export async function obtenerInsumoAdmin(actor: Actor, insumoId: string): Promise<InsumoAdmin> {
-  verificarPermiso(actor, "catalogo:gestionar");
+  verificarPermiso(actor, "catalogo:crear");
+  const alcance = alcanceDeCentros(actor);
+  const enAlcance = alcance === null ? {} : { id: { in: alcance } };
   const [insumo, centros, stock] = await Promise.all([
     db.insumo.findUnique({
       where: { id: insumoId },
-      include: { parametros: true, _count: { select: { lotes: true, movimientos: true } } },
+      include: {
+        parametros: alcance === null ? true : { where: { centroId: { in: alcance } } },
+        _count: { select: { lotes: true, movimientos: true } },
+      },
     }),
-    db.centro.findMany({ select: { id: true, nombre: true, activo: true }, orderBy: { nombre: "asc" } }),
+    db.centro.findMany({
+      where: enAlcance,
+      select: { id: true, nombre: true, activo: true, institucion: { select: { nombre: true } } },
+      orderBy: [{ institucion: { nombre: "asc" } }, { nombre: "asc" }],
+    }),
     db.$queryRaw<{ centroId: string; cantidad: bigint }[]>(Prisma.sql`
       SELECT u."centroId", COALESCE(SUM(e."cantidad"), 0) AS cantidad
       FROM "existencias" e
       JOIN "lotes" l ON l."id" = e."loteId"
       JOIN "ubicaciones" u ON u."id" = e."ubicacionId"
       WHERE l."insumoId" = ${insumoId}
+        ${alcance === null ? Prisma.empty : alcance.length === 0 ? Prisma.sql`AND FALSE` : Prisma.sql`AND u."centroId" IN (${Prisma.join(alcance)})`}
       GROUP BY u."centroId"
     `),
   ]);
@@ -165,6 +189,7 @@ export async function obtenerInsumoAdmin(actor: Actor, insumoId: string): Promis
         return {
           centroId: c.id,
           centro: c.nombre,
+          institucion: c.institucion.nombre,
           centroActivo: c.activo,
           stockMinimo: p ? p.stockMinimo : null,
           stockMaximo: p ? p.stockMaximo : null,
@@ -216,9 +241,13 @@ function camposInsumo(datos: DatosInsumo) {
   };
 }
 
-/** Crea un insumo en el catálogo común. Permiso: `catalogo:gestionar`. */
+/**
+ * Crea un insumo en el catálogo común. Permiso: `catalogo:crear` (también un
+ * administrador de institución). Una vez creado es de toda la red: editarlo,
+ * desactivarlo o eliminarlo exige `catalogo:gestionar` (solo ADMIN_RED).
+ */
 export async function crearInsumo(actor: Actor, entrada: EntradaInsumo): Promise<{ id: string; codigo: string; nombre: string }> {
-  verificarPermiso(actor, "catalogo:gestionar");
+  verificarPermiso(actor, "catalogo:crear");
   const datos = validar(esquemaInsumo, entrada);
   return conUnicidad(
     () =>
@@ -368,8 +397,11 @@ export async function eliminarInsumo(actor: Actor, insumoId: string): Promise<{ 
 /**
  * Guarda los parámetros de stock (mínimo / máximo) de un insumo para varios
  * centros a la vez. Una fila sin mínimo ni máximo elimina el parámetro de ese
- * centro. Solo se auditan los centros que realmente cambian.
- * Permiso: `parametros:gestionar`.
+ * centro. Solo se auditan los centros que realmente cambian (un registro por
+ * institución afectada).
+ * Permiso: `parametros:gestionar` EN CADA CENTRO: un administrador de
+ * institución solo puede tocar los centros de su institución; si la entrada
+ * trae un centro ajeno se rechaza todo (`SIN_ACCESO_AL_CENTRO`).
  */
 export async function guardarParametrosStock(
   actor: Actor,
@@ -381,18 +413,20 @@ export async function guardarParametrosStock(
   if (new Set(ids).size !== ids.length) {
     throw new ErrorDominio("VALIDACION", "Hay centros repetidos en los parámetros.");
   }
+  for (const centroId of ids) verificarPermiso(actor, "parametros:gestionar", centroId);
 
   return enTransaccion(async (tx) => {
     const insumo = await tx.insumo.findUnique({ where: { id: datos.insumoId }, select: { id: true, codigo: true, nombre: true } });
     if (!insumo) throw noEncontrado("El insumo");
     const [centros, actuales] = await Promise.all([
-      tx.centro.findMany({ where: { id: { in: ids } }, select: { id: true, nombre: true } }),
+      tx.centro.findMany({ where: { id: { in: ids } }, select: { id: true, nombre: true, institucionId: true } }),
       tx.parametroStock.findMany({ where: { insumoId: insumo.id, centroId: { in: ids } } }),
     ]);
     const nombreCentro = new Map(centros.map((c) => [c.id, c.nombre]));
+    const institucionDeCentro = new Map(centros.map((c) => [c.id, c.institucionId]));
     const actualPorCentro = new Map(actuales.map((p) => [p.centroId, p]));
 
-    const cambios: { centro: string; minimoAntes: number | null; minimoDespues: number | null; maximoAntes: number | null; maximoDespues: number | null }[] = [];
+    const cambios: { institucionId: string; centro: string; minimoAntes: number | null; minimoDespues: number | null; maximoAntes: number | null; maximoDespues: number | null }[] = [];
     for (const p of datos.parametros) {
       const centro = nombreCentro.get(p.centroId);
       if (centro === undefined) throw noEncontrado("El centro");
@@ -413,15 +447,26 @@ export async function guardarParametrosStock(
           update: { stockMinimo: minimo, stockMaximo: maximo },
         });
       }
-      cambios.push({ centro, minimoAntes, minimoDespues: minimo, maximoAntes, maximoDespues: maximo });
+      cambios.push({ institucionId: institucionDeCentro.get(p.centroId)!, centro, minimoAntes, minimoDespues: minimo, maximoAntes, maximoDespues: maximo });
     }
 
-    if (cambios.length > 0) {
+    // Un registro por institución: cada una ve solo los cambios de sus centros.
+    for (const institucionId of [...new Set(cambios.map((c) => c.institucionId))].sort()) {
       await registrarAuditoria(tx, actor, {
         accion: "PARAMETROS_STOCK_ACTUALIZADOS",
         entidad: "Insumo",
         entidadId: insumo.id,
-        detalle: comoJson({ codigo: insumo.codigo, nombre: insumo.nombre, centros: cambios }),
+        institucionId,
+        detalle: comoJson({
+          codigo: insumo.codigo,
+          nombre: insumo.nombre,
+          centros: cambios
+            .filter((c) => c.institucionId === institucionId)
+            .map(({ institucionId: _institucion, ...cambio }) => {
+              void _institucion;
+              return cambio;
+            }),
+        }),
       });
     }
     return { insumoId: insumo.id, actualizados: cambios.length };

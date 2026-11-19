@@ -2,7 +2,7 @@ import { z } from "zod";
 import { NOMBRES_REGIONES } from "../chile/regiones";
 import { normalizarRut, validarRut } from "../chile/rut";
 import { TIPOS_CENTRO, TIPOS_UBICACION } from "../estados";
-import { zId, zTexto, zTextoOpcional } from "./base";
+import { zId, zIdOpcional, zTexto, zTextoOpcional } from "./base";
 
 /** RUT opcional: vacío → `undefined`; si viene, debe ser válido. */
 export const zRutOpcional = z
@@ -24,7 +24,7 @@ export const zTelefonoOpcional = z
   )
   .transform((v) => (v ? v : undefined));
 
-export const esquemaCentro = z.object({
+const camposCentro = {
   nombre: zTexto(100, "Ingresa el nombre del centro."),
   tipo: z.enum(TIPOS_CENTRO, { error: "Selecciona el tipo de centro." }),
   rut: zRutOpcional,
@@ -35,11 +35,19 @@ export const esquemaCentro = z.object({
     .refine((v) => NOMBRES_REGIONES.includes(v), "Selecciona la región."),
   comuna: zTexto(80, "Selecciona o escribe la comuna."),
   telefono: zTelefonoOpcional,
-});
+};
+
+/**
+ * Crear un centro. `institucionId` lo elige el administrador de la red; para
+ * un administrador de institución se ignora el vacío y el servidor usa la suya
+ * (y rechaza cualquier otra).
+ */
+export const esquemaCentro = z.object({ ...camposCentro, institucionId: zIdOpcional });
 export type EntradaCentro = z.input<typeof esquemaCentro>;
 export type DatosCentro = z.output<typeof esquemaCentro>;
 
-export const esquemaActualizarCentro = esquemaCentro.extend({ id: zId });
+/** Editar un centro. La institución de un centro NO se puede cambiar: no es un campo. */
+export const esquemaActualizarCentro = z.object({ id: zId, ...camposCentro });
 export type EntradaActualizarCentro = z.input<typeof esquemaActualizarCentro>;
 
 const camposUbicacion = {

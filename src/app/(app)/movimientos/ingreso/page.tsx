@@ -4,7 +4,7 @@ import { MapPinOff } from "lucide-react";
 import { buttonClasses, EmptyState, PageHeader } from "@/components/ui";
 import { hoyEnSantiago } from "@/lib/fechas";
 import { textoParam } from "@/lib/parametros";
-import { puede } from "@/lib/permisos";
+import { fraseAlcanceTotal, puede } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { buscarInsumos, listarProveedoresActivos, listarUbicaciones, obtenerOpcionInsumo } from "@/server/servicios";
 import { volverDeFormulario } from "../volver";
@@ -36,7 +36,7 @@ export default async function PaginaIngreso({ searchParams }: PageProps<"/movimi
         descripcion={
           centro
             ? `Entrada de insumos a ${centro.nombre}.`
-            : "Entrada de insumos. Estás viendo toda la red: elige con cuidado la ubicación de destino."
+            : `Entrada de insumos. Estás viendo ${fraseAlcanceTotal(actor.rol)}: elige con cuidado la ubicación de destino.`
         }
         volver={volver}
       />

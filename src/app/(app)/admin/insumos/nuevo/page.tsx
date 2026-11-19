@@ -2,14 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Tags } from "lucide-react";
 import { FormularioInsumo } from "@/components/admin/formulario-insumo";
-import { buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui";
+import { Alert, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui";
+import { puede } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { listarCategorias } from "@/server/servicios";
 
 export const metadata: Metadata = { title: "Nuevo insumo" };
 
 export default async function PaginaNuevoInsumo() {
-  const { actor } = await contextoPagina("catalogo:gestionar");
+  const { actor } = await contextoPagina("catalogo:crear");
+  const puedeModificar = puede(actor.rol, "catalogo:gestionar");
   const categorias = await listarCategorias(actor);
 
   return (
@@ -31,9 +33,17 @@ export default async function PaginaNuevoInsumo() {
           }
         />
       ) : (
-        <Card className="sm:p-6">
-          <FormularioInsumo categorias={categorias} />
-        </Card>
+        <>
+          {!puedeModificar ? (
+            <Alert tono="info" titulo="El insumo quedará compartido con toda la red" className="mb-4">
+              Antes de crearlo, busca en el catálogo que no exista ya. Una vez creado lo usan todas las instituciones: revisa bien
+              los datos, porque después solo el administrador de la red puede modificarlo o desactivarlo.
+            </Alert>
+          ) : null}
+          <Card className="sm:p-6">
+            <FormularioInsumo categorias={categorias} />
+          </Card>
+        </>
       )}
     </>
   );

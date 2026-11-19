@@ -301,6 +301,8 @@ export function SelectorLote({
 // ---------------------------------------------------------------------------
 
 export interface UbicacionOpcion {
+  /** Institución del centro (para no ofrecer traslados entre instituciones). */
+  institucionId?: string;
   id: string;
   nombre: string;
   tipo: TipoUbicacion;

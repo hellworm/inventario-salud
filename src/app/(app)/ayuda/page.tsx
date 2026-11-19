@@ -39,13 +39,24 @@ const QUE_PUEDE: Record<Rol, { resumen: string; puntos: string[] }> = {
     ],
   },
   ADMIN: {
-    resumen: "Tienes acceso completo a toda la red.",
+    resumen: "Tienes acceso completo a tu institución: todos sus centros, usuarios y reportes. No ves nada de otras instituciones.",
     puntos: [
-      "Todo lo de un bodeguero, en cualquier centro o en “Toda la red”.",
-      "Trasladar stock entre ubicaciones o centros, corregirlo con ajustes y dar de baja mermas.",
+      "Todo lo de un bodeguero, en cualquier centro de tu institución o en “Toda mi institución”.",
+      "Trasladar stock entre ubicaciones o centros de tu institución, corregirlo con ajustes y dar de baja mermas.",
       "Corregir la fecha de vencimiento de un lote que se digitó mal.",
       "Ver reportes y descargarlos para Excel.",
-      "Administrar insumos, categorías, centros, proveedores y usuarios, y revisar la auditoría.",
+      "Administrar los centros, ubicaciones y usuarios de tu institución, los proveedores, y revisar la auditoría de tu institución.",
+      "Crear insumos nuevos y definir los mínimos y máximos de tus centros. Los insumos y categorías que ya existen son compartidos por toda la red: para modificarlos contacta al administrador de la red.",
+    ],
+  },
+  ADMIN_RED: {
+    resumen: "Administras la plataforma: tienes acceso completo a toda la red, con todas sus instituciones.",
+    puntos: [
+      "Todo lo de un administrador de institución, en cualquier centro o en “Toda la red”.",
+      "Crear instituciones y a su primer administrador; desactivar las que dejan de operar.",
+      "Ver en el Panel el resumen de toda la red por institución.",
+      "Editar, desactivar o eliminar insumos y categorías del catálogo compartido.",
+      "Administrar centros y usuarios de cualquier institución, y revisar la auditoría de toda la red.",
     ],
   },
 };
@@ -163,7 +174,7 @@ const TAREAS: Tarea[] = [
     id: "vencimiento",
     titulo: "Corregir el vencimiento de un lote",
     icono: CalendarCog,
-    permiso: "usuarios:gestionar",
+    permiso: "movimientos:ajuste",
     enlace: { href: "/inventario", texto: "Ir a Inventario" },
     pasos: [
       <>Abre la <strong>ficha completa</strong> del insumo desde Inventario.</>,
@@ -172,6 +183,7 @@ const TAREAS: Tarea[] = [
     ],
     notas: [
       "Úsalo solo si la fecha se digitó mal: cambia el lote en todas las ubicaciones y centros.",
+      "Si el lote también tiene existencias en otra institución, solo puede corregirlo el administrador de la red.",
       "Queda en la auditoría con tu nombre, la fecha anterior, la nueva y el motivo.",
     ],
   },
@@ -207,7 +219,7 @@ const PREGUNTAS: { pregunta: string; respuesta: string }[] = [
   },
   {
     pregunta: "No veo un centro o un botón que otra persona sí ve.",
-    respuesta: "Depende del rol y de los centros asignados a cada persona. Consulta a un administrador.",
+    respuesta: "Depende del rol, de la institución y de los centros asignados a cada persona. Consulta a un administrador.",
   },
   {
     pregunta: "¿Se guardan datos de pacientes?",
@@ -294,7 +306,7 @@ export default async function PaginaAyuda() {
             ¿Necesitas ayuda?
           </h2>
           <p className="mt-1 text-[0.9375rem] text-texto">
-            Habla con el administrador de tu centro: puede restablecer tu contraseña, desbloquear tu cuenta, cambiar tu rol o tus centros
+            Habla con el administrador de tu institución: puede restablecer tu contraseña, desbloquear tu cuenta, cambiar tu rol o tus centros
             y corregir movimientos mal registrados. Si el sistema muestra un error, anota qué estabas haciendo y el código que aparece en
             pantalla.
           </p>

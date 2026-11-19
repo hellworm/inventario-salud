@@ -1,8 +1,9 @@
 /**
  * Seed de demostración de RedInsumos.
  *
- * - Datos de referencia (centros, ubicaciones, catálogo, proveedores, usuarios,
- *   parámetros de stock): se crean o actualizan (idempotente).
+ * - Datos de referencia (instituciones, centros, ubicaciones, catálogo,
+ *   proveedores, usuarios, parámetros de stock): se crean o actualizan
+ *   (idempotente).
  * - Historial de ~60 días: se genera A TRAVÉS de los servicios de inventario
  *   (con fecha retroactiva), por lo que existencias, libro mayor y auditoría
  *   quedan coherentes. Solo se genera si aún no hay movimientos.
@@ -46,9 +47,17 @@ const rut = (cuerpo: number) => `${cuerpo}-${calcularDv(cuerpo)}`;
 // ---------------------------------------------------------------------------
 type ClaveCentro = "nunoa" | "valpo" | "conce";
 type Perfil = "DIALISIS" | "CONSULTORIO";
+type ClaveInstitucion = "andes" | "cerroAlegre";
+
+/** Dos instituciones ficticias: la red es el conjunto de ambas. */
+const INSTITUCIONES: Record<ClaveInstitucion, { nombre: string; rut: string }> = {
+  andes: { nombre: "Centros de Diálisis Andes SpA", rut: rut(76_482_300) },
+  cerroAlegre: { nombre: "Corporación Municipal de Salud Cerro Alegre", rut: rut(65_103_870) },
+};
 
 const CENTROS: {
   clave: ClaveCentro;
+  institucion: ClaveInstitucion;
   perfil: Perfil;
   nombre: string;
   tipo: "DIALISIS" | "CONSULTORIO";
@@ -63,6 +72,7 @@ const CENTROS: {
 }[] = [
   {
     clave: "nunoa",
+    institucion: "andes",
     perfil: "DIALISIS",
     nombre: "Centro de Diálisis Ñuñoa",
     tipo: "DIALISIS",
@@ -81,6 +91,7 @@ const CENTROS: {
   },
   {
     clave: "valpo",
+    institucion: "cerroAlegre",
     perfil: "CONSULTORIO",
     nombre: "Consultorio Cerro Alegre",
     tipo: "CONSULTORIO",
@@ -98,6 +109,7 @@ const CENTROS: {
   },
   {
     clave: "conce",
+    institucion: "andes",
     perfil: "DIALISIS",
     nombre: "Centro de Diálisis Concepción",
     tipo: "DIALISIS",
@@ -223,16 +235,23 @@ const USUARIOS: {
   nombre: string;
   rol: Actor["rol"];
   password: string;
+  /** `null` solo para el administrador de la red. */
+  institucion: ClaveInstitucion | null;
+  /** Centros asignados (de SU institución). Los administradores no llevan. */
   centros: ClaveCentro[];
   debeCambiarPassword?: boolean;
 }[] = [
-  { email: "admin@redinsumos.cl", nombre: "Carolina Fuentes", rol: "ADMIN", password: "Admin.Demo.2026", centros: [] },
-  { email: "bodega@redinsumos.cl", nombre: "Matías Rojas", rol: "BODEGUERO", password: "Bodega.Demo.2026", centros: ["nunoa"] },
-  { email: "visita@redinsumos.cl", nombre: "Javiera Soto", rol: "VISITANTE", password: "Visita.Demo.2026", centros: ["nunoa"] },
-  { email: "bodega.valparaiso@redinsumos.cl", nombre: "Ignacio Vera", rol: "BODEGUERO", password: "Bodega.Valpo.2026", centros: ["valpo"] },
-  { email: "bodega.concepcion@redinsumos.cl", nombre: "Constanza Riquelme", rol: "BODEGUERO", password: "Bodega.Conce.2026", centros: ["conce"] },
-  // Cuenta para probar el cambio de contraseña obligatorio del primer ingreso.
-  { email: "nuevo@redinsumos.cl", nombre: "Tomás Aguilera", rol: "VISITANTE", password: "Temporal.2026", centros: ["valpo", "conce"], debeCambiarPassword: true },
+  { email: "admin@redinsumos.cl", nombre: "Carolina Fuentes", rol: "ADMIN_RED", password: "Admin.Demo.2026", institucion: null, centros: [] },
+  { email: "admin.andes@redinsumos.cl", nombre: "Rodrigo Espinoza", rol: "ADMIN", password: "AdminAndes.Demo.2026", institucion: "andes", centros: [] },
+  { email: "admin.cerroalegre@redinsumos.cl", nombre: "Valentina Pizarro", rol: "ADMIN", password: "AdminCerro.Demo.2026", institucion: "cerroAlegre", centros: [] },
+  { email: "bodega@redinsumos.cl", nombre: "Matías Rojas", rol: "BODEGUERO", password: "Bodega.Demo.2026", institucion: "andes", centros: ["nunoa"] },
+  { email: "visita@redinsumos.cl", nombre: "Javiera Soto", rol: "VISITANTE", password: "Visita.Demo.2026", institucion: "andes", centros: ["nunoa"] },
+  { email: "bodega.valparaiso@redinsumos.cl", nombre: "Ignacio Vera", rol: "BODEGUERO", password: "Bodega.Valpo.2026", institucion: "cerroAlegre", centros: ["valpo"] },
+  { email: "bodega.concepcion@redinsumos.cl", nombre: "Constanza Riquelme", rol: "BODEGUERO", password: "Bodega.Conce.2026", institucion: "andes", centros: ["conce"] },
+  // Cuenta para probar el cambio de contraseña obligatorio del primer ingreso. Ve dos
+  // centros de su institución (antes veía Valparaíso y Concepción, que ahora son de
+  // instituciones distintas: un usuario pertenece a una sola).
+  { email: "nuevo@redinsumos.cl", nombre: "Tomás Aguilera", rol: "VISITANTE", password: "Temporal.2026", institucion: "andes", centros: ["nunoa", "conce"], debeCambiarPassword: true },
 ];
 
 // ---------------------------------------------------------------------------
@@ -289,9 +308,27 @@ const MOTIVOS_RETIRO: Record<Perfil, readonly string[]> = {
 // Carga de datos de referencia
 // ---------------------------------------------------------------------------
 async function sembrarReferencia() {
-  const centros = new Map<ClaveCentro, { id: string; ubicaciones: Map<string, string> }>();
+  // Una base demo creada antes del nivel Institución llega aquí con todo en la
+  // "Institución principal" que deja la migración: se reutiliza como la primera
+  // institución demo en vez de dejarla vacía.
+  const heredada = await db.institucion.findUnique({ where: { id: "institucion_inicial" } });
+  if (heredada && !(await db.institucion.findUnique({ where: { nombre: INSTITUCIONES.andes.nombre } }))) {
+    await db.institucion.update({ where: { id: heredada.id }, data: INSTITUCIONES.andes });
+  }
+  const instituciones = new Map<ClaveInstitucion, string>();
+  for (const [clave, datos] of Object.entries(INSTITUCIONES) as [ClaveInstitucion, (typeof INSTITUCIONES)[ClaveInstitucion]][]) {
+    const fila = await db.institucion.upsert({
+      where: { nombre: datos.nombre },
+      update: { rut: datos.rut, activo: true },
+      create: datos,
+    });
+    instituciones.set(clave, fila.id);
+  }
+
+  const centros = new Map<ClaveCentro, { id: string; institucionId: string; ubicaciones: Map<string, string> }>();
   for (const c of CENTROS) {
-    const datos = { tipo: c.tipo, rut: c.rut, direccion: c.direccion, comuna: c.comuna, region: c.region, telefono: c.telefono };
+    const institucionId = instituciones.get(c.institucion)!;
+    const datos = { institucionId, tipo: c.tipo, rut: c.rut, direccion: c.direccion, comuna: c.comuna, region: c.region, telefono: c.telefono };
     const centro = await db.centro.upsert({ where: { nombre: c.nombre }, update: datos, create: { nombre: c.nombre, ...datos } });
     const ubicaciones = new Map<string, string>();
     for (const u of c.ubicaciones) {
@@ -302,7 +339,7 @@ async function sembrarReferencia() {
       });
       ubicaciones.set(u.clave, fila.id);
     }
-    centros.set(c.clave, { id: centro.id, ubicaciones });
+    centros.set(c.clave, { id: centro.id, institucionId, ubicaciones });
   }
 
   const categorias = new Map<string, string>();
@@ -336,10 +373,22 @@ async function sembrarReferencia() {
 
   const actores = new Map<string, Actor>();
   for (const u of USUARIOS) {
-    const centroIds = u.centros.map((clave) => centros.get(clave)!.id);
+    const institucionId = u.institucion ? instituciones.get(u.institucion)! : null;
+    for (const clave of u.centros) {
+      if (centros.get(clave)!.institucionId !== institucionId) {
+        throw new Error(`Seed: ${u.email} tiene asignado un centro (${clave}) de otra institución.`);
+      }
+    }
+    // Alcance del actor, como lo arma la sesión: centros asignados o, para un
+    // administrador de institución, todos los de su institución.
+    const centroIds =
+      u.rol === "ADMIN"
+        ? [...centros.values()].filter((c) => c.institucionId === institucionId).map((c) => c.id)
+        : u.centros.map((clave) => centros.get(clave)!.id);
     const comun = {
       nombre: u.nombre,
       rol: u.rol,
+      institucionId,
       activo: true,
       passwordHash: await hashearPassword(u.password),
       debeCambiarPassword: u.debeCambiarPassword ?? false,
@@ -350,8 +399,10 @@ async function sembrarReferencia() {
     };
     const usuario = await db.usuario.upsert({ where: { email: u.email }, update: comun, create: { email: u.email, ...comun } });
     await db.usuarioCentro.deleteMany({ where: { usuarioId: usuario.id } });
-    await db.usuarioCentro.createMany({ data: centroIds.map((centroId) => ({ usuarioId: usuario.id, centroId })) });
-    actores.set(u.email, { usuarioId: usuario.id, rol: u.rol, centroIds, ip: null });
+    await db.usuarioCentro.createMany({
+      data: u.centros.map((clave) => ({ usuarioId: usuario.id, centroId: centros.get(clave)!.id })),
+    });
+    actores.set(u.email, { usuarioId: usuario.id, rol: u.rol, institucionId, centroIds, ip: null });
   }
 
   // Parámetros de stock: mínimo ≈ 1 semana de consumo, máximo ≈ 1 mes.
@@ -668,14 +719,15 @@ async function main() {
     console.log(`Historial generado: ${total} movimientos.`);
   }
 
-  const [centros, insumos, lotes, movimientos] = await Promise.all([
+  const [instituciones, centros, insumos, lotes, movimientos] = await Promise.all([
+    db.institucion.count(),
     db.centro.count(),
     db.insumo.count(),
     db.lote.count(),
     db.movimiento.count(),
   ]);
   console.log(
-    `Listo en ${((Date.now() - inicio) / 1000).toFixed(1)} s → ${centros} centros, ${insumos} insumos, ${lotes} lotes, ${movimientos} movimientos.`,
+    `Listo en ${((Date.now() - inicio) / 1000).toFixed(1)} s → ${instituciones} instituciones, ${centros} centros, ${insumos} insumos, ${lotes} lotes, ${movimientos} movimientos.`,
   );
   console.log("\nCuentas de demostración:");
   for (const u of USUARIOS) {

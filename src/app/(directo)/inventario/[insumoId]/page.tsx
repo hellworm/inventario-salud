@@ -34,7 +34,7 @@ import {
 import { ETIQUETA_TIPO_UBICACION, SIGNO_MOVIMIENTO, type TipoUbicacion } from "@/lib/estados";
 import { describirVencimiento, formatearDia, formatearFechaHora } from "@/lib/fechas";
 import { formatearNumero } from "@/lib/formato";
-import { puede } from "@/lib/permisos";
+import { esAdministrador, puede, veTodaLaRed } from "@/lib/permisos";
 import { cantidadConUnidad, unidadSegun } from "@/lib/unidades";
 import { contextoPagina, obtenerSesion } from "@/server/auth/sesion";
 import { esErrorDominio } from "@/server/errores";
@@ -123,7 +123,7 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
     ajustar: puede(actor.rol, "movimientos:ajuste"),
     darDeBaja: puede(actor.rol, "movimientos:merma"),
     // Corregir la fecha de un lote es solo del administrador (el servicio lo vuelve a exigir).
-    corregirVencimiento: actor.rol === "ADMIN" && puede(actor.rol, "movimientos:ajuste"),
+    corregirVencimiento: esAdministrador(actor.rol) && puede(actor.rol, "movimientos:ajuste"),
   };
   const lotesConStock = new Set(detalle.existencias.map((e) => e.loteId)).size;
   const diasProximo = detalle.existencias.find((e) => e.fechaVencimiento === detalle.proximoVencimiento && e.estadoVencimiento !== "VENCIDO")?.diasParaVencer ?? null;
@@ -298,7 +298,7 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
 
       <section aria-label="Resumen de stock" className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard
-          etiqueta={centro ? "Disponible en el centro" : "Disponible en la red"}
+          etiqueta={centro ? "Disponible en el centro" : veTodaLaRed(actor) ? "Disponible en la red" : "Disponible en tu institución"}
           valor={formatearNumero(detalle.disponible)}
           detalle={`${unidadSegun(detalle.disponible, unidad)} en ${lotesConStock} ${lotesConStock === 1 ? "lote" : "lotes"}`}
           icono={Boxes}
@@ -383,7 +383,7 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
                   icono={PackageSearch}
                   titulo="Sin existencias"
                   descripcion={
-                    centro ? `No hay stock de este insumo en ${centro.nombre}.` : "No hay stock de este insumo en ningún centro de la red."
+                    centro ? `No hay stock de este insumo en ${centro.nombre}.` : "No hay stock de este insumo en ninguno de tus centros."
                   }
                   accion={
                     permisos.ingresar ? (

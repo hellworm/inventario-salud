@@ -15,7 +15,7 @@ import {
   listarCentrosDelActor,
   obtenerSesion,
 } from "@/server/auth/sesion";
-import { veTodaLaRed } from "@/lib/permisos";
+import { puedeVerTodosSusCentros } from "@/lib/permisos";
 import { erroresDeZod } from "@/server/validacion";
 
 /** Estado de los formularios de autenticación (para `useActionState`). */
@@ -85,7 +85,8 @@ export async function cambiarPasswordAccion(_previo: EstadoFormulario, formData:
 
 /**
  * Cambia el centro activo (persistido en cookie por 1 año). `centroId` puede
- * ser un id de centro o `"todos"` (solo para quien ve toda la red).
+ * ser un id de centro o `"todos"` (solo administradores: toda la red para
+ * ADMIN_RED, toda su institución para ADMIN).
  * Valores no permitidos se ignoran. Exige sesión vigente y sin cambio de
  * contraseña pendiente (igual que `accionSegura`).
  */
@@ -100,7 +101,7 @@ export async function cambiarCentroActivoAccion(centroId: string): Promise<void>
 
   let valor: string | null = null;
   if (centroId === CENTRO_TODOS) {
-    if (veTodaLaRed(sesion.actor)) valor = CENTRO_TODOS;
+    if (puedeVerTodosSusCentros(sesion.actor)) valor = CENTRO_TODOS;
   } else {
     const centros = await listarCentrosDelActor(sesion);
     if (centros.some((c) => c.id === centroId)) valor = centroId;

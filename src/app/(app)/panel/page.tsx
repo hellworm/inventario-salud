@@ -34,11 +34,14 @@ import { cn } from "@/lib/cn";
 import { SIGNO_MOVIMIENTO } from "@/lib/estados";
 import { diaADate, formatearDia, formatearFechaHora, hoyEnSantiago } from "@/lib/fechas";
 import { formatearNumero, pluralizar } from "@/lib/formato";
-import { puede, type Rol } from "@/lib/permisos";
+import { textoParam } from "@/lib/parametros";
+import { esAdministrador, fraseAlcanceTotal, puede, veTodaLaRed, type Rol } from "@/lib/permisos";
+import { ResumenInstituciones } from "@/components/panel/resumen-instituciones";
 import { contextoPagina } from "@/server/auth/sesion";
 import {
   listarUbicaciones,
   resumenPanel,
+  resumenPorInstitucion,
   type ActividadDia,
   type FilaMovimiento,
   type ResumenCentro,
@@ -162,6 +165,7 @@ const ESTADOS_INVENTARIO = [
 
 /** Qué significa la tarjeta "Lotes vencidos" para cada rol (solo el administrador puede darlos de baja). */
 const DETALLE_VENCIDOS: Record<Rol, string> = {
+  ADMIN_RED: "Dar de baja como merma",
   ADMIN: "Dar de baja como merma",
   BODEGUERO: "Sepáralos y avisa a tu administrador para darlos de baja",
   VISITANTE: "Con stock físico aún registrado",
@@ -170,15 +174,17 @@ const DETALLE_VENCIDOS: Record<Rol, string> = {
 export default async function PaginaPanel({ searchParams }: PageProps<"/panel">) {
   const { sesion, actor, centroId, centro, centros, sinCentro } = await contextoPagina("panel:ver");
   if (sinCentro) return <SinCentroActivo titulo="Panel" />;
-  const [{ aviso }, resumen, ubicaciones] = await Promise.all([
+  const [{ aviso, institucion }, resumen, ubicaciones] = await Promise.all([
     searchParams,
     resumenPanel(actor, { centroId }),
     puede(actor.rol, "movimientos:ingreso") ? listarUbicaciones(actor, { centroId }) : [],
   ]);
   const { alertas } = resumen;
+  // "El complejo total": solo el administrador de la red, en la vista "Toda la red".
+  const redPorInstitucion = veTodaLaRed(actor) && !centro ? await resumenPorInstitucion(actor, resumen.porCentro) : null;
   const nombre = sesion.usuario.nombre.split(" ")[0];
   const porVencerMasAdelante = alertas.porVencer60 + alertas.porVencer90;
-  const esAdmin = actor.rol === "ADMIN";
+  const esAdmin = esAdministrador(actor.rol);
   const esVisitante = !puede(actor.rol, "movimientos:ingreso") && !puede(actor.rol, "movimientos:retiro");
   const puedeRegistrar = puede(actor.rol, "movimientos:ingreso") || puede(actor.rol, "movimientos:retiro");
   const totalMovimientos = resumen.actividad.reduce((s, d) => s + d.movimientos, 0);
@@ -189,7 +195,7 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
         titulo={`Hola, ${nombre}`}
         descripcion={
           <>
-            {centro ? centro.nombre : "Resumen de toda la red"} · {formatearDia(hoyEnSantiago())}
+            {centro ? centro.nombre : `Resumen de ${fraseAlcanceTotal(actor.rol)}`} · {formatearDia(hoyEnSantiago())}
           </>
         }
         acciones={
@@ -252,6 +258,10 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
         />
       </section>
 
+      {redPorInstitucion ? (
+        <ResumenInstituciones instituciones={redPorInstitucion} seleccionadaId={textoParam(institucion)} className="mt-4" />
+      ) : null}
+
       <div className="mt-4 grid items-start gap-4 xl:grid-cols-3">
         <div className="grid min-w-0 gap-4 xl:col-span-2">
         <AtencionHoy
@@ -311,7 +321,7 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
           </Card>
 
           <Card className="min-w-0">
-            <CardHeader titulo="Existencias" descripcion={centro ? "Con stock en este centro" : "Con stock en toda la red"} />
+            <CardHeader titulo="Existencias" descripcion={centro ? "Con stock en este centro" : `Con stock en ${fraseAlcanceTotal(actor.rol)}`} />
             <div className="flex items-center gap-4">
               <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-marca-50 text-marca-700">
                 <Boxes className="size-6" aria-hidden />

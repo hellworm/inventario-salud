@@ -26,6 +26,9 @@ enum TipoUbicacion {
 }
 
 enum Rol {
+  /// Administrador de la red (operador de la plataforma): ve y gestiona todo.
+  ADMIN_RED
+  /// Administrador de institución: gestiona solo su institución.
   ADMIN
   BODEGUERO
   VISITANTE
@@ -41,8 +44,28 @@ enum TipoMovimiento {
   TRASLADO_ENTRADA
 }
 
+/// Institución (organización cliente) dueña de uno o más centros. La red es
+/// el conjunto de todas las instituciones.
+model Institucion {
+  id            String   @id @default(cuid())
+  nombre        String   @unique
+  /// RUT normalizado sin puntos y con guion (opcional).
+  rut           String?
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  centros   Centro[]
+  usuarios  Usuario[]
+  auditoria RegistroAuditoria[]
+
+  @@map("instituciones")
+}
+
 model Centro {
   id        String     @id @default(cuid())
+  /// Institución a la que pertenece. No cambia después de crear el centro.
+  institucionId String
   nombre    String     @unique
   tipo      TipoCentro
   rut       String?
@@ -54,11 +77,13 @@ model Centro {
   creadoEn  DateTime   @default(now())
   actualizadoEn DateTime @updatedAt
 
+  institucion Institucion @relation(fields: [institucionId], references: [id], onDelete: Restrict)
   ubicaciones Ubicacion[]
   usuarios    UsuarioCentro[]
   parametros  ParametroStock[]
   movimientos Movimiento[]
 
+  @@index([institucionId])
   @@map("centros")
 }
 
@@ -87,6 +112,10 @@ model Usuario {
   email               String    @unique
   passwordHash        String
   rol                 Rol
+  /// Institución del usuario. `null` SOLO para ADMIN_RED (CHECK en SQL). Los
+  /// centros asignados (`UsuarioCentro`) deben ser de esta institución; un
+  /// ADMIN alcanza todos los centros de su institución sin asignaciones.
+  institucionId       String?
   activo              Boolean   @default(true)
   debeCambiarPassword Boolean   @default(true)
   ultimoAcceso        DateTime?
@@ -97,11 +126,13 @@ model Usuario {
   creadoEn            DateTime  @default(now())
   actualizadoEn       DateTime  @updatedAt
 
+  institucion Institucion? @relation(fields: [institucionId], references: [id], onDelete: Restrict)
   centros     UsuarioCentro[]
   sesiones    Sesion[]
   movimientos Movimiento[]
   auditoria   RegistroAuditoria[]
 
+  @@index([institucionId])
   @@map("usuarios")
 }
 
@@ -295,10 +326,16 @@ model RegistroAuditoria {
   entidadId String?
   detalle   Json     @default("{}")
   ip        String?
+  /// Institución a la que pertenece el evento (la del centro o usuario
+  /// afectado o, si no aplica, la de quien actúa). `null` = evento de red
+  /// (catálogo, instituciones, operador, intentos sin usuario): solo ADMIN_RED.
+  institucionId String?
   creadoEn  DateTime @default(now())
 
-  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  usuario     Usuario?     @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  institucion Institucion? @relation(fields: [institucionId], references: [id], onDelete: Restrict)
 
+  @@index([institucionId, creadoEn(sort: Desc)])
   @@index([creadoEn(sort: Desc)])
   @@index([usuarioId, creadoEn(sort: Desc)])
   @@index([entidad, entidadId])

@@ -68,8 +68,60 @@ export interface UsuarioSesion {
   email: string;
   rol: Rol;
   debeCambiarPassword: boolean;
-  /** Centros asignados (para ADMIN no limita el acceso). */
+  /** Institución del usuario; `null` solo para ADMIN_RED. */
+  institucionId: string | null;
+  institucion: { id: string; nombre: string } | null;
+  /**
+   * Alcance de centros: los asignados (BODEGUERO, VISITANTE) o todos los de su
+   * institución (ADMIN). Para ADMIN_RED no limita el acceso.
+   */
   centroIds: string[];
+}
+
+/** Relaciones del usuario necesarias para armar la sesión. */
+const INCLUIR_ALCANCE = {
+  centros: { select: { centroId: true, centro: { select: { institucionId: true } } } },
+  institucion: { select: { id: true, nombre: true, activo: true } },
+} as const;
+
+type UsuarioConAlcance = {
+  rol: Rol;
+  institucionId: string | null;
+  institucion: { id: string; nombre: string; activo: boolean } | null;
+  centros: { centroId: string; centro: { institucionId: string } }[];
+};
+
+/**
+ * ¿La cuenta puede operar? ADMIN_RED siempre; los demás solo si su
+ * institución existe y está activa (desactivar una institución deja fuera a
+ * todos sus usuarios).
+ */
+function institucionHabilitada(usuario: UsuarioConAlcance): boolean {
+  if (usuario.rol === "ADMIN_RED") return true;
+  return usuario.institucion !== null && usuario.institucion.activo;
+}
+
+/**
+ * Alcance de centros del usuario. Un ADMIN alcanza TODOS los centros de su
+ * institución (activos e inactivos), sin asignaciones. Para los demás, sus
+ * centros asignados; por defensa en profundidad se descarta cualquier
+ * asignación a un centro de otra institución.
+ */
+async function alcanceDeUsuario(usuario: UsuarioConAlcance): Promise<string[]> {
+  if (usuario.rol === "ADMIN_RED" || usuario.institucionId === null) return [];
+  if (usuario.rol === "ADMIN") {
+    const centros = await db.centro.findMany({
+      where: { institucionId: usuario.institucionId },
+      select: { id: true },
+      orderBy: { id: "asc" },
+    });
+    return centros.map((c) => c.id);
+  }
+  return usuario.centros.filter((c) => c.centro.institucionId === usuario.institucionId).map((c) => c.centroId);
+}
+
+function institucionDeSesion(usuario: UsuarioConAlcance): { id: string; nombre: string } | null {
+  return usuario.institucion ? { id: usuario.institucion.id, nombre: usuario.institucion.nombre } : null;
 }
 
 export interface SesionValida {
@@ -118,7 +170,7 @@ function contadorDePar(ip: string | null, email: string): { tipo: TipoLimite; id
  */
 async function auditarFalloLogin(
   accion: AccionAuditoria,
-  actor: { usuarioId?: string | null; ip: string | null },
+  actor: { usuarioId?: string | null; ip: string | null; institucionId?: string | null },
   entidadId: string | null,
   motivo: string,
   ahora: Date,
@@ -197,9 +249,10 @@ export async function iniciarSesion(
 
   const usuario = await db.usuario.findUnique({
     where: { email: emailNormalizado },
-    include: { centros: { select: { centroId: true } } },
+    include: INCLUIR_ALCANCE,
   });
-  const actor = { usuarioId: usuario?.id ?? null, ip };
+  // La auditoría del intento queda en la institución de la cuenta (si existe).
+  const actor = { usuarioId: usuario?.id ?? null, ip, institucionId: usuario?.institucionId ?? null };
 
   if (porPar.excedido) {
     await auditarFalloLogin(
@@ -265,7 +318,13 @@ export async function iniciarSesion(
     throw credencialesInvalidas();
   }
 
-  // Contraseña temporal vencida: mismo mensaje genérico; la restablece un ADMIN.
+  // Institución desactivada: sus usuarios no pueden ingresar (mismo mensaje genérico).
+  if (!institucionHabilitada(usuario)) {
+    await auditarFalloLogin("LOGIN_FALLIDO", actor, usuario.id, "institucion_inactiva", ahora);
+    throw credencialesInvalidas();
+  }
+
+  // Contraseña temporal vencida: mismo mensaje genérico; la restablece un administrador.
   if (usuario.debeCambiarPassword && usuario.passwordTemporalExpira && usuario.passwordTemporalExpira <= ahora) {
     await auditarFalloLogin("LOGIN_FALLIDO", actor, usuario.id, "password_temporal_vencida", ahora);
     throw credencialesInvalidas();
@@ -310,7 +369,9 @@ export async function iniciarSesion(
       email: usuario.email,
       rol: usuario.rol,
       debeCambiarPassword: usuario.debeCambiarPassword,
-      centroIds: usuario.centros.map((c) => c.centroId),
+      institucionId: usuario.institucionId,
+      institucion: institucionDeSesion(usuario),
+      centroIds: await alcanceDeUsuario(usuario),
     },
   };
 }
@@ -327,14 +388,17 @@ export async function validarTokenSesion(
 
   const sesion = await db.sesion.findUnique({
     where: { tokenHash: hashearToken(token) },
-    include: {
-      usuario: { include: { centros: { select: { centroId: true } } } },
-    },
+    include: { usuario: { include: INCLUIR_ALCANCE } },
   });
   if (!sesion) return null;
 
   const venceAbsoluto = sesion.creadoEn.getTime() + VIDA_MAXIMA_SESION_MS;
-  if (sesion.expiraEn <= ahora || venceAbsoluto <= ahora.getTime() || !sesion.usuario.activo) {
+  if (
+    sesion.expiraEn <= ahora ||
+    venceAbsoluto <= ahora.getTime() ||
+    !sesion.usuario.activo ||
+    !institucionHabilitada(sesion.usuario)
+  ) {
     await db.sesion.deleteMany({ where: { id: sesion.id } });
     return null;
   }
@@ -356,7 +420,9 @@ export async function validarTokenSesion(
       email: u.email,
       rol: u.rol,
       debeCambiarPassword: u.debeCambiarPassword,
-      centroIds: u.centros.map((c) => c.centroId),
+      institucionId: u.institucionId,
+      institucion: institucionDeSesion(u),
+      centroIds: await alcanceDeUsuario(u),
     },
   };
 }
@@ -366,11 +432,11 @@ export async function cerrarSesionPorToken(token: string | undefined | null): Pr
   if (!token) return;
   const eliminadas = await db.sesion.findUnique({
     where: { tokenHash: hashearToken(token) },
-    select: { id: true, usuarioId: true },
+    select: { id: true, usuarioId: true, usuario: { select: { institucionId: true } } },
   });
   if (!eliminadas) return;
   await db.sesion.deleteMany({ where: { id: eliminadas.id } });
-  await registrarAuditoria(db, { usuarioId: eliminadas.usuarioId }, {
+  await registrarAuditoria(db, { usuarioId: eliminadas.usuarioId, institucionId: eliminadas.usuario.institucionId }, {
     accion: "LOGOUT",
     entidad: "Usuario",
     entidadId: eliminadas.usuarioId,
@@ -440,7 +506,7 @@ export async function cambiarPassword(
   }
   if (!(await verificarPassword(usuario.passwordHash, datos.actual))) {
     if (intentos.cuenta === MAX_INTENTOS_PASSWORD_ACTUAL) {
-      await registrarAuditoria(db, { usuarioId, ip: opciones.ip }, {
+      await registrarAuditoria(db, { usuarioId, ip: opciones.ip, institucionId: usuario.institucionId }, {
         accion: "PASSWORD_CAMBIO_BLOQUEADO",
         entidad: "Usuario",
         entidadId: usuarioId,
@@ -490,7 +556,7 @@ export async function cambiarPassword(
       where: { usuarioId, ...(opciones.sesionActualId ? { id: { not: opciones.sesionActualId } } : {}) },
     });
     await liberarLimite("PASSWORD_ACTUAL", usuarioId, tx);
-    await registrarAuditoria(tx, { usuarioId, ip: opciones.ip }, {
+    await registrarAuditoria(tx, { usuarioId, ip: opciones.ip, institucionId: usuario.institucionId }, {
       accion: "PASSWORD_CAMBIADA",
       entidad: "Usuario",
       entidadId: usuarioId,

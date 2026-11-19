@@ -16,7 +16,8 @@ export default async function PaginaTraslado({ searchParams }: PageProps<"/movim
   const volver = await volverDeFormulario(sp.volver);
   const insumoParam = textoParam(sp.insumo);
   // El origen se limita al centro activo; el destino puede ser cualquier
-  // ubicación activa de los centros a los que el usuario tiene acceso.
+  // ubicación activa de los centros a los que el usuario tiene acceso, dentro
+  // de la MISMA institución que el origen (el formulario filtra; el servicio lo exige).
   const [destinos, insumosIniciales, insumoInicial] = await Promise.all([
     listarUbicaciones(actor),
     buscarInsumos(actor, { limite: 20 }),
@@ -31,8 +32,8 @@ export default async function PaginaTraslado({ searchParams }: PageProps<"/movim
         titulo="Registrar traslado"
         descripcion={
           centro
-            ? `Mueve stock desde ${centro.nombre} a otra ubicación del mismo centro o de otro centro de la red.`
-            : "Mueve stock entre ubicaciones, dentro de un centro o entre centros de la red."
+            ? `Mueve stock desde ${centro.nombre} a otra ubicación del mismo centro o de otro centro de la misma institución.`
+            : "Mueve stock entre ubicaciones, dentro de un centro o entre centros de una misma institución."
         }
         volver={volver}
       />

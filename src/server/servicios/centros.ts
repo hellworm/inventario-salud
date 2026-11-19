@@ -12,9 +12,9 @@ import {
   type EntradaUbicacion,
 } from "@/lib/esquemas/centros";
 import { formatearNumero } from "@/lib/formato";
-import type { Actor } from "@/lib/permisos";
+import { veTodaLaRed, type Actor } from "@/lib/permisos";
 import { registrarAuditoria } from "../auditoria";
-import { verificarPermiso } from "../autorizacion";
+import { verificarInstitucion, verificarPermiso } from "../autorizacion";
 import { db, enTransaccion, type Tx } from "../db";
 import { ErrorDominio, noEncontrado } from "../errores";
 import { validar } from "../validacion";
@@ -22,6 +22,9 @@ import { calcularCambios, comoJson, conUnicidad } from "./apoyo-admin";
 
 export interface FilaCentroAdmin {
   id: string;
+  institucionId: string;
+  /** Nombre de la institución dueña del centro. */
+  institucion: string;
   nombre: string;
   tipo: TipoCentro;
   rut: string | null;
@@ -48,23 +51,40 @@ async function existenciasPorCentro(cliente: Tx | typeof db, centroId?: string):
   return new Map(filas.map((f) => [f.centroId, Number(f.cantidad)]));
 }
 
-/** Todos los centros de la red (activos primero). Permiso: `centros:gestionar`. */
-export async function listarCentrosAdmin(actor: Actor): Promise<FilaCentroAdmin[]> {
+/** Condición de alcance sobre `Centro`: toda la red (ADMIN_RED) o la institución del actor. */
+function centrosDelAlcance(actor: Actor): Prisma.CentroWhereInput {
+  if (veTodaLaRed(actor)) return {};
+  // Sin institución (no debería ocurrir fuera de ADMIN_RED) no se ve nada.
+  return { institucionId: actor.institucionId ?? "__sin_institucion__" };
+}
+
+/**
+ * Centros que el actor administra, agrupables por institución (activos
+ * primero): toda la red para ADMIN_RED; SOLO los de su institución para un
+ * ADMIN. Permiso: `centros:gestionar`.
+ */
+export async function listarCentrosAdmin(
+  actor: Actor,
+  filtros: { institucionId?: string | null } = {},
+): Promise<FilaCentroAdmin[]> {
   verificarPermiso(actor, "centros:gestionar");
-  const [centros, ubicaciones, existencias] = await Promise.all([
-    db.centro.findMany({
-      select: {
-        id: true, nombre: true, tipo: true, rut: true, direccion: true, comuna: true, region: true,
-        telefono: true, activo: true, _count: { select: { usuarios: true } },
-      },
-      orderBy: [{ activo: "desc" }, { nombre: "asc" }],
-    }),
-    db.ubicacion.groupBy({ by: ["centroId"], where: { activo: true }, _count: { _all: true } }),
+  const centros = await db.centro.findMany({
+    where: { ...centrosDelAlcance(actor), ...(filtros.institucionId ? { AND: { institucionId: filtros.institucionId } } : {}) },
+    select: {
+      id: true, institucionId: true, nombre: true, tipo: true, rut: true, direccion: true, comuna: true, region: true,
+      telefono: true, activo: true, _count: { select: { usuarios: true } }, institucion: { select: { nombre: true } },
+    },
+    orderBy: [{ institucion: { nombre: "asc" } }, { activo: "desc" }, { nombre: "asc" }],
+  });
+  const ids = centros.map((c) => c.id);
+  const [ubicaciones, existencias] = await Promise.all([
+    db.ubicacion.groupBy({ by: ["centroId"], where: { activo: true, centroId: { in: ids } }, _count: { _all: true } }),
     existenciasPorCentro(db),
   ]);
   const ubicacionesPorCentro = new Map(ubicaciones.map((u) => [u.centroId, u._count._all]));
-  return centros.map(({ _count, ...c }) => ({
+  return centros.map(({ _count, institucion, ...c }) => ({
     ...c,
+    institucion: institucion.nombre,
     ubicacionesActivas: ubicacionesPorCentro.get(c.id) ?? 0,
     usuariosAsignados: _count.usuarios,
     existencias: existencias.get(c.id) ?? 0,
@@ -87,13 +107,17 @@ export interface CentroAdmin extends Omit<FilaCentroAdmin, "ubicacionesActivas">
   ubicaciones: UbicacionAdmin[];
 }
 
-/** Ficha de un centro con sus ubicaciones. Permiso: `centros:gestionar`. */
+/**
+ * Ficha de un centro con sus ubicaciones. Un centro de otra institución
+ * responde `NO_ENCONTRADO`. Permiso: `centros:gestionar`.
+ */
 export async function obtenerCentroAdmin(actor: Actor, centroId: string): Promise<CentroAdmin> {
   verificarPermiso(actor, "centros:gestionar");
   const [centro, stock] = await Promise.all([
-    db.centro.findUnique({
-      where: { id: centroId },
+    db.centro.findFirst({
+      where: { id: centroId, ...centrosDelAlcance(actor) },
       select: {
+        institucionId: true, institucion: { select: { nombre: true } },
         id: true, nombre: true, tipo: true, rut: true, direccion: true, comuna: true, region: true,
         telefono: true, activo: true, _count: { select: { usuarios: true } },
         ubicaciones: {
@@ -113,7 +137,7 @@ export async function obtenerCentroAdmin(actor: Actor, centroId: string): Promis
   ]);
   if (!centro) throw noEncontrado("El centro");
   const stockPorUbicacion = new Map(stock.map((s) => [s.ubicacionId, s]));
-  const { _count, ubicaciones, ...datos } = centro;
+  const { _count, ubicaciones, institucion, ...datos } = centro;
   const conStock = ubicaciones.map((u) => ({
     ...u,
     existencias: Number(stockPorUbicacion.get(u.id)?.cantidad ?? 0),
@@ -121,6 +145,7 @@ export async function obtenerCentroAdmin(actor: Actor, centroId: string): Promis
   }));
   return {
     ...datos,
+    institucion: institucion.nombre,
     usuariosAsignados: _count.usuarios,
     existencias: conStock.reduce((s, u) => s + u.existencias, 0),
     ubicaciones: conStock,
@@ -135,7 +160,7 @@ async function exigirNombreCentroLibre(tx: Tx, nombre: string, exceptoId?: strin
   if (existente) throw new ErrorDominio("DUPLICADO", "Ya existe un centro con ese nombre.", { campo: "nombre" });
 }
 
-function camposCentro(datos: DatosCentro) {
+function camposCentro(datos: Omit<DatosCentro, "institucionId">) {
   return {
     nombre: datos.nombre,
     tipo: datos.tipo,
@@ -151,24 +176,50 @@ const MENSAJE_CENTRO_DUPLICADO = "Ya existe un centro con ese nombre.";
 
 /**
  * Crea un centro con una primera ubicación "Bodega principal" para que se
- * pueda empezar a registrar stock de inmediato. Permiso: `centros:gestionar`.
+ * pueda empezar a registrar stock de inmediato.
+ *
+ * Institución: el administrador de la red la elige (`institucionId`
+ * obligatorio); un administrador de institución SOLO crea centros en la suya
+ * (si envía otra se rechaza). La institución debe estar activa.
+ * Permiso: `centros:gestionar`.
  */
 export async function crearCentro(actor: Actor, entrada: EntradaCentro): Promise<{ id: string; nombre: string }> {
   verificarPermiso(actor, "centros:gestionar");
   const datos = validar(esquemaCentro, entrada);
+  const institucionId = veTodaLaRed(actor) ? datos.institucionId : (datos.institucionId ?? actor.institucionId ?? undefined);
+  if (!institucionId) {
+    throw new ErrorDominio("VALIDACION", "Selecciona la institución del centro.", { campo: "institucionId" });
+  }
+  verificarInstitucion(actor, institucionId, "La institución");
   return conUnicidad(
     () =>
       enTransaccion(async (tx) => {
+        const institucion = await tx.institucion.findUnique({
+          where: { id: institucionId },
+          select: { id: true, nombre: true, activo: true },
+        });
+        if (!institucion) throw new ErrorDominio("NO_ENCONTRADO", "La institución no existe.", { campo: "institucionId" });
+        if (!institucion.activo) {
+          throw new ErrorDominio("INACTIVO", `La institución "${institucion.nombre}" está desactivada.`, { campo: "institucionId" });
+        }
         await exigirNombreCentroLibre(tx, datos.nombre);
         const centro = await tx.centro.create({
-          data: { ...camposCentro(datos), ubicaciones: { create: { nombre: "Bodega principal", tipo: "BODEGA" } } },
+          data: {
+            ...camposCentro(datos),
+            institucionId: institucion.id,
+            ubicaciones: { create: { nombre: "Bodega principal", tipo: "BODEGA" } },
+          },
           select: { id: true, nombre: true },
         });
         await registrarAuditoria(tx, actor, {
           accion: "CENTRO_CREADO",
           entidad: "Centro",
           entidadId: centro.id,
-          detalle: { nombre: centro.nombre, tipo: datos.tipo, comuna: datos.comuna, region: datos.region },
+          institucionId: institucion.id,
+          detalle: {
+            nombre: centro.nombre, tipo: datos.tipo, comuna: datos.comuna, region: datos.region,
+            institucion: institucion.nombre,
+          },
         });
         return centro;
       }),
@@ -177,14 +228,17 @@ export async function crearCentro(actor: Actor, entrada: EntradaCentro): Promise
   );
 }
 
-/** Actualiza los datos de un centro. Permiso: `centros:gestionar`. */
+/**
+ * Actualiza los datos de un centro (nunca su institución). Un centro de otra
+ * institución responde `NO_ENCONTRADO`. Permiso: `centros:gestionar`.
+ */
 export async function actualizarCentro(actor: Actor, entrada: EntradaActualizarCentro): Promise<{ id: string; nombre: string }> {
   verificarPermiso(actor, "centros:gestionar");
   const { id, ...datos } = validar(esquemaActualizarCentro, entrada);
   return conUnicidad(
     () =>
       enTransaccion(async (tx) => {
-        const actual = await tx.centro.findUnique({ where: { id } });
+        const actual = await tx.centro.findFirst({ where: { id, ...centrosDelAlcance(actor) } });
         if (!actual) throw noEncontrado("El centro");
         const nuevos = camposCentro(datos);
         const cambios = calcularCambios(
@@ -201,6 +255,7 @@ export async function actualizarCentro(actor: Actor, entrada: EntradaActualizarC
           accion: "CENTRO_ACTUALIZADO",
           entidad: "Centro",
           entidadId: id,
+          institucionId: actual.institucionId,
           detalle: comoJson({ nombre: centro.nombre, cambios }),
         });
         return centro;
@@ -222,10 +277,11 @@ export async function establecerCentroActivo(actor: Actor, centroId: string, act
     // FOR UPDATE sobre el centro ANTES de contar existencias: los movimientos
     // leen el centro con FOR SHARE, así que un ingreso simultáneo espera a que
     // esto termine (y ve el centro inactivo) o termina antes (y aquí se cuenta).
-    const [centro] = await tx.$queryRaw<{ id: string; nombre: string; activo: boolean }[]>(Prisma.sql`
-      SELECT "id", "nombre", "activo" FROM "centros" WHERE "id" = ${centroId} FOR UPDATE
+    const [centro] = await tx.$queryRaw<{ id: string; nombre: string; activo: boolean; institucionId: string }[]>(Prisma.sql`
+      SELECT "id", "nombre", "activo", "institucionId" FROM "centros" WHERE "id" = ${centroId} FOR UPDATE
     `);
     if (!centro) throw noEncontrado("El centro");
+    verificarInstitucion(actor, centro.institucionId, "El centro");
     if (centro.activo === activo) return { id: centroId, activo };
     if (!activo) {
       const existencias = (await existenciasPorCentro(tx, centroId)).get(centroId) ?? 0;
@@ -241,11 +297,18 @@ export async function establecerCentroActivo(actor: Actor, centroId: string, act
         throw new ErrorDominio("OPERACION_INVALIDA", "La red debe tener al menos un centro activo.");
       }
     }
+    if (activo) {
+      const institucion = await tx.institucion.findUnique({ where: { id: centro.institucionId }, select: { nombre: true, activo: true } });
+      if (!institucion?.activo) {
+        throw new ErrorDominio("INACTIVO", `La institución "${institucion?.nombre ?? ""}" está desactivada: actívala antes de reactivar sus centros.`);
+      }
+    }
     await tx.centro.update({ where: { id: centroId }, data: { activo } });
     await registrarAuditoria(tx, actor, {
       accion: activo ? "CENTRO_ACTIVADO" : "CENTRO_DESACTIVADO",
       entidad: "Centro",
       entidadId: centroId,
+      institucionId: centro.institucionId,
       detalle: { nombre: centro.nombre },
     });
     return { id: centroId, activo };
@@ -279,7 +342,10 @@ export async function crearUbicacion(actor: Actor, entrada: EntradaUbicacion): P
   return conUnicidad(
     () =>
       enTransaccion(async (tx) => {
-        const centro = await tx.centro.findUnique({ where: { id: datos.centroId }, select: { id: true, nombre: true } });
+        const centro = await tx.centro.findFirst({
+          where: { id: datos.centroId, ...centrosDelAlcance(actor) },
+          select: { id: true, nombre: true, institucionId: true },
+        });
         if (!centro) throw noEncontrado("El centro");
         await exigirNombreUbicacionLibre(tx, centro.id, datos.nombre);
         const ubicacion = await tx.ubicacion.create({
@@ -290,6 +356,7 @@ export async function crearUbicacion(actor: Actor, entrada: EntradaUbicacion): P
           accion: "UBICACION_CREADA",
           entidad: "Ubicacion",
           entidadId: ubicacion.id,
+          institucionId: centro.institucionId,
           detalle: { nombre: ubicacion.nombre, tipo: datos.tipo, centro: centro.nombre },
         });
         return ubicacion;
@@ -309,7 +376,10 @@ export async function actualizarUbicacion(
   return conUnicidad(
     () =>
       enTransaccion(async (tx) => {
-        const actual = await tx.ubicacion.findUnique({ where: { id }, include: { centro: { select: { nombre: true } } } });
+        const actual = await tx.ubicacion.findFirst({
+          where: { id, centro: centrosDelAlcance(actor) },
+          include: { centro: { select: { nombre: true, institucionId: true } } },
+        });
         if (!actual) throw noEncontrado("La ubicación");
         const nuevos = { nombre: datos.nombre, tipo: datos.tipo, descripcion: datos.descripcion ?? null };
         const cambios = calcularCambios(
@@ -327,6 +397,7 @@ export async function actualizarUbicacion(
           accion: "UBICACION_ACTUALIZADA",
           entidad: "Ubicacion",
           entidadId: id,
+          institucionId: actual.centro.institucionId,
           detalle: comoJson({ nombre: ubicacion.nombre, centro: actual.centro.nombre, cambios }),
         });
         return ubicacion;
@@ -352,9 +423,9 @@ export async function establecerUbicacionActiva(
     // `establecerCentroActivo`): serializa con los movimientos, que la leen
     // con FOR SHARE.
     await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ubicaciones" WHERE "id" = ${ubicacionId} FOR UPDATE`);
-    const ubicacion = await tx.ubicacion.findUnique({
-      where: { id: ubicacionId },
-      select: { id: true, nombre: true, activo: true, centroId: true, centro: { select: { nombre: true } } },
+    const ubicacion = await tx.ubicacion.findFirst({
+      where: { id: ubicacionId, centro: centrosDelAlcance(actor) },
+      select: { id: true, nombre: true, activo: true, centroId: true, centro: { select: { nombre: true, institucionId: true } } },
     });
     if (!ubicacion) throw noEncontrado("La ubicación");
     if (ubicacion.activo === activo) return { id: ubicacionId, activo, centroId: ubicacion.centroId };
@@ -378,6 +449,7 @@ export async function establecerUbicacionActiva(
       accion: activo ? "UBICACION_ACTIVADA" : "UBICACION_DESACTIVADA",
       entidad: "Ubicacion",
       entidadId: ubicacionId,
+      institucionId: ubicacion.centro.institucionId,
       detalle: { nombre: ubicacion.nombre, centro: ubicacion.centro.nombre },
     });
     return { id: ubicacionId, activo, centroId: ubicacion.centroId };

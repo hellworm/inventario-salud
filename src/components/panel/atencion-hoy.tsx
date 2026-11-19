@@ -144,6 +144,7 @@ const fichaDe = (a: AlertaStock | AlertaVencimiento) => `/inventario/${a.insumoI
 
 /** Qué hacer con los vencidos, según lo que el rol puede hacer. */
 const AYUDA_VENCIDOS: Record<Rol, string> = {
+  ADMIN_RED: "Sepáralos y dalos de baja como merma.",
   ADMIN: "Sepáralos y dalos de baja como merma.",
   BODEGUERO: "Sepáralos y avisa a tu administrador para darlos de baja.",
   VISITANTE: "Lotes con la fecha de vencimiento cumplida que aún figuran con stock.",

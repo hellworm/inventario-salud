@@ -22,12 +22,12 @@ const RESPONDE: Record<ClaveReporte, string> = {
 };
 
 export default async function PaginaReportes() {
-  const { centro } = await contextoPagina("reportes:ver");
+  const { centro, etiquetaTodos } = await contextoPagina("reportes:ver");
   return (
     <>
       <PageHeader
         titulo="Reportes"
-        descripcion={<>{centro ? centro.nombre : "Toda la red"} · Revisa la vista previa y descarga el detalle para Excel.</>}
+        descripcion={<>{centro ? centro.nombre : etiquetaTodos} · Revisa la vista previa y descarga el detalle para Excel.</>}
       />
       <ul className="grid gap-3 sm:grid-cols-2 sm:gap-4">
         {REPORTES.map((r) => {

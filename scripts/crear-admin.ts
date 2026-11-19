@@ -1,5 +1,5 @@
 /**
- * Crea el primer usuario ADMINISTRADOR de una instalación (sin datos demo).
+ * Crea el primer ADMINISTRADOR DE LA RED (rol ADMIN_RED) de una instalación (sin datos demo).
  *
  * Uso:
  *   npm run admin:crear -- --email ana@miclinica.cl --nombre "Ana Pérez"
@@ -13,6 +13,10 @@
  *   --restablecer         Si el administrador ya existe: le asigna una contraseña
  *                         temporal nueva, lo desbloquea, lo reactiva y cierra sus
  *                         sesiones. Sirve para recuperar el acceso.
+ *
+ * El administrador de la red no pertenece a ninguna institución: ve y gestiona
+ * toda la red. Los administradores de cada institución (rol ADMIN) se crean
+ * después desde la aplicación (Administración → Instituciones / Usuarios).
  *
  * Comportamiento:
  *   - La contraseña temporal se muestra UNA sola vez; en la base queda su hash.
@@ -125,7 +129,7 @@ async function main(): Promise<void> {
     select: { id: true, rol: true, activo: true },
   });
 
-  if (existente && existente.rol !== "ADMIN") {
+  if (existente && existente.rol !== "ADMIN_RED") {
     throw new ErrorDeUso(
       `Ya existe un usuario con el correo electrónico ${opciones.email} y rol ${existente.rol}. Este script no cambia roles: usa otro correo o pide a un administrador que lo edite en Administración → Usuarios.`,
     );
@@ -133,7 +137,7 @@ async function main(): Promise<void> {
 
   if (existente && !opciones.restablecer) {
     console.log(
-      `✔ El administrador ${opciones.email} ya existe${existente.activo ? "" : " (está desactivado)"}: no se hizo ningún cambio.`,
+      `✔ El administrador de la red ${opciones.email} ya existe${existente.activo ? "" : " (está desactivado)"}: no se hizo ningún cambio.`,
     );
     console.log("  Si perdió el acceso, vuelve a ejecutar el comando agregando --restablecer.");
     return;
@@ -141,7 +145,7 @@ async function main(): Promise<void> {
 
   const credencial = await obtenerPassword(opciones);
   const passwordHash = await hashearPassword(credencial.password);
-  // La contraseña temporal vence a las 72 horas (como las que entrega un ADMIN).
+  // La contraseña temporal vence a las 72 horas (como las que entrega un administrador).
   const passwordTemporalExpira = new Date(Date.now() + VIGENCIA_PASSWORD_TEMPORAL_MS);
 
   if (existente) {
@@ -163,7 +167,7 @@ async function main(): Promise<void> {
         detalle: { email: opciones.email, origen: "script admin:crear --restablecer" },
       });
     });
-    mostrarCredenciales("Acceso del administrador restablecido.", opciones.email, credencial);
+    mostrarCredenciales("Acceso del administrador de la red restablecido.", opciones.email, credencial);
     return;
   }
 
@@ -171,7 +175,7 @@ async function main(): Promise<void> {
     // El email es único en la base: dos ejecuciones simultáneas no crean duplicados.
     const creado = await tx.usuario.create({
       data: {
-        nombre: opciones.nombre, email: opciones.email, rol: "ADMIN", passwordHash,
+        nombre: opciones.nombre, email: opciones.email, rol: "ADMIN_RED", passwordHash,
         debeCambiarPassword: true, passwordTemporalExpira,
       },
       select: { id: true },
@@ -180,10 +184,10 @@ async function main(): Promise<void> {
       accion: "USUARIO_CREADO",
       entidad: "Usuario",
       entidadId: creado.id,
-      detalle: { nombre: opciones.nombre, email: opciones.email, rol: "ADMIN", origen: "script admin:crear" },
+      detalle: { nombre: opciones.nombre, email: opciones.email, rol: "ADMIN_RED", origen: "script admin:crear" },
     });
   });
-  mostrarCredenciales("Administrador creado.", opciones.email, credencial);
+  mostrarCredenciales("Administrador de la red creado. Desde Administración → Instituciones podrá crear las instituciones y a sus administradores.", opciones.email, credencial);
 }
 
 main()

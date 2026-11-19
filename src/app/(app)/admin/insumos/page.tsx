@@ -15,6 +15,8 @@ import {
 } from "@/components/ui";
 import { DosLineas } from "@/components/reportes/piezas";
 import { pluralizar } from "@/lib/formato";
+import { AvisoCatalogoCompartido } from "@/components/admin/aviso-catalogo-compartido";
+import { puede } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { listarCategorias, listarInsumosAdmin, type FilaInsumoAdmin } from "@/server/servicios";
 import { paginaParam, textoParam } from "@/lib/parametros";
@@ -78,7 +80,8 @@ const ESTADOS = [
 ];
 
 export default async function PaginaAdminInsumos({ searchParams }: PageProps<"/admin/insumos">) {
-  const { actor } = await contextoPagina("catalogo:gestionar");
+  const { actor } = await contextoPagina("catalogo:crear");
+  const puedeModificar = puede(actor.rol, "catalogo:gestionar");
   const sp = await searchParams;
   const texto = textoParam(sp.q) ?? undefined;
   const categoriaId = textoParam(sp.categoria) ?? undefined;
@@ -93,7 +96,11 @@ export default async function PaginaAdminInsumos({ searchParams }: PageProps<"/a
     <>
       <PageHeader
         titulo="Insumos"
-        descripcion="Catálogo común a toda la red. Aquí defines qué insumos existen y sus mínimos por centro."
+        descripcion={
+          puedeModificar
+            ? "Catálogo común a toda la red. Aquí defines qué insumos existen y sus mínimos por centro."
+            : "Catálogo compartido por toda la red. Puedes crear insumos nuevos y definir los mínimos y máximos de tus centros."
+        }
         acciones={
           <Link href="/admin/insumos/nuevo" className={buttonClasses()}>
             <PackagePlus aria-hidden />
@@ -101,6 +108,8 @@ export default async function PaginaAdminInsumos({ searchParams }: PageProps<"/a
           </Link>
         }
       />
+
+      {!puedeModificar ? <AvisoCatalogoCompartido que="insumos" className="mb-4" /> : null}
 
       <BarraFiltros parametros={["q", "categoria", "estado"]}>
         <FiltroBusqueda placeholder="Nombre, código o fabricante…" />

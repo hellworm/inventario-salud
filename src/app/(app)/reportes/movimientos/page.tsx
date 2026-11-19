@@ -26,6 +26,7 @@ import { formatearDia, formatearFechaHora } from "@/lib/fechas";
 import { leerFiltros } from "@/lib/filtros-reportes";
 import { formatearNumero, pluralizar } from "@/lib/formato";
 import { construirHref, resolverCentro } from "@/lib/parametros-url";
+import { etiquetaAlcanceTotal } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { reporteMovimientos, type FilaReporteMovimiento } from "@/server/servicios";
 
@@ -92,7 +93,7 @@ export default async function PaginaReporteMovimientos({ searchParams }: PagePro
     pagina: f.pagina,
   });
   const { periodo } = reporte;
-  const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? "Toda la red";
+  const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? etiquetaAlcanceTotal(actor.rol);
   const filtrosUrl = {
     centro: centroActivoId ? undefined : (centroId ?? undefined),
     tipo: f.tipo,

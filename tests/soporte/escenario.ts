@@ -17,7 +17,7 @@ export async function limpiarBD(): Promise<void> {
     db.$executeRawUnsafe(`
       TRUNCATE TABLE "registros_auditoria", "movimientos", "existencias", "lotes", "parametros_stock",
         "proveedores", "insumos", "categorias", "sesiones", "usuarios_centros", "usuarios",
-        "ubicaciones", "centros", "intentos_login" RESTART IDENTITY CASCADE
+        "ubicaciones", "centros", "instituciones", "intentos_login" RESTART IDENTITY CASCADE
     `),
     ...INMUTABLES.map((t) => db.$executeRawUnsafe(`ALTER TABLE "${t}" ENABLE TRIGGER USER`)),
   ]);
@@ -27,6 +27,8 @@ export interface Escenario {
   hoy: DiaISO;
   /** Día relativo a hoy (Santiago). */
   dia: (desplazamiento: number) => DiaISO;
+  /** Institución a la que pertenecen los centros A y B y todos los usuarios salvo `admin`. */
+  institucion: string;
   centroA: string;
   centroB: string;
   bodegaA: string;
@@ -41,6 +43,7 @@ export interface Escenario {
   tela: string;
   insumoInactivo: string;
   proveedor: string;
+  /** Administrador de la RED (rol ADMIN_RED): ve y gestiona todo. */
   admin: Actor;
   /** Bodeguero asignado solo al centro A. */
   bodeguero: Actor;
@@ -50,17 +53,18 @@ export interface Escenario {
   bodegueroB: Actor;
 }
 
-/** Limpia la base y crea un escenario mínimo: 2 centros, 3 insumos, 4 usuarios. */
+/** Limpia la base y crea un escenario mínimo: 1 institución, 2 centros, 3 insumos, 4 usuarios. */
 export async function crearEscenario(): Promise<Escenario> {
   await limpiarBD();
   const hoy = hoyEnSantiago();
 
+  const institucion = await db.institucion.create({ data: { nombre: "Institución Uno" } });
   const [centroA, centroB] = await Promise.all([
     db.centro.create({
-      data: { nombre: "Centro A", tipo: "DIALISIS", direccion: "Av. Uno 100", comuna: "Ñuñoa", region: "Metropolitana de Santiago" },
+      data: { institucionId: institucion.id, nombre: "Centro A", tipo: "DIALISIS", direccion: "Av. Uno 100", comuna: "Ñuñoa", region: "Metropolitana de Santiago" },
     }),
     db.centro.create({
-      data: { nombre: "Centro B", tipo: "CONSULTORIO", direccion: "Calle Dos 200", comuna: "Valparaíso", region: "Valparaíso" },
+      data: { institucionId: institucion.id, nombre: "Centro B", tipo: "CONSULTORIO", direccion: "Calle Dos 200", comuna: "Valparaíso", region: "Valparaíso" },
     }),
   ]);
   const bodegaA = await db.ubicacion.create({ data: { centroId: centroA.id, nombre: "Bodega", tipo: "BODEGA" } });
@@ -82,23 +86,13 @@ export async function crearEscenario(): Promise<Escenario> {
 
   const proveedor = await db.proveedor.create({ data: { rut: "76123456-0", razonSocial: "Proveedor Uno SpA" } });
 
-  const crearUsuario = async (email: string, rol: Actor["rol"], centros: string[]): Promise<Actor> => {
-    const u = await db.usuario.create({
-      data: {
-        nombre: email.split("@")[0]!,
-        email,
-        passwordHash: "sin-uso-en-estos-tests",
-        rol,
-        debeCambiarPassword: false,
-        centros: { create: centros.map((centroId) => ({ centroId })) },
-      },
-    });
-    return { usuarioId: u.id, rol, centroIds: centros, ip: "127.0.0.1" };
-  };
+  const crearUsuario = (email: string, rol: Actor["rol"], centros: string[]) =>
+    crearActor(email, rol, rol === "ADMIN_RED" ? null : institucion.id, centros);
 
   return {
     hoy,
     dia: (n) => sumarDias(hoy, n),
+    institucion: institucion.id,
     centroA: centroA.id,
     centroB: centroB.id,
     bodegaA: bodegaA.id,
@@ -110,10 +104,84 @@ export async function crearEscenario(): Promise<Escenario> {
     tela: tela.id,
     insumoInactivo: inactivo.id,
     proveedor: proveedor.id,
-    admin: await crearUsuario("admin@test.cl", "ADMIN", []),
+    admin: await crearUsuario("admin@test.cl", "ADMIN_RED", []),
     bodeguero: await crearUsuario("bodega@test.cl", "BODEGUERO", [centroA.id]),
     visitante: await crearUsuario("visita@test.cl", "VISITANTE", [centroA.id]),
     bodegueroB: await crearUsuario("bodegab@test.cl", "BODEGUERO", [centroB.id]),
+  };
+}
+
+/**
+ * Crea un usuario directo en la base y devuelve su `Actor` tal como lo arma la
+ * sesión: `centroIds` son los centros asignados o, para un ADMIN de
+ * institución, TODOS los centros de su institución (sin asignaciones).
+ */
+export async function crearActor(
+  email: string,
+  rol: Actor["rol"],
+  institucionId: string | null,
+  centros: string[] = [],
+): Promise<Actor> {
+  const u = await db.usuario.create({
+    data: {
+      nombre: email.split("@")[0]!,
+      email,
+      passwordHash: "sin-uso-en-estos-tests",
+      rol,
+      institucionId,
+      debeCambiarPassword: false,
+      centros: { create: centros.map((centroId) => ({ centroId })) },
+    },
+  });
+  const centroIds =
+    rol === "ADMIN" && institucionId
+      ? (await db.centro.findMany({ where: { institucionId }, select: { id: true }, orderBy: { id: "asc" } })).map((c) => c.id)
+      : centros;
+  return { usuarioId: u.id, rol, institucionId, centroIds, ip: "127.0.0.1" };
+}
+
+export interface EscenarioInstituciones extends Escenario {
+  /** = `institucion` (centros A y B). */
+  institucionA: string;
+  /** Segunda institución, con un solo centro (C). */
+  institucionB: string;
+  centroC: string;
+  bodegaC: string;
+  salaC: string;
+  /** Administrador de la institución A: alcanza los centros A y B. */
+  adminA: Actor;
+  /** Administrador de la institución B: alcanza el centro C. */
+  adminB: Actor;
+  /** Bodeguero de la institución B (centro C). */
+  bodegueroC: Actor;
+}
+
+/**
+ * Escenario con DOS instituciones para las pruebas de aislamiento: la A del
+ * escenario base (centros A y B) y la B (centro C), cada una con su
+ * administrador de institución.
+ */
+export async function crearEscenarioInstituciones(): Promise<EscenarioInstituciones> {
+  const e = await crearEscenario();
+  const institucionB = await db.institucion.create({ data: { nombre: "Institución Dos" } });
+  const centroC = await db.centro.create({
+    data: {
+      institucionId: institucionB.id, nombre: "Centro C", tipo: "CONSULTORIO", direccion: "Pasaje Tres 300",
+      comuna: "Concepción", region: "Biobío",
+    },
+  });
+  const bodegaC = await db.ubicacion.create({ data: { centroId: centroC.id, nombre: "Bodega", tipo: "BODEGA" } });
+  const salaC = await db.ubicacion.create({ data: { centroId: centroC.id, nombre: "Sala 1", tipo: "SALA" } });
+  return {
+    ...e,
+    institucionA: e.institucion,
+    institucionB: institucionB.id,
+    centroC: centroC.id,
+    bodegaC: bodegaC.id,
+    salaC: salaC.id,
+    adminA: await crearActor("admin.a@test.cl", "ADMIN", e.institucion),
+    adminB: await crearActor("admin.b@test.cl", "ADMIN", institucionB.id),
+    bodegueroC: await crearActor("bodegac@test.cl", "BODEGUERO", institucionB.id, [centroC.id]),
   };
 }
 

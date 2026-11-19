@@ -39,7 +39,7 @@ export function AvisoCambioCentro({ centroId, nombre }: { centroId: string | nul
     <Alert tono="alerta" titulo="Cambió el centro activo" className="mb-4" data-aviso-centro>
       <p>
         El centro activo se cambió desde otra pestaña o ventana. Ahora estás en{" "}
-        <strong className="font-semibold">{nombre ?? "toda la red"}</strong>: actualizamos las ubicaciones de este formulario.
+        <strong className="font-semibold">{nombre ?? "todos tus centros"}</strong>: actualizamos las ubicaciones de este formulario.
         Revisa la ubicación antes de registrar.
       </p>
       <Button size="sm" variant="secundario" className="mt-2" onClick={() => setReconocido(centroId)}>
