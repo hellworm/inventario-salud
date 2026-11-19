@@ -1,5 +1,5 @@
 import { CUENTA_PENDIENTE, CUENTAS } from "./soporte/entorno";
-import { expect, iniciarSesion, test } from "./soporte/fixtures";
+import { bugConocido, expect, iniciarSesion, test } from "./soporte/fixtures";
 
 const ERROR_CREDENCIALES = "Email o contraseña incorrectos";
 
@@ -102,5 +102,26 @@ test.describe("Autenticación", () => {
 
     await page.getByRole("button", { name: "Salir" }).click();
     await expect(page).toHaveURL(/\/login/);
+  });
+
+  test("B-07: si la sesión venció, al enviar un formulario se avisa y se pide iniciar sesión", async ({ abrirComo, vigilancia }) => {
+    bugConocido("B-07: con la cookie de sesión vencida el formulario dice 'No pudimos conectar con el servidor. Revisa tu conexión…'");
+    vigilancia.tolerar();
+    const bodeguero = await abrirComo("bodega");
+    await bodeguero.goto("/movimientos/retiro");
+    await bodeguero.getByRole("combobox", { name: "Insumo" }).fill("HEP-5000");
+    await bodeguero.getByRole("option", { name: /Heparina sódica/ }).click();
+    await expect(bodeguero.getByText(/Disponible en/)).toBeVisible();
+    await bodeguero.getByRole("textbox", { name: "Cantidad a retirar" }).fill("1");
+
+    // La cookie caduca en el navegador (12 h sin uso); la sesión guardada de la suite no se toca.
+    await bodeguero.context().clearCookies();
+    await bodeguero.getByRole("button", { name: "Registrar retiro" }).click();
+
+    const avisoDeSesion = bodeguero.getByText(/sesión (expiró|venció|caducó)|inicia(r)? sesión/i).first();
+    await expect(async () => {
+      expect(bodeguero.url().includes("/login") || (await avisoDeSesion.isVisible())).toBe(true);
+    }).toPass({ timeout: 8_000 });
+    await expect(bodeguero.getByText("No pudimos conectar con el servidor")).toHaveCount(0);
   });
 });
