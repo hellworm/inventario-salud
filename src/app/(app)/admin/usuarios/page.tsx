@@ -1,15 +1,225 @@
 import type { Metadata } from "next";
-import { EnConstruccion } from "@/components/en-construccion";
+import { Check, KeyRound, Lock, Minus, Users } from "lucide-react";
+import { FiltroSelect, LimpiarFiltros } from "@/components/admin/filtros-url";
+import { INFO_ROL, ROLES_ORDENADOS } from "@/components/admin/roles-info";
+import { AccionesUsuario, BotonNuevoUsuario, DistintivoYo, type OpcionCentro } from "@/components/admin/usuarios";
+import {
+  Badge,
+  BadgeActivo,
+  BadgeRol,
+  Card,
+  DataTable,
+  EmptyState,
+  PageHeader,
+  Pagination,
+  SearchInput,
+  type Columna,
+} from "@/components/ui";
+import { formatearFechaHora, formatearRelativo } from "@/lib/fechas";
+import { NOMBRE_ROL, ROLES, type Rol } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
+import { listarCentrosAdmin, listarUsuarios, type FilaUsuario } from "@/server/servicios";
 
 export const metadata: Metadata = { title: "Usuarios" };
 
-export default async function PaginaAdminUsuarios() {
-  await contextoPagina("usuarios:gestionar");
+const ESTADOS = [
+  { value: "activos", label: "Solo activos" },
+  { value: "inactivos", label: "Solo inactivos" },
+];
+
+function columnas(usuarioActualId: string, centros: OpcionCentro[]): Columna<FilaUsuario>[] {
+  return [
+    {
+      clave: "usuario",
+      encabezado: "Usuario",
+      movil: "titulo",
+      celda: (u) => (
+        <span className="block min-w-0">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-medium">
+            <span className="truncate">{u.nombre}</span>
+            {u.id === usuarioActualId ? <DistintivoYo /> : null}
+          </span>
+          <span className="block truncate text-xs font-normal text-texto-tenue">{u.email}</span>
+        </span>
+      ),
+    },
+    { clave: "rol", encabezado: "Rol", celda: (u) => <BadgeRol rol={u.rol} /> },
+    {
+      clave: "centros",
+      encabezado: "Centros",
+      className: "max-w-72",
+      celda: (u) =>
+        u.rol === "ADMIN" ? (
+          <span className="text-texto-suave">Toda la red</span>
+        ) : u.centros.length === 0 ? (
+          <span className="font-medium text-alerta-800">Sin centros asignados</span>
+        ) : (
+          <span className="block whitespace-normal" title={u.centros.map((c) => c.nombre).join(", ")}>
+            {u.centros.map((c) => c.nombre).join(", ")}
+          </span>
+        ),
+    },
+    {
+      clave: "acceso",
+      encabezado: "Último acceso",
+      celda: (u) =>
+        u.ultimoAcceso ? (
+          <span className="whitespace-nowrap text-texto-suave" title={formatearFechaHora(u.ultimoAcceso)}>
+            {formatearRelativo(u.ultimoAcceso)}
+          </span>
+        ) : (
+          <span className="whitespace-nowrap text-texto-tenue">Nunca ingresó</span>
+        ),
+    },
+    {
+      clave: "estado",
+      encabezado: "Estado",
+      celda: (u) => (
+        <span className="flex flex-wrap gap-1.5">
+          <BadgeActivo activo={u.activo} />
+          {u.bloqueado ? (
+            <Badge tono="peligro" icono={Lock}>
+              Bloqueada
+            </Badge>
+          ) : null}
+          {u.activo && u.debeCambiarPassword ? (
+            <Badge tono="alerta" icono={KeyRound} title="Aún no cambia su contraseña temporal">
+              Clave temporal
+            </Badge>
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      clave: "acciones",
+      encabezado: "Acciones",
+      alinear: "derecha",
+      movil: "destacado",
+      className: "w-16 py-1.5",
+      celda: (u) => (
+        <AccionesUsuario
+          esYo={u.id === usuarioActualId}
+          centros={centros}
+          usuario={{
+            id: u.id,
+            nombre: u.nombre,
+            email: u.email,
+            rol: u.rol,
+            activo: u.activo,
+            bloqueado: u.bloqueado,
+            centroIds: u.centros.map((c) => c.id),
+          }}
+        />
+      ),
+    },
+  ];
+}
+
+function AyudaRoles() {
   return (
-    <EnConstruccion
-      titulo="Usuarios"
-      descripcion="Cuentas, roles y centros asignados."
-    />
+    <details className="group mb-4 rounded-tarjeta border border-borde bg-superficie shadow-tarjeta">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-[0.9375rem] font-medium text-texto sm:px-5 [&::-webkit-details-marker]:hidden">
+        ¿Qué puede hacer cada rol?
+        <span className="text-sm font-normal text-marca-700 group-open:hidden">Ver</span>
+        <span className="hidden text-sm font-normal text-marca-700 group-open:inline">Ocultar</span>
+      </summary>
+      <div className="grid gap-4 border-t border-borde px-4 py-4 sm:px-5 md:grid-cols-3">
+        {ROLES_ORDENADOS.map((rol) => (
+          <div key={rol}>
+            <BadgeRol rol={rol} />
+            <p className="mt-2 text-sm font-medium text-texto">{INFO_ROL[rol].resumen}</p>
+            <ul className="mt-2 space-y-1 text-sm">
+              {INFO_ROL[rol].puede.map((p) => (
+                <li key={p} className="flex items-start gap-1.5 text-texto">
+                  <Check className="mt-0.5 size-4 shrink-0 text-exito-600" aria-hidden />
+                  {p}
+                </li>
+              ))}
+              {INFO_ROL[rol].noPuede.map((p) => (
+                <li key={p} className="flex items-start gap-1.5 text-texto-suave">
+                  <Minus className="mt-0.5 size-4 shrink-0 text-texto-tenue" aria-hidden />
+                  {p}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+export default async function PaginaAdminUsuarios({ searchParams }: PageProps<"/admin/usuarios">) {
+  const { actor } = await contextoPagina("usuarios:gestionar");
+  const sp = await searchParams;
+  const texto = typeof sp.q === "string" ? sp.q : undefined;
+  const rol = ROLES.find((r) => r === sp.rol) as Rol | undefined;
+  const estado = sp.estado === "activos" || sp.estado === "inactivos" ? sp.estado : undefined;
+  const centroId = typeof sp.centro === "string" ? sp.centro : undefined;
+
+  const [usuarios, centrosRed] = await Promise.all([
+    listarUsuarios(actor, { texto, rol, estado, centroId, pagina: Number(sp.pagina) || 1 }),
+    listarCentrosAdmin(actor),
+  ]);
+  const centros: OpcionCentro[] = centrosRed.map((c) => ({ id: c.id, nombre: c.nombre, activo: c.activo }));
+  const hayFiltros = Boolean(texto || rol || estado || centroId);
+
+  return (
+    <>
+      <PageHeader
+        titulo="Usuarios"
+        descripcion="Quién puede entrar al sistema, con qué rol y en qué centros."
+        acciones={<BotonNuevoUsuario centros={centros} />}
+      />
+
+      <AyudaRoles />
+
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+        <SearchInput placeholder="Buscar por nombre o email…" label="Buscar usuario" className="lg:max-w-sm lg:flex-1" />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:flex">
+          <FiltroSelect
+            parametro="rol"
+            label="Filtrar por rol"
+            todos="Todos los roles"
+            opciones={ROLES.map((r) => ({ value: r, label: NOMBRE_ROL[r] }))}
+            className="lg:w-44"
+          />
+          <FiltroSelect
+            parametro="centro"
+            label="Filtrar por centro"
+            todos="Todos los centros"
+            opciones={centros.map((c) => ({ value: c.id, label: c.nombre }))}
+            className="lg:w-60"
+          />
+          <FiltroSelect
+            parametro="estado"
+            label="Filtrar por estado"
+            todos="Activos e inactivos"
+            opciones={ESTADOS}
+            className="col-span-2 sm:col-span-1 lg:w-48"
+          />
+        </div>
+        <LimpiarFiltros parametros={["rol", "centro", "estado"]} />
+      </div>
+
+      <Card relleno={false} className="overflow-hidden">
+        <DataTable
+          titulo="Usuarios"
+          columnas={columnas(actor.usuarioId, centros)}
+          filas={usuarios.items}
+          claveFila={(u) => u.id}
+          claseFila={(u) => (u.activo ? undefined : "bg-superficie-2/60 [&_td]:text-texto-suave")}
+          vacio={
+            <EmptyState
+              compacto
+              icono={Users}
+              titulo={hayFiltros ? "Ningún usuario coincide" : "Aún no hay usuarios"}
+              descripcion={hayFiltros ? "Prueba con otro nombre o quita los filtros." : undefined}
+            />
+          }
+        />
+      </Card>
+      <Pagination {...usuarios} className="mt-4" />
+    </>
   );
 }
