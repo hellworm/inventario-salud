@@ -35,8 +35,9 @@ este documento.
 prisma/
   schema.prisma            Modelo de datos (tablas snake_case con @@map, columnas camelCase)
   migrations/              Inicial (+ CHECKs, trigger de inmutabilidad, unaccent),
-                           endurecimiento_seguridad (idempotencia, limitador, TRUNCATE, auditoría)
-                           y normaliza_numero_lote (lotes en forma canónica)
+                           endurecimiento_seguridad (idempotencia, limitador, TRUNCATE, auditoría),
+                           normaliza_numero_lote (lotes en forma canónica) y
+                           proveedor_sitio_web (columna + CHECK "solo http(s)")
   seed.ts                  Seed demo (referencia idempotente + historial vía servicios)
 src/
   proxy.ts                 Redirección optimista a /login (las Server Actions pasan y responden
@@ -45,8 +46,9 @@ src/
     layout.tsx             Raíz: <html lang="es-CL">, fuentes, <Toaster/>
     (auth)/                /login y /cambiar-password (layout de dos paneles)
     (app)/                 Área autenticada: layout con AppShell, loading, error, sin-permiso
-      panel/, inventario/, movimientos/ (ingreso, retiro, traslado, ajuste)
+      panel/, inventario/, movimientos/ (ingreso, retiro, traslado, ajuste, escanear)
       alertas/ (+ reposicion/exportar), reportes/ (+ exportar/[reporte]), ayuda/
+      proveedores/ (directorio de solo lectura para los tres roles)
       admin/ (insumos, categorias, centros, usuarios, proveedores, auditoria)
     (directo)/             Mismo shell, SIN loading.tsx por encima: ficha del insumo
                            (inventario/[insumoId]) y comodín [...resto] → 404 HTTP real (§10)
@@ -59,11 +61,14 @@ src/
                            SinCentroActivo (estado "sin centro activo")
     movimientos/           ComboboxInsumo, campos y piezas comunes de los formularios,
                            AvisoCambioCentro (§10)
+    escaner/               Escáner con la cámara: BotonEscanear, DialogoEscaner, lector (§15)
     inventario/, panel/, alertas/, reportes/, admin/   Piezas de cada área
   lib/                     Código ISOMÓRFICO (cliente y servidor), sin acceso a BD
     permisos.ts            ★ Fuente única de verdad de roles y permisos
     navegacion.ts          Mapa de navegación filtrado por permiso
-    estados.ts             Estados de stock/vencimiento, etiquetas, motivos, enums de UI
+    estados.ts             ★ Semáforo de vencimiento (regla única) y estados de stock, etiquetas,
+                           motivos, enums de UI
+    gs1.ts, escaneo.ts     GTIN y cadenas GS1 (parser propio); rutas del flujo de escaneo (§15)
     fechas.ts, formato.ts  Fechas America/Santiago, números es-CL, CLP
     chile/                 rut.ts, regiones.ts
     esquemas/              Esquemas zod (base, movimientos, consultas, auth, catalogo, centros,
@@ -101,7 +106,7 @@ acciones **no usan Prisma directamente**; si falta una consulta, se agrega un se
 `Centro` 1—N `Ubicacion`. `Usuario` N—M `Centro` (`UsuarioCentro`). `Insumo` (catálogo común) N—1
 `Categoria`. `ParametroStock` (insumo × centro: mínimo/máximo). `Lote` (insumo + número, vencimiento).
 `Existencia` (lote × ubicación → `cantidad`, con `CHECK (cantidad >= 0)`). `Movimiento` = libro mayor
-**inmutable**. `Proveedor` (RUT único normalizado), `Sesion`, `RegistroAuditoria` (también
+**inmutable**. `Proveedor` (RUT único normalizado; `sitioWeb` opcional, siempre `http(s)://`), `Sesion`, `RegistroAuditoria` (también
 inmutable), `LimiteIntentos` (tabla `intentos_login`: contadores del limitador).
 
 - **Inmutabilidad:** triggers SQL rechazan `UPDATE`, `DELETE` y `TRUNCATE` sobre `movimientos` y
@@ -136,7 +141,8 @@ Fuente única: `src/lib/permisos.ts` (`PERMISOS_POR_ROL`, `puede`, `puedeEnCentr
 | Permiso | ADMIN | BODEGUERO | VISITANTE |
 |---|:-:|:-:|:-:|
 | `panel:ver`, `inventario:ver`, `alertas:ver`, `catalogo:ver` | ✔ | ✔ sus centros | ✔ sus centros |
-| `movimientos:ver`, `proveedores:ver` | ✔ | ✔ sus centros | — |
+| `proveedores:ver` (directorio: solo lectura) | ✔ | ✔ | ✔ |
+| `movimientos:ver` | ✔ | ✔ sus centros | — |
 | `movimientos:ingreso`, `movimientos:retiro` | ✔ | ✔ sus centros | — |
 | `movimientos:ajuste`, `movimientos:merma`, `movimientos:traslado` | ✔ | — | — |
 | `reportes:ver`, `auditoria:ver` | ✔ | — | — |
@@ -326,11 +332,19 @@ Reglas de negocio:
 ```ts
 // inventario.ts
 listarInventario(actor, filtros?: FiltrosInventario): Promise<Paginado<FilaInventario>>
-  // filtros: { centroId?, ubicacionId?, categoriaId?, texto?, estado?, pagina?, porPagina? }
-  // estado: "SIN_STOCK" | "BAJO_MINIMO" | "OK" | "VENCIDO" | "POR_VENCER"
+  // filtros: { centroId?, ubicacionId?, categoriaId?, texto?, estado?, semaforo?, pagina?, porPagina? }
+  // estado: "SIN_STOCK" | "BAJO_MINIMO" | "OK" (y, por compatibilidad, "VENCIDO" | "POR_VENCER")
+  // semaforo: ColorSemaforo[] → insumos con ALGÚN lote con stock de esos colores
+  // cada fila trae estadoVencimiento (el peor de sus lotes) y semaforo (desglose por color)
 detalleInsumo(actor, insumoId, { centroId? }?): Promise<DetalleInsumo>
-  // { insumo, total, vencido, disponible, porVencer, stockMinimo, estadoStock,
+  // { insumo, total, vencido, disponible, semaforo, stockMinimo, estadoStock,
   //   estadoVencimiento, proximoVencimiento, existencias[], parametros[] }
+
+// semaforo.ts — semáforo de vencimiento agregado en SQL (ver "Semáforo" más abajo)
+resumenSemaforo(actor, { centroId?, categoriaId?, texto? }?): Promise<ResumenSemaforo>
+  // { VENCIDO, ROJO, AMARILLO, VERDE, SIN_VENCIMIENTO: { insumos, lotes, unidades }, limites }
+lotesPorColor(actor, { color, centroId?, limite? }): Promise<LoteSemaforo[]>   // lo que vence antes, primero
+sqlColorSemaforo(columna, limites), sqlEsColor(…), sqlEsAlgunColor(…)         // fragmentos SQL compartidos
 
 // consultas-movimientos.ts
 listarMovimientos(actor, filtros?: FiltrosMovimientos): Promise<Paginado<FilaMovimiento>>
@@ -347,11 +361,14 @@ usuariosConMovimientos(actor, { centroId? }?): Promise<OpcionUsuarioMovimientos[
 // alertas.ts
 obtenerAlertas(actor, { centroId? }?): Promise<Alertas>
   // { stock: AlertaStock[], vencimientos: AlertaVencimiento[], resumen: ResumenAlertas }
+  // vencimientos: lotes con stock VENCIDO | ROJO | AMARILLO (el verde no es alerta)
+  // resumen: { sinStock, bajoMinimo, vencidos, rojo, amarillo, total }
 
 // panel.ts
 resumenPanel(actor, { centroId?, diasActividad?, ultimos? }?): Promise<ResumenPanel>
   // actividad[]: { dia, entradas, salidas, movimientos } = NÚMERO DE MOVIMIENTOS de entrada y de
   // salida por día (no unidades: cajas + ampollas + litros no se suman)
+  // semaforo: ResumenSemaforo; enRojo: LoteSemaforo[] (los primeros LOTES_EN_ROJO_PANEL)
 
 // catalogo.ts — opciones para formularios
 listarCategorias(actor): Promise<OpcionCategoria[]>
@@ -361,6 +378,8 @@ buscarInsumos(actor, filtros?: FiltrosBuscarInsumos): Promise<OpcionInsumo[]>
   // retirado en ese centro en los últimos 30 días (con masUsado: true), luego el resto por nombre
 listarUbicaciones(actor, { centroId?, soloActivas? }?): Promise<OpcionUbicacion[]>
 listarProveedoresActivos(actor): Promise<OpcionProveedor[]>
+buscarInsumoPorCodigo(actor, textoLeido): Promise<BusquedaPorCodigo>   // escáner (§15)
+  // → { codigo: CodigoInterpretado | null, coincidencias: (OpcionInsumo & { activo })[] }
 lotesDisponibles(actor, { insumoId, ubicacionId, incluirVencidos? }): Promise<OpcionLote[]>  // FEFO
 lotesDeInsumo(actor, insumoId, limite?)   // lotes ya registrados, SOLO los que pasaron por los
                                           // centros del actor (todos para ADMIN)
@@ -371,6 +390,13 @@ listarUsuarios(actor, filtros?)                     // texto sin tildes; bloquea
 crearUsuario / actualizarUsuario / restablecerPasswordUsuario / desbloquearUsuario
 establecerUsuarioActivo(actor, usuarioId, activo)   // ejemplo canónico de mutación administrativa
 
+// proveedores.ts
+listarDirectorioProveedores(actor, { centroId?, texto?, orden?: "uso" | "nombre", limite? }?)
+  // activos con contacto y sitio web; "uso" = primero los usados más recientemente en ingresos
+  // de los centros del alcance. Permiso proveedores:ver (los tres roles)
+// insumos.ts
+asociarCodigoBarras(actor, { insumoId, codigoBarras })   // catalogo:gestionar; audita INSUMO_ACTUALIZADO
+
 // administración: insumos.ts, categorias.ts, centros.ts, proveedores.ts, auditoria-consultas.ts
 // reportes y exportaciones: reportes.ts, alertas.ts (listaReposicion), exportaciones.ts
 ```
@@ -379,6 +405,7 @@ Acciones de **solo lectura** para formularios (`@/acciones/consultas`, no revali
 
 ```ts
 buscarInsumosAccion({ texto?, priorizarRetirosDeCentroId? })   // permiso catalogo:ver, máx. 20
+buscarPorCodigoAccion({ codigo })                              // permiso catalogo:ver (escáner)
 existenciasInsumoAccion({ insumoId, centroId? })               // permiso inventario:ver
   // → { insumoId, existencias: ExistenciaDetalle[], lotesRegistrados }
   // lotesRegistrados solo llega con contenido a quien puede `movimientos:ingreso`
@@ -404,9 +431,9 @@ Convenciones de las consultas:
   vencido`. `estadoStock` compara `disponible` con el mínimo (suma de los mínimos de los centros
   del alcance): `SIN_STOCK` (≤ 0), `BAJO_MINIMO` (< mínimo), `OK`. Sin mínimo definido solo hay
   `SIN_STOCK` / `OK`.
-- **Vencimiento:** `VENCIDO`, `POR_VENCER` (≤ `DIAS_POR_VENCER` = 90 días), `VIGENTE`,
-  `SIN_VENCIMIENTO`. A nivel de insumo gana el peor estado entre sus lotes con stock. Tramos de
-  alerta excluyentes: 30 (0–30), 60 (31–60), 90 (61–90).
+- **Vencimiento = semáforo** (`EstadoVencimiento`, regla única en `@/lib/estados`): `VENCIDO`
+  (venció), `ROJO` (vence en menos de 3 meses), `AMARILLO` (3 meses o más y menos de 6), `VERDE`
+  (6 meses o más) y `SIN_VENCIMIENTO`. Ver "Semáforo de vencimiento" a continuación.
 - El inventario lista los insumos con existencias registradas o con parámetro de stock en el
   alcance (un consultorio no ve dializadores que nunca tuvo). Con `ubicacionId` se filtran los
   insumos con stock en esa ubicación y se agrega `enUbicacion`; los totales y estados siguen
@@ -418,6 +445,35 @@ Convenciones de las consultas:
   inventario, catálogo (`buscarInsumos`, administración), proveedores, usuarios, historial de
   movimientos y todos los reportes y sus CSV (existencias, consumo, vencimientos, movimientos y
   mermas; estos dos últimos con `consultaPorTexto`).
+
+### Semáforo de vencimiento
+
+Regla única, en `src/lib/estados.ts`. **No la repitas**: usa estas piezas.
+
+| Pieza | Qué es |
+|---|---|
+| `MESES_SEMAFORO_ROJO = 3`, `MESES_SEMAFORO_AMARILLO = 6` | Las dos constantes de la regla. |
+| `limitesSemaforo(hoy)` | `{ hoy, amarilloDesde: hoy + 3 meses, verdeDesde: hoy + 6 meses }` (meses calendario con `sumarMeses`: mismo día del mes, o su último día si no existe; hoy = día de Santiago). |
+| `calcularEstadoVencimiento(fecha, hoy)` | `fecha < hoy` → `VENCIDO`; `< amarilloDesde` → `ROJO`; `< verdeDesde` → `AMARILLO`; si no `VERDE`; sin fecha → `SIN_VENCIMIENTO`. El día del vencimiento aún es `ROJO`. |
+| `peorEstadoVencimiento`, `GRAVEDAD_SEMAFORO` | Color de un insumo = el peor de sus lotes con stock (VENCIDO > ROJO > AMARILLO > VERDE). |
+| `leerSemaforo` / `escribirSemaforo`, `FILTROS_SEMAFORO`, `OPCIONES_FILTRO_SEMAFORO` | Filtro `?semaforo=rojo|amarillo|verde|vencido` de la URL (admite varios separados por coma). |
+| `servicios/semaforo.ts` | La misma regla en SQL: `sqlColorSemaforo`, `sqlEsColor`, `sqlEsAlgunColor` reciben las fechas de `limitesSemaforo` (la base y el código clasifican igual; lo comprueba `tests/semaforo.test.ts`). |
+| `BadgeEstadoVencimiento`, `SEMAFORO_UI`, `LeyendaSemaforo`, `DesgloseSemaforo` (`@/components/ui`) | Presentación: color + **forma propia** (octágono, triángulo, círculo; calendario tachado para vencido) + nombre escrito. Nunca solo color. |
+
+Convenciones:
+
+- **Unidad de conteo:** un "lote" del semáforo es un lote con stock **en una ubicación** (fila de
+  `existencias` con cantidad > 0): es lo que se lista en alertas, panel y reportes. Un lote en dos
+  ubicaciones cuenta dos veces. "Insumos" = insumos distintos con algún lote de ese color.
+- **Coherencia:** panel (`resumenSemaforo`) = pestañas de `/alertas` (`resumen.vencidos|rojo|amarillo`)
+  = `/inventario?semaforo=` (n.º de insumos) = reportes de existencias y vencimientos con
+  `?semaforo=` (n.º de lotes). `tests/semaforo.test.ts` y `e2e/coherencia.spec.ts` lo verifican.
+- **URLs antiguas:** `/inventario?estado=POR_VENCER|VENCIDO` redirige a `?semaforo=rojo,amarillo` /
+  `?semaforo=vencido`; `/alertas?tab=por-vencer` abre la pestaña Rojo; el antiguo `?dias=30|60|90`
+  de los reportes se ignora.
+- **Reportes:** `FilaExistencia.estadoVencimiento`; el CSV de existencias y de vencimientos trae la
+  columna de texto "Semáforo" (`Rojo`, `Amarillo`, `Verde`, `Vencido`, `Sin vencimiento`). El
+  reporte de vencimientos lista por defecto vencidos + rojo + amarillo.
 
 ### Exportaciones CSV
 
@@ -606,9 +662,10 @@ a `notFound()` cuando corresponda.
 |---|---|
 | `chile/rut` | `validarRut`, `formatearRut` (12.345.678-5), `normalizarRut` (12345678-5), `calcularDv`, `limpiarRut` |
 | `chile/regiones` | `REGIONES` (16 regiones con comunas principales), `NOMBRES_REGIONES`, `comunasDeRegion` |
-| `fechas` | `hoyEnSantiago`, `diaEnSantiago`, `parsearDia`, `formatearDia` (dd-MM-yyyy), `formatearFecha`, `formatearFechaHora` (dd-MM-yyyy HH:mm), `formatearRelativo`, `describirVencimiento`, `sumarDias`, `diasEntre`, `inicioDelDia`, `finDelDia`, `diaADate`, `dateADia` |
+| `fechas` | `hoyEnSantiago`, `diaEnSantiago`, `parsearDia`, `formatearDia` (dd-MM-yyyy), `formatearFecha`, `formatearFechaHora` (dd-MM-yyyy HH:mm), `formatearRelativo`, `describirVencimiento`, `sumarDias`, `sumarMeses`, `diasEntre`, `inicioDelDia`, `finDelDia`, `diaADate`, `dateADia` |
 | `formato` | `formatearNumero` (1.234), `formatearDecimal`, `formatearDecimalFijo`, `formatearCLP` ($12.500), `formatearMonto` ($1.250,5: conserva decimales), `formatearPorcentaje`, `pluralizar`, `interpretarNumero` / `parsearNumero`, `normalizarTexto` |
-| `estados` | `calcularEstadoStock`, `calcularEstadoVencimiento`, `diasParaVencer`, `tramoDeVencimiento`, etiquetas (`ETIQUETA_*`), `SIGNO_MOVIMIENTO`, `MOTIVOS_MERMA`, `MOTIVOS_AJUSTE`, `UNIDADES_MEDIDA`, `TIPOS_*` |
+| `gs1`, `escaneo` | Códigos de barras y cadenas GS1; rutas del flujo de escaneo (§15) |
+| `estados` | `calcularEstadoStock`, `calcularEstadoVencimiento`, `limitesSemaforo`, `peorEstadoVencimiento`, `leerSemaforo`, `diasParaVencer`, etiquetas (`ETIQUETA_*`), `SIGNO_MOVIMIENTO`, `MOTIVOS_MERMA`, `MOTIVOS_AJUSTE`, `UNIDADES_MEDIDA`, `TIPOS_*` |
 | `esquemas/base` | `zId`, `zIdOpcional`, `zCantidad`, `zEnteroNoNegativo`, `zTexto(max)`, `zTextoOpcional(max)`, `zDia`, `zDiaOpcional`, `zMontoOpcional` (+ `MONTO_MAXIMO`), `zRut`, `zEmail`, `zClaveIdempotencia`, `nuevaClaveIdempotencia()` |
 | `csv` | `generarCsv`, `filaCsv`, `escaparCeldaCsv`, `neutralizarFormula`, `nombreArchivoCsv`, `BOM_UTF8` (ver "Exportaciones CSV" en §6) |
 | `unidades` | `pluralUnidad("caja")` → "cajas", `unidadSegun(cantidad, unidad)`, `cantidadConUnidad(20, "caja")` → "20 cajas", `cantidadConSigno(3, "caja", 1)` → "+3 cajas" |
@@ -658,7 +715,7 @@ Principios: estética clínica sobria, primario teal (`marca-*`), mucho aire, ob
 | `Input`, `PasswordInput`, `Textarea` | `<Input inicio={<Search/>} fin="unidades" />`. Texto base de 16 px (evita el zoom de iOS). |
 | `Select` | Nativo: `<Select opciones={[{ value, label }]} placeholder="Selecciona…" />` o con `<option>` hijos. |
 | `Checkbox` | `<Checkbox label="Requiere cadena de frío" descripcion="…" name="…" />` |
-| `Badge` y derivados | `<Badge tono="neutro\|marca\|exito\|alerta\|peligro\|info" icono={X}>`, `<BadgeEstadoStock estado />`, `<BadgeEstadoVencimiento estado dias />`, `<BadgeTipoMovimiento tipo />`, `<BadgeRol rol />`, `<BadgeActivo activo />` |
+| `Badge` y derivados | `<Badge tono="neutro\|marca\|exito\|alerta\|peligro\|info" icono={X}>`, `<BadgeEstadoStock estado />`, `<BadgeEstadoVencimiento estado dias />` (semáforo), `<LeyendaSemaforo />`, `<DesgloseSemaforo conteo />`, `<BadgeTipoMovimiento tipo />`, `<BadgeRol rol />`, `<BadgeActivo activo />` |
 | `Card` | `<Card>` con `<CardHeader titulo descripcion acciones />`, `CardFooter`. `relleno={false}` + `overflow-hidden` para tablas a sangre. |
 | `DataTable` | Tabla en escritorio, tarjetas en móvil. Ver ejemplo abajo. Sirve en Server Components. |
 | `Dialog` | `<Dialog><DialogTrigger asChild>…</DialogTrigger><DialogContent titulo descripcion ancho="sm\|md\|lg\|xl">…<DialogFooter/></DialogContent></Dialog>` (hoja inferior en móvil). |
@@ -807,10 +864,12 @@ en `null`); las que genera la aplicación vencen a las 72 h.
 ## 13. Seguridad y deudas conocidas
 
 - Cabeceras en `next.config.ts`: `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`,
-  `Permissions-Policy`, COOP, HSTS en producción y una CSP de respaldo (sin scripts en línea) para
+  `Permissions-Policy` (`camera=(self)` para el escáner; micrófono, ubicación y pagos bloqueados),
+  COOP, HSTS en producción y una CSP de respaldo (sin scripts en línea) para
   lo que no pasa por el proxy (archivos estáticos).
 - **CSP con nonce por solicitud** (`src/proxy.ts`, `construirCsp`): `script-src 'self'
-  'nonce-…' 'strict-dynamic'`, **sin `'unsafe-inline'`** en scripts (en desarrollo se agrega
+  'nonce-…' 'strict-dynamic' 'wasm-unsafe-eval'` (este último solo para el lector de códigos, §15),
+  **sin `'unsafe-inline'`** en scripts (en desarrollo se agrega
   `'unsafe-eval'`, que React necesita). Next lee el nonce de la cabecera de la solicitud y lo pone
   en sus scripts; por eso todo se renderiza por solicitud (`connection()` en el layout raíz). Si
   agregas un `<Script>` propio, pásale el nonce (`(await headers()).get("x-nonce")`). `style-src`
@@ -854,3 +913,42 @@ La limpieza de sesiones y contadores vencidos la hace `npm run sesiones:limpiar`
 con `NODE_ENV=production` salvo `SEED_DEMO=1`. Compose fija `TRUST_PROXY=1` para la aplicación y
 permite conectarla con un rol de base de datos de privilegios mínimos (`APP_DB_USER`,
 `APP_DB_PASSWORD`; `DESPLIEGUE.md` §6.1).
+
+## 15. Escáner de códigos y proveedores en el panel
+
+### Escáner con la cámara
+
+| Pieza | Dónde | Notas |
+|---|---|---|
+| Parser GS1 y GTIN | `src/lib/gs1.ts` | Propio, puro e isomórfico. `validarGtin`, `normalizarGtin` (→ 14 dígitos), `variantesGtin` (GTIN-14 ↔ EAN-13 ↔ UPC-A ↔ EAN-8 por ceros a la izquierda), `parsearGs1` (forma cruda con FNC1/`<GS>`, con paréntesis y GS1 Digital Link; AI 01, 10, 11, 17, 21 y los comunes), `fechaGs1` (AAMMDD; día 00 = último día del mes en vencimientos; siglo por la regla GS1) e `interpretarCodigo` → `{ tipo: "GS1" \| "GTIN" \| "TEXTO", codigo, gtin, candidatos, lote, vencimiento, fabricacion, serie }`. No adivina: una cadena inválida o incompleta no entrega lote ni fecha. |
+| Lector | `src/components/escaner/lector.ts` | `BarcodeDetector` nativo si reconoce todos los formatos (Chrome en Android); si no, **`zxing-wasm`** (ZXing C++ en WebAssembly: Safari/iOS, Firefox, escritorio). Formatos: EAN-13, EAN-8, UPC-A/E, Code 128 (GS1-128), DataMatrix (GS1) y QR. El `.wasm` lo empaqueta Next como estático propio con hash (`new URL(…, import.meta.url)` → `/_next/static/media/`): **sin CDN**. |
+| Diálogo | `src/components/escaner/dialogo-escaner.tsx` | Pantalla completa en celular. Cámara trasera (`facingMode: environment`), marco guía, linterna si el dispositivo la ofrece (`torch`), vibración + pitido + marca visual al leer, y **siempre** "Escribir el código" (también para lectores USB/Bluetooth). Estados con explicación: sin permiso, sin cámara, contexto no seguro (HTTP), cámara ocupada, lector no disponible. Libera la cámara al cerrar, al leer, al desmontar y al pasar a segundo plano. |
+| Botón | `BotonEscanear` (`components/escaner/boton-escanear.tsx`) | Carga el diálogo con `next/dynamic` (nada del escáner pesa en el resto de la app). Sin `alLeer` navega a `/movimientos/escanear`. `BotonEscanearInsumo` busca el insumo y lo entrega (formulario de retiro). |
+| Página | `/movimientos/escanear` (permiso `movimientos:ingreso`) | Con `?codigo=` busca **en el servidor** (`buscarInsumoPorCodigo`): una coincidencia activa → `redirect` a `/movimientos/ingreso?insumo=…&lote=…&vence=…&fab=…&escaneado=1`; si no, "No reconocemos este código": buscar el insumo a mano y continuar; con `catalogo:gestionar`, además "Asociar este código a ese insumo" (`asociarCodigoBarrasAccion`, auditado) o crear el insumo con el código puesto (`/admin/insumos/nuevo?codigoBarras=`). Al bodeguero se le indica pedirlo a su administrador, sin bloquear el ingreso. |
+| Rutas | `src/lib/escaneo.ts` | `hrefEscaneo(textoLeido)` interpreta en el cliente y arma parámetros simples (`codigo`, `lote`, `vence`, `fab`); el servidor valida cada uno (`limpiarTexto`, `normalizarNumeroLote`, `diaParam`). |
+
+Dónde aparece: botón grande **Escanear** del panel (bajo `xl`: celular y tablet), ítem **Escanear**
+de la barra inferior (roles con `movimientos:ingreso`), "Escanear para ingresar" en Accesos rápidos
+y botón junto al buscador de insumos en los formularios de ingreso (completa insumo, lote y fechas
+sin perder lo escrito) y de retiro.
+
+Seguridad: `Permissions-Policy: camera=(self)` (y nada más habilitado) en `next.config.ts`; la CSP
+de `proxy.ts` agrega `'wasm-unsafe-eval'` a `script-src` (solo permite compilar WebAssembly; no
+`eval`), `media-src 'self' blob:` y `worker-src 'self'`. La cámara exige HTTPS o `localhost`.
+
+Pruebas: `tests/gs1.test.ts` (parser y GTIN), `tests/proveedores-escaneo.test.ts` (búsqueda y
+asociación), `e2e/escaner.spec.ts` (flujos por entrada manual) y `e2e/escaner-camara.spec.ts`
+(cámara falsa de Chromium con un DataMatrix GS1 generado por `e2e/soporte/camara-falsa.ts`).
+
+### Proveedores en el panel
+
+- `Proveedor.sitioWeb`: lo valida y normaliza `zSitioWebOpcional` / `normalizarSitioWeb`
+  (`@/lib/esquemas/proveedores`): solo `http(s)`, agrega `https://` si falta, sin credenciales,
+  dominio real, máximo 300 caracteres. La base repite la defensa con un `CHECK`, y
+  `listarDirectorioProveedores` y el componente vuelven a pasar el valor por `normalizarSitioWeb`
+  antes de usarlo como `href`: nunca llega a la interfaz un `javascript:`.
+- `DirectorioProveedores` (`components/panel/directorio-proveedores.tsx`): acordeón con
+  `<details>/<summary>` (teclado nativo), "Ir a comprar" con `target="_blank"
+  rel="noopener noreferrer"`, dominio visible e ícono de enlace externo; `tel:` y `mailto:`; "Editar"
+  solo con `proveedores:gestionar`. El panel muestra 6 (`PROVEEDORES_EN_PANEL`); `/proveedores`,
+  todos, con buscador.

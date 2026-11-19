@@ -310,6 +310,16 @@ Desde ahí, el resto de los usuarios, centros e insumos se crean en la aplicaci�
   HTTPS**. Por HTTP sin cifrar el inicio de sesión no funciona (salvo en `localhost`).
 - Sin HTTPS, contraseñas y datos viajarían en texto legible por la red.
 - La aplicación envía además la cabecera HSTS, que indica al navegador usar siempre HTTPS.
+- **El escáner con la cámara del celular solo funciona con HTTPS.** Los navegadores entregan la
+  cámara únicamente a sitios seguros (o a `localhost`, para desarrollo). Si alguien abre el sistema
+  por `http://` o por la IP del servidor, el botón «Escanear» explica que falta una conexión segura
+  y solo deja escribir el código a mano. Si pones otro proxy delante (nginx, un balanceador), no
+  elimines ni reemplaces estas cabeceras de la aplicación:
+  - `Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=()` — permite la
+    cámara solo al propio sitio; un `camera=()` la bloquearía.
+  - `Content-Security-Policy` con `'wasm-unsafe-eval'` en `script-src` — permite únicamente compilar
+    el lector de códigos (WebAssembly), que se sirve desde el mismo sitio (`/_next/static/…`, sin
+    CDN). No habilita `eval()`.
 
 Con la opción A, el perfil `https` lo resuelve solo. Con la opción B lo resuelve la plataforma. No
 publiques el puerto 3000 directamente a internet.
@@ -561,6 +571,7 @@ PostgreSQL gestionado con recuperación a un punto en el tiempo.
 ### Red y acceso
 
 - [ ] El sitio abre **solo por HTTPS** con certificado válido; HTTP redirige a HTTPS.
+- [ ] Desde un celular, **Escanear** abre la cámara (pide permiso la primera vez) y lee un código.
 - [ ] El cortafuegos expone solo los puertos 22, 80 y 443. El puerto de PostgreSQL (5432) y el 3000
       no son accesibles desde internet.
 - [ ] El acceso SSH al servidor es con llave (no con contraseña) y solo para quienes lo operan.

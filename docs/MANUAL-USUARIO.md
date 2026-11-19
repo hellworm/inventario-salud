@@ -79,8 +79,29 @@ Los estados siempre llevan texto e ícono, no solo color:
 - **Stock suficiente** — hay más que el mínimo.
 - **Bajo mínimo** — queda menos que el mínimo: conviene reponer.
 - **Sin stock** — no queda nada utilizable.
-- **Vence en N días** — el lote vence dentro de los próximos 90 días.
 - **Vencido** — ya no se puede usar; hay que separarlo y darlo de baja.
+
+### El semáforo de vencimiento
+
+Cada lote tiene un color según **cuánto falta para que venza**. Es el mismo en toda la aplicación
+(panel, inventario, alertas, formularios y reportes):
+
+| Color | Forma | Significa | Qué hacer |
+|---|---|---|---|
+| **Rojo** | Octágono | Vence en **menos de 3 meses** | Úsalo primero para que no se pierda. |
+| **Amarillo** | Triángulo | Vence en **3 a 6 meses** | Tenlo presente al planificar el consumo y las compras. |
+| **Verde** | Círculo | Vence en **6 meses o más** | Sin urgencia. |
+| **Vencido** | Calendario tachado | **Ya venció** (aparte del semáforo y más grave que el rojo) | No se usa ni se retira: se separa y un administrador lo da de baja. |
+| **Sin vencimiento** | ∞ | El insumo no lleva fecha de vencimiento | — |
+
+- Los meses se cuentan **por calendario** desde hoy: si hoy es 19 de noviembre, es rojo lo que vence
+  antes del 19 de febrero, amarillo lo que vence desde el 19 de febrero y antes del 19 de mayo, y
+  verde lo que vence desde el 19 de mayo. El día del vencimiento el lote todavía se puede usar.
+- Cada color lleva además **una forma distinta y su nombre escrito** («Rojo · 12 días»): se
+  distingue aunque no veas bien los colores o imprimas en blanco y negro.
+- El color de un **insumo** es el de su lote con stock que vence antes (el peor). Si tiene lotes de
+  varios colores, al lado se muestra cuántos hay de cada uno.
+- Un lote guardado en dos ubicaciones se cuenta en cada una.
 
 ---
 
@@ -91,8 +112,29 @@ nada.
 
 ### Ver el resumen del día — *Panel*
 
-Muestra cuántos insumos están sin stock, bajo el mínimo, vencidos o por vencer, y qué requiere
-atención hoy, en orden de prioridad. Toca cualquier tarjeta o fila para ver el detalle.
+![Panel con el semáforo de vencimientos](capturas/02-panel-administrador.png)
+
+De arriba abajo:
+
+1. **Qué falta:** cuántos insumos están sin stock o bajo el mínimo.
+2. **Semáforo de vencimientos:** tres tarjetas grandes —**Rojo**, **Amarillo** y **Verde**— con el
+   número de insumos y de lotes de cada color; tócalas para ver esos insumos en el inventario. Si
+   hay lotes **vencidos**, aparecen destacados arriba. Debajo está la lista de **productos en rojo**
+   (insumo, lote, ubicación, fecha y días que le quedan), ordenada por lo que vence antes: toca una
+   fila para abrir la ficha del insumo, o **Ver todos los lotes en rojo**.
+3. **Qué requiere atención hoy**, en orden de prioridad.
+4. **Proveedores:** dónde comprar y a quién llamar (ver más abajo).
+
+### Ver los proveedores y dónde comprar
+
+En el Panel, la sección **Proveedores** lista a quienes abastecen a la red (primero los que más se
+han usado en los ingresos de tu centro):
+
+- **Ir a comprar** abre el sitio web del proveedor en otra pestaña. Bajo el nombre se ve la dirección
+  a la que lleva. Si el proveedor no tiene sitio registrado, el botón no aparece.
+- Toca el nombre para **desplegar** su teléfono, su correo, la persona de contacto y el RUT. Desde el
+  celular, tocar el teléfono inicia la llamada y tocar el correo abre tu aplicación de correo.
+- **Ver todos** abre el directorio completo, con buscador.
 
 ### Buscar un insumo — *Inventario*
 
@@ -100,20 +142,23 @@ atención hoy, en orden de prioridad. Toca cualquier tarjeta o fila para ver el 
 
 1. Entra a **Inventario**.
 2. Escribe en el buscador el **nombre, código o número de lote**.
-3. Si quieres, filtra por **categoría** o **ubicación**, o usa los botones **Sin stock**, **Bajo
-   mínimo**, **Por vencer**, **Vencidos** o **Stock suficiente**.
-4. Toca un insumo para abrir su ficha: verás cuánto hay, **en qué ubicación está cada lote** y
-   cuándo vence.
+3. Si quieres, filtra por **categoría** o **ubicación**, por estado de stock (**Sin stock**, **Bajo
+   mínimo**, **Stock suficiente**) o por el semáforo de vencimiento (**Rojo**, **Amarillo**,
+   **Verde**, **Vencidos**). El filtro de color muestra los insumos que tienen **algún** lote de ese
+   color.
+4. Toca un insumo para abrir su ficha: verás cuánto hay, **en qué ubicación está cada lote**,
+   cuándo vence y su color.
 
 ![Ficha de un insumo](capturas/04-ficha-insumo.png)
 
 ### Ver qué falta o está por vencer — *Alertas*
 
-En **Alertas** hay cuatro pestañas: **Sin stock**, **Bajo mínimo**, **Vencidos** y **Por vencer**
-(esta última separa los que vencen en 30 días o menos, de 31 a 60 y de 61 a 90).
+En **Alertas** hay cinco pestañas: **Sin stock**, **Bajo mínimo**, **Vencidos**, **Rojo** (lotes
+que vencen en menos de 3 meses) y **Amarillo** (de 3 a 6 meses). Lo que está en verde no es una
+alerta: se consulta en Inventario con el filtro **Verde**.
 
 Cada fila trae, a la derecha, la acción que tu rol puede hacer (un visitante solo consulta):
-**Ingresar** lo que falta, **Retirar** primero el lote que está por vencer o **Dar de baja** un lote
+**Ingresar** lo que falta, **Retirar** primero el lote en rojo o amarillo o **Dar de baja** un lote
 vencido. El formulario se abre con el insumo, la ubicación y el lote ya elegidos.
 
 El botón **Lista de reposición** arma el listado de lo que conviene pedir. Puedes **imprimirlo** o
@@ -131,12 +176,43 @@ en tus centros y ves el historial de movimientos.
 > Registra cada movimiento **en el momento** en que ocurre. El inventario es tan confiable como lo
 > que se anota.
 
+### Ingresar un producto escaneando su código (celular)
+
+![Escáner en el celular](capturas/14-escaner-movil.png)
+
+1. En el celular, toca **Escanear** en el Panel (el botón grande de arriba) o en la barra inferior.
+   La primera vez, el navegador pide permiso para usar la cámara: **acéptalo**.
+2. Apunta al **código de barras** o al **cuadrado pequeño (DataMatrix)** del envase, dentro del
+   marco. Con poca luz, enciende la **linterna** (aparece si tu teléfono la permite).
+3. Si el sistema reconoce el código, abre el ingreso con el **insumo ya elegido**. Cuando el código
+   trae el **lote** y el **vencimiento** (lo habitual en los DataMatrix de insumos médicos), también
+   quedan completos: **revísalos contra el envase**.
+4. Escribe la **cantidad** y presiona **Registrar ingreso**.
+
+Si algo no resulta:
+
+- **La cámara no lee el código:** usa **Escribir el código** (abajo en el escáner) y copia los
+  números que aparecen bajo las barras. Un lector de códigos conectado al computador (USB o
+  Bluetooth) funciona igual: haz clic en ese campo y dispara el lector.
+- **«No reconocemos este código»:** ningún insumo del catálogo lo tiene registrado. Busca el insumo
+  por su nombre y continúa con el ingreso (el lote y el vencimiento leídos se conservan). Pide a tu
+  administrador que registre el código en el insumo para que la próxima vez se reconozca; el
+  administrador puede hacerlo ahí mismo con **Asociar este código a ese insumo**, o crear un insumo
+  nuevo con el código ya puesto.
+- **«Falta el permiso para usar la cámara»:** toca el candado junto a la dirección del sitio (en
+  iPhone, «aA»), deja la cámara en *Permitir* y vuelve a intentarlo.
+- **«La cámara necesita una conexión segura»:** el sitio no se abrió con HTTPS. Avisa a quien
+  administra el sistema.
+
+También hay un botón **Escanear** junto al buscador de insumos en los formularios de ingreso y de
+retiro.
+
 ### Registrar un ingreso (llegan insumos)
 
 ![Registrar ingreso](capturas/05-ingreso.png)
 
 1. Menú **Registrar → Ingreso** (o el botón **Registrar ingreso** del Panel).
-2. **Insumo:** búscalo por nombre o código.
+2. **Insumo:** búscalo por nombre o código, o toca **Escanear** y lee el código del envase.
 3. **Ubicación de destino:** dónde lo vas a guardar.
 4. **Número de lote** y **Vencimiento:** cópialos tal como vienen en el envase. Si el lote ya
    existe en tu centro, el sistema te lo sugiere: tócalo para usarlo y no tener que escribirlo (la
@@ -252,7 +328,12 @@ que apliques:
 - **Movimientos:** ingresos, retiros, ajustes, mermas y traslados de un período.
 - **Consumo y cobertura:** cuánto se retira de cada insumo, el promedio diario y para cuántos días
   alcanza lo que hay.
-- **Vencimientos y mermas:** lotes vencidos o por vencer y las bajas del período.
+- **Vencimientos y mermas:** lotes por color del semáforo (por defecto vencidos, rojo y amarillo;
+  se puede filtrar por un color) y las bajas del período.
+
+Los reportes de existencias y de vencimientos tienen el filtro **Semáforo**, y sus archivos para
+Excel traen la columna «Semáforo» con el texto *Rojo*, *Amarillo*, *Verde*, *Vencido* o
+*Sin vencimiento*.
 
 ### Administración
 
@@ -263,7 +344,7 @@ En el menú **Administración**:
 | **Insumos** | El catálogo común a toda la red: código, nombre, categoría, unidad de medida, si controla vencimiento o requiere cadena de frío y, opcionalmente, su registro sanitario. En la ficha de cada insumo defines el **stock mínimo y máximo por centro**, que es lo que activa las alertas. |
 | **Categorías** | Los grupos en que se ordenan los insumos. |
 | **Centros y ubicaciones** | Los establecimientos de la red y los lugares donde cada uno guarda su stock (bodegas, salas, refrigeradores). |
-| **Proveedores** | A quiénes se les compra, para indicarlos en los ingresos. |
+| **Proveedores** | A quiénes se les compra: RUT, razón social, contacto, teléfono, correo y **sitio web (para comprar)**. Se indican en los ingresos y aparecen en el Panel de todos los roles con el botón «Ir a comprar». Se pueden crear, editar, desactivar y reactivar. |
 | **Usuarios** | Quién puede entrar, con qué rol y en qué centros. |
 | **Auditoría** | Registro de quién hizo qué y cuándo. Solo lectura. |
 

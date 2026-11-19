@@ -12,10 +12,17 @@ tablet o teléfono) y conecta a todos los centros de una misma red.
 
 - **Stock por lote y ubicación.** Cada insumo se controla por número de lote, fecha de vencimiento
   y lugar físico (bodega, sala, refrigerador) dentro de cada centro.
-- **Vencimientos bajo control.** Al retirar, el sistema usa primero lo que vence antes (FEFO) y
-  nunca entrega lotes vencidos. Avisa con 90, 60 y 30 días de anticipación.
-- **Alertas y lista de reposición.** Insumos sin stock, bajo el mínimo, por vencer y vencidos, con
-  una lista de compra imprimible o exportable.
+- **Semáforo de vencimientos.** Cada lote es **rojo** (vence en menos de 3 meses), **amarillo** (de
+  3 a 6 meses) o **verde** (6 meses o más); los vencidos van aparte. La pantalla principal muestra
+  cuántos insumos y lotes hay de cada color y la lista de productos en rojo, todo clicable. Al
+  retirar, el sistema usa primero lo que vence antes (FEFO) y nunca entrega lotes vencidos.
+- **Escáner con la cámara del celular.** Un botón «Escanear» en la pantalla principal lee el código
+  de barras o el DataMatrix del envase y abre el ingreso con el insumo —y, si el código es GS1, el
+  lote y el vencimiento— ya completos. También acepta el código escrito o un lector USB/Bluetooth.
+- **Proveedores a mano.** En la pantalla principal, cada proveedor tiene su botón «Ir a comprar»
+  (abre su sitio web) y despliega teléfono, correo y contacto.
+- **Alertas y lista de reposición.** Insumos sin stock, bajo el mínimo, vencidos, en rojo y en
+  amarillo, con una lista de compra imprimible o exportable.
 - **Trazabilidad completa.** Cada ingreso, retiro, traslado, ajuste y merma queda registrado con
   usuario, fecha y motivo. El historial no se puede modificar ni borrar.
 - **Menos errores al registrar.** Confirmación antes de un ajuste, una merma o un retiro grande;
@@ -29,17 +36,17 @@ tablet o teléfono) y conecta a todos los centros de una misma red.
 |---|---|
 | ![Inventario](docs/capturas/03-inventario.png) | ![Retiro](docs/capturas/06-retiro.png) |
 
-| Alertas | En el teléfono |
-|---|---|
-| ![Alertas](docs/capturas/08-alertas.png) | <img src="docs/capturas/13-panel-movil.png" alt="Panel en el teléfono" width="260"> |
+| Alertas | En el teléfono | Escáner |
+|---|---|---|
+| ![Alertas](docs/capturas/08-alertas.png) | <img src="docs/capturas/13-panel-movil.png" alt="Panel en el teléfono" width="260"> | <img src="docs/capturas/14-escaner-movil.png" alt="Escáner de códigos en el teléfono" width="260"> |
 
 ## Roles
 
 | Rol | Para quién | Qué puede hacer |
 |---|---|---|
 | **Administrador** | Encargado de la red | Ve y opera todos los centros; registra todo tipo de movimientos; administra insumos, centros, proveedores y usuarios; consulta reportes y auditoría. |
-| **Bodeguero** | Quien recibe y entrega insumos | Registra ingresos y retiros en sus centros; consulta inventario, alertas e historial. |
-| **Visitante** | Quien solo necesita consultar | Consulta inventario y alertas de sus centros. No modifica nada. |
+| **Bodeguero** | Quien recibe y entrega insumos | Registra ingresos (también escaneando) y retiros en sus centros; consulta inventario, alertas, historial y proveedores. |
+| **Visitante** | Quien solo necesita consultar | Consulta inventario, alertas y proveedores de sus centros. No modifica nada. |
 
 La guía de uso por rol está en [`docs/MANUAL-USUARIO.md`](docs/MANUAL-USUARIO.md).
 
@@ -210,6 +217,11 @@ npm run build             # la suite prueba el build; vuelve a compilar si cambi
 npm run test:e2e          # todo; agrega p. ej. `retiros`, `--project=movil` o `-g "FEFO"`
 ```
 
+- `e2e/escaner-camara.spec.ts` prueba el escáner con la **cámara falsa de Chromium**: genera un
+  video con un DataMatrix GS1 (`e2e/soporte/camara-falsa.ts`, con `bwip-js`) y comprueba que el
+  lector lo decodifica y abre el ingreso prellenado. El resto de los flujos de escaneo
+  (`e2e/escaner.spec.ts`) usa la entrada manual del código.
+
 - La suite levanta el servidor con `node scripts/iniciar.mjs -p 3200` (lo mismo que `npm start`) y
   lo detiene al terminar. Si ya hay un servidor en el puerto 3200 lo reutiliza: asegúrate de que
   sea el build actual. Tras una actualización con migraciones nuevas, aplícalas también a
@@ -247,6 +259,14 @@ La aplicación está completa para el alcance descrito arriba y pasa todas sus v
 - **Bloqueo de cuentas sin proxy declarado:** sin `TRUST_PROXY` la aplicación no conoce la IP de
   cada persona y el bloqueo por intentos fallidos es por cuenta (un tercero podría bloquearla 15
   minutos). En producción con Docker Compose ya viene configurado.
+- **Escáner:** probado con la cámara simulada de Chromium y con imágenes generadas (EAN-13,
+  Code 128, DataMatrix GS1 y QR); conviene validarlo con los teléfonos reales del centro (iPhone/
+  Safari y Android/Chrome) y con los envases que más se reciben antes de darlo por bueno. Requiere
+  HTTPS. La linterna depende del teléfono (en iPhone el navegador no siempre la ofrece).
+- **Códigos GS1 sin separador:** si un lector USB elimina el separador entre campos, el lote puede
+  llegar pegado a lo que sigue; por eso el formulario siempre muestra lo leído para revisarlo.
+- **Semáforo fijo:** los límites (3 y 6 meses) son los mismos para todos los insumos; no se
+  configuran por insumo ni por centro.
 - **Costos:** el costo unitario es opcional y los reportes valorizan con el costo promedio de los
   ingresos que lo traen; no es un sistema contable.
 - **Modo oscuro** y listado oficial completo de comunas: no incluidos.
