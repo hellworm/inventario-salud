@@ -36,7 +36,7 @@ pide a un administrador que la restablezca: te dará una temporal.
   secciones a las que tienes acceso.
 - **Selector de centro** (arriba): si trabajas en más de un centro, elige cuál quieres ver. Los
   administradores pueden elegir además **Toda la red**.
-- **Tu nombre** (arriba a la derecha): **Cambiar contraseña** y **Cerrar sesión**.
+- **Tu nombre** (arriba a la derecha): **Cambiar contraseña**, **Ayuda** y **Salir**.
 
 Cierra la sesión al terminar si el equipo es compartido. Por seguridad, se cierra sola tras varias
 horas sin uso.
@@ -84,7 +84,7 @@ atención. Toca cualquier tarjeta o fila para ver el detalle.
 1. Entra a **Inventario**.
 2. Escribe en el buscador el **nombre, código o número de lote**.
 3. Si quieres, filtra por **categoría** o **ubicación**, o usa los botones **Sin stock**, **Bajo
-   mínimo**, **Por vencer**, **Con vencidos** o **Stock suficiente**.
+   mínimo**, **Por vencer**, **Vencidos** o **Stock suficiente**.
 4. Toca un insumo para abrir su ficha: verás cuánto hay, **en qué ubicación está cada lote** y
    cuándo vence.
 

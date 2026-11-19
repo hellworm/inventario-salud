@@ -469,6 +469,29 @@ centro y menú de usuario. Para agregar una entrada de navegación edita `src/li
 (con su permiso). El contenido de cada página se renderiza dentro de `<main>` con ancho máximo y
 márgenes ya definidos: empieza directamente con `<PageHeader>`.
 
+### Shell, tablet e impresión
+
+- **Menú lateral:** completo solo desde `xl` (1280 px). Entre `lg` y `xl` (tablet horizontal) es un
+  rail de íconos con pista al pasar el mouse o enfocar; su botón inferior abre el menú completo en
+  un panel. Bajo `lg`, barra inferior + panel. Por eso las grillas de página de 2 columnas van en
+  `xl:` (no en `lg:`): a 1024 px el contenido mide ~950 px.
+- **Marcas estables del shell:** `data-shell="lateral|superior|inferior|contenido"` (además de
+  `aside`, `header` + `main` y `nav[aria-label="Accesos rápidos"]`, que se conservan).
+- **Impresión:** `globals.css` oculta en `@media print` el shell, los botones del kit (clase
+  `ri-boton`), la paginación y todo lo que lleve `data-no-imprimir`.
+- **Objetivos táctiles:** 44 px mínimo; lo que puede ser más compacto con mouse usa la variante
+  `pointer-fine:` (p. ej. `Button size="sm"`), nunca un breakpoint de ancho.
+- **Diálogos controlados:** `DialogContent`, `SheetContent` y `ConfirmDialog` devuelven el foco al
+  elemento que lo tenía al abrir aunque no haya `Trigger` (`useDevolverFoco`). `ConfirmDialog`
+  acepta `children`; `EmptyState` acepta `nivelTitulo` (usa `1` cuando es toda la página).
+- **Volver coherente:** los formularios de movimientos aceptan `?volver=/ruta` (validada con
+  `validarVolver` de `@/lib/navegacion`) y, si falta, usan la página anterior.
+- **404 real:** el grupo `src/app/(directo)` no tiene `loading.tsx` por encima; ahí viven la ficha
+  del insumo y el comodín `[...resto]`, para que `notFound()` responda con estado HTTP 404.
+- **Vocabulario:** “Registrar ingreso / Registrar retiro” en la acción principal de una página;
+  “Ingresar / Retirar” en acciones de fila o de panel; “Correo electrónico” (no “Email”);
+  “contraseña temporal” (no “clave”); filtro “Vencidos”.
+
 ## 11. Convenciones
 
 - **Idioma:** UI y mensajes en español de Chile (tuteo, sin voseo). Identificadores del dominio en

@@ -36,18 +36,26 @@ import { describirVencimiento, formatearDia, formatearFechaHora } from "@/lib/fe
 import { formatearNumero } from "@/lib/formato";
 import { puede } from "@/lib/permisos";
 import { cantidadConUnidad, unidadSegun } from "@/lib/unidades";
-import { contextoPagina } from "@/server/auth/sesion";
+import { contextoPagina, obtenerSesion } from "@/server/auth/sesion";
 import { esErrorDominio } from "@/server/errores";
 import {
   detalleInsumo,
   listarMovimientos,
+  obtenerOpcionInsumo,
   type DetalleInsumo,
   type ExistenciaDetalle,
   type FilaMovimiento,
   type ParametroDetalle,
 } from "@/server/servicios";
 
-export const metadata: Metadata = { title: "Ficha del insumo" };
+/** Título de pestaña con el nombre real del insumo (o el genérico si no existe o no hay acceso). */
+export async function generateMetadata({ params }: PageProps<"/inventario/[insumoId]">): Promise<Metadata> {
+  const { insumoId } = await params;
+  const sesion = await obtenerSesion();
+  if (!sesion || !puede(sesion.usuario.rol, "catalogo:ver")) return { title: "Ficha del insumo" };
+  const insumo = await obtenerOpcionInsumo(sesion.actor, insumoId).catch(() => null);
+  return { title: insumo ? `${insumo.nombre} · Inventario` : "Insumo no encontrado" };
+}
 
 const ULTIMOS_MOVIMIENTOS = 10;
 
@@ -128,8 +136,8 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
       encabezado: "Ubicación",
       celda: (e) => (
         <span className="block min-w-0">
-          <span className="block truncate">{e.ubicacion}</span>
-          <span className="block truncate text-xs text-texto-tenue">
+          <span className="line-clamp-2">{e.ubicacion}</span>
+          <span className="line-clamp-2 text-xs text-texto-suave">
             {mostrarCentro ? e.centro : ETIQUETA_TIPO_UBICACION[e.tipoUbicacion as TipoUbicacion]}
           </span>
         </span>
@@ -163,6 +171,7 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
             clave: "acciones",
             encabezado: "Acción",
             alinear: "derecha",
+            className: "whitespace-nowrap",
             celda: (e) =>
               e.estadoVencimiento === "VENCIDO" ? (
                 permisos.darDeBaja ? (
@@ -209,11 +218,10 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
     {
       clave: "lote",
       encabezado: "Lote y ubicación",
-      className: "md:max-w-0 md:w-[38%]",
       celda: (m) => (
         <span className="block min-w-0">
-          <span className="cifras block truncate">{m.numeroLote}</span>
-          <span className="block truncate text-xs text-texto-tenue">
+          <span className="cifras block">{m.numeroLote}</span>
+          <span className="line-clamp-2 text-xs text-texto-suave">
             {m.ubicacion}
             {mostrarCentro ? ` · ${m.centro}` : ""}
           </span>
@@ -252,13 +260,13 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
                   className={buttonClasses({ variant: "secundario" })}
                 >
                   <ArrowUpFromLine aria-hidden />
-                  Retirar
+                  Registrar retiro
                 </Link>
               ) : null}
               {permisos.ingresar ? (
                 <Link href={`/movimientos/ingreso?insumo=${insumo.id}`} className={buttonClasses()}>
                   <ArrowDownToLine aria-hidden />
-                  Ingresar
+                  Registrar ingreso
                 </Link>
               ) : null}
             </>
@@ -317,8 +325,8 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
         />
       </section>
 
-      <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
+      <div className="mt-4 grid grid-cols-1 items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="min-w-0 space-y-4">
           <Card relleno={false} className="overflow-hidden">
             <CardHeader
               className="mb-0 p-4 sm:p-5"
@@ -410,7 +418,7 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
           ) : null}
         </div>
 
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 2xl:grid-cols-1">
           <Card>
             <CardHeader titulo="Ficha del catálogo" />
             <dl className="-my-2.5 divide-y divide-borde">
