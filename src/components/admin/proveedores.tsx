@@ -30,6 +30,7 @@ export interface ProveedorEditable {
   contacto: string | null;
   telefono: string | null;
   email: string | null;
+  sitioWeb: string | null;
   activo: boolean;
 }
 
@@ -54,6 +55,7 @@ function DialogoProveedor({ proveedor, onCerrar }: { proveedor?: ProveedorEditab
       contacto: texto(f, "contacto"),
       telefono: texto(f, "telefono"),
       email: texto(f, "email"),
+      sitioWeb: texto(f, "sitioWeb"),
     };
     if (!validacion.validar(valores)) return;
     if (proveedor) void actualizar.ejecutar({ ...valores, id: proveedor.id });
@@ -103,6 +105,24 @@ function DialogoProveedor({ proveedor, onCerrar }: { proveedor?: ProveedorEditab
               <Input name="email" type="email" inputMode="email" defaultValue={proveedor?.email ?? ""} maxLength={254} autoComplete="off" />
             </Field>
           </div>
+          <Field
+            label="Sitio web (para comprar)"
+            opcional
+            error={e.sitioWeb}
+            ayuda="Aparece como botón «Ir a comprar» en el panel. Ej.: www.ejemplo.cl"
+          >
+            <Input
+              name="sitioWeb"
+              type="url"
+              inputMode="url"
+              defaultValue={proveedor?.sitioWeb ?? ""}
+              maxLength={300}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="https://"
+            />
+          </Field>
           <DialogFooter>
             <Button variant="secundario" onClick={onCerrar} disabled={accion.pendiente}>
               Cancelar

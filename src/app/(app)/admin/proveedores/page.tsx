@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Truck } from "lucide-react";
+import { ExternalLink, Truck } from "lucide-react";
+import { dominioDeSitioWeb, normalizarSitioWeb } from "@/lib/esquemas/proveedores";
 import { BarraFiltros, FiltroBusqueda, FiltroSelect } from "@/components/admin/filtros-url";
 import { AccionesProveedor, BotonNuevoProveedor } from "@/components/admin/proveedores";
 import { BadgeActivo, Card, DataTable, EmptyState, PageHeader, Pagination, type Columna } from "@/components/ui";
@@ -10,6 +11,24 @@ import { listarProveedoresAdmin, type FilaProveedor } from "@/server/servicios";
 import { paginaParam, textoParam } from "@/lib/parametros";
 
 export const metadata: Metadata = { title: "Proveedores" };
+
+/** Enlace al sitio web del proveedor (solo http/https; pestaña nueva). */
+function EnlaceSitio({ sitioWeb }: { sitioWeb: string | null }) {
+  const href = sitioWeb ? normalizarSitioWeb(sitioWeb) : null;
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`Sitio web: ${dominioDeSitioWeb(href)} (se abre en una pestaña nueva)`}
+      className="relative z-10 flex items-center gap-1 break-all text-marca-700 underline-offset-4 hover:underline max-md:min-h-11 pointer-coarse:min-h-11"
+    >
+      {dominioDeSitioWeb(href)}
+      <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+    </a>
+  );
+}
 
 const COLUMNAS: Columna<FilaProveedor>[] = [
   {
@@ -27,7 +46,7 @@ const COLUMNAS: Columna<FilaProveedor>[] = [
     clave: "contacto",
     encabezado: "Contacto",
     celda: (p) =>
-      p.contacto || p.telefono || p.email ? (
+      p.contacto || p.telefono || p.email || p.sitioWeb ? (
         <span className="block min-w-0">
           {p.contacto ? <span className="block break-words">{p.contacto}</span> : null}
           {p.telefono ? (
@@ -47,6 +66,7 @@ const COLUMNAS: Columna<FilaProveedor>[] = [
               {p.email}
             </a>
           ) : null}
+          <EnlaceSitio sitioWeb={p.sitioWeb} />
         </span>
       ) : (
         <span className="text-texto-tenue">—</span>
@@ -68,7 +88,7 @@ const COLUMNAS: Columna<FilaProveedor>[] = [
     className: "w-16 py-1.5",
     celda: (p) => (
       <AccionesProveedor
-        proveedor={{ id: p.id, rut: p.rut, razonSocial: p.razonSocial, contacto: p.contacto, telefono: p.telefono, email: p.email, activo: p.activo }}
+        proveedor={{ id: p.id, rut: p.rut, razonSocial: p.razonSocial, contacto: p.contacto, telefono: p.telefono, email: p.email, sitioWeb: p.sitioWeb, activo: p.activo }}
       />
     ),
   },

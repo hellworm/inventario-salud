@@ -198,6 +198,8 @@ model Proveedor {
   contacto    String?
   telefono    String?
   email       String?
+  /// Sitio web para comprar. Siempre http(s):// (CHECK en BD); lo normaliza `zSitioWebOpcional`.
+  sitioWeb    String?
   activo      Boolean  @default(true)
   creadoEn    DateTime @default(now())
   actualizadoEn DateTime @updatedAt

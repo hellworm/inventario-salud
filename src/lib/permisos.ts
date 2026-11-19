@@ -51,7 +51,7 @@ export const PERMISOS_POR_ROL: Readonly<Record<Rol, ReadonlySet<Permiso>>> = {
     "movimientos:ingreso",
     "movimientos:retiro",
   ]),
-  VISITANTE: new Set<Permiso>(LECTURA_BASICA),
+  VISITANTE: new Set<Permiso>([...LECTURA_BASICA, "proveedores:ver"]),
 };
 
 export const NOMBRE_ROL: Readonly<Record<Rol, string>> = {

@@ -2,6 +2,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { formatearRut, limpiarRut } from "@/lib/chile/rut";
 import {
+  normalizarSitioWeb,
   esquemaActualizarProveedor,
   esquemaProveedor,
   type DatosProveedor,
@@ -11,7 +12,7 @@ import {
 import type { Actor } from "@/lib/permisos";
 import type { Paginado } from "@/lib/resultado";
 import { registrarAuditoria } from "../auditoria";
-import { verificarPermiso } from "../autorizacion";
+import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { db, enTransaccion, type Tx } from "../db";
 import { ErrorDominio, noEncontrado } from "../errores";
 import { validar } from "../validacion";
@@ -35,6 +36,8 @@ export interface FilaProveedor {
   contacto: string | null;
   telefono: string | null;
   email: string | null;
+  /** Sitio web para comprar (`http(s)://…`), ya validado. */
+  sitioWeb: string | null;
   activo: boolean;
   /** Ingresos registrados con este proveedor. */
   ingresos: number;
@@ -75,7 +78,7 @@ export async function listarProveedoresAdmin(actor: Actor, filtros: FiltrosProve
   const [conteo, filas] = await Promise.all([
     db.$queryRaw<{ total: bigint }[]>(Prisma.sql`SELECT COUNT(*) AS total FROM "proveedores" p WHERE ${donde}`),
     db.$queryRaw<(Omit<FilaProveedor, "ingresos"> & { ingresos: bigint })[]>(Prisma.sql`
-      SELECT p."id", p."rut", p."razonSocial", p."contacto", p."telefono", p."email", p."activo",
+      SELECT p."id", p."rut", p."razonSocial", p."contacto", p."telefono", p."email", p."sitioWeb", p."activo",
              (SELECT COUNT(*) FROM "movimientos" m WHERE m."proveedorId" = p."id") AS "ingresos"
       FROM "proveedores" p
       WHERE ${donde}
@@ -107,6 +110,7 @@ function camposProveedor(datos: DatosProveedor) {
     contacto: datos.contacto ?? null,
     telefono: datos.telefono ?? null,
     email: datos.email ?? null,
+    sitioWeb: datos.sitioWeb ?? null,
   };
 }
 
@@ -153,7 +157,7 @@ export async function actualizarProveedor(
         const cambios = calcularCambios(
           {
             rut: actual.rut, razonSocial: actual.razonSocial, contacto: actual.contacto,
-            telefono: actual.telefono, email: actual.email,
+            telefono: actual.telefono, email: actual.email, sitioWeb: actual.sitioWeb,
           },
           nuevos,
         );
@@ -204,4 +208,79 @@ export async function establecerProveedorActivo(
     }
     return { id: proveedorId, activo };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Directorio de proveedores (panel y /proveedores): solo lectura
+// ---------------------------------------------------------------------------
+
+/** Proveedor activo con sus datos de contacto, para el directorio. */
+export interface ProveedorDirectorio {
+  id: string;
+  /** Normalizado: `76123456-7`. Mostrar con `formatearRut`. */
+  rut: string;
+  razonSocial: string;
+  contacto: string | null;
+  telefono: string | null;
+  email: string | null;
+  /** Sitio web para comprar (`http(s)://…`); `null` si no tiene o si lo guardado no es un enlace http(s) válido. */
+  sitioWeb: string | null;
+  /** Último ingreso registrado con este proveedor en los centros del alcance. */
+  ultimoIngreso: Date | null;
+}
+
+export interface DirectorioProveedores {
+  items: ProveedorDirectorio[];
+  /** Proveedores activos que coinciden (puede ser mayor que `items.length`). */
+  total: number;
+}
+
+/**
+ * Directorio de proveedores ACTIVOS con teléfono, correo, contacto y sitio web.
+ * Orden `uso`: primero los usados más recientemente en ingresos de los centros
+ * del alcance, luego el resto por nombre; `nombre`: alfabético.
+ * Permiso: `proveedores:ver` (los tres roles; solo lectura) y acceso al centro si se indica.
+ */
+export async function listarDirectorioProveedores(
+  actor: Actor,
+  filtros: { centroId?: string | null; texto?: string | null; orden?: "uso" | "nombre"; limite?: number } = {},
+): Promise<DirectorioProveedores> {
+  verificarPermiso(actor, "proveedores:ver");
+  const centros = alcanceDeCentros(actor, filtros.centroId);
+  const limite = Math.min(Math.max(Math.trunc(filtros.limite ?? 6), 1), 500);
+  const texto = textoDeBusqueda(filtros.texto);
+  const filtroTexto = texto
+    ? Prisma.sql`AND (unaccent(p."razonSocial") ILIKE unaccent(${patronLike(texto)}) OR unaccent(COALESCE(p."contacto", '')) ILIKE unaccent(${patronLike(texto)}))`
+    : Prisma.empty;
+  const filtroCentro =
+    centros === null
+      ? Prisma.empty
+      : centros.length === 0
+        ? Prisma.sql`AND FALSE`
+        : Prisma.sql`AND m."centroId" IN (${Prisma.join(centros)})`;
+  const orden =
+    filtros.orden === "nombre"
+      ? Prisma.sql`p."razonSocial" ASC, p."id" ASC`
+      : Prisma.sql`u.ultimo DESC NULLS LAST, p."razonSocial" ASC, p."id" ASC`;
+  const filas = await db.$queryRaw<(Omit<ProveedorDirectorio, "ultimoIngreso"> & { ultimo: Date | null; total: number })[]>(Prisma.sql`
+    SELECT p."id", p."rut", p."razonSocial", p."contacto", p."telefono", p."email", p."sitioWeb",
+           u.ultimo, (COUNT(*) OVER ())::int AS total
+    FROM "proveedores" p
+    LEFT JOIN LATERAL (
+      SELECT MAX(m."creadoEn") AS ultimo
+      FROM "movimientos" m
+      WHERE m."proveedorId" = p."id" AND m."tipo" = 'INGRESO' ${filtroCentro}
+    ) u ON TRUE
+    WHERE p."activo" ${filtroTexto}
+    ORDER BY ${orden}
+    LIMIT ${limite}
+  `);
+  return {
+    total: filas[0]?.total ?? 0,
+    items: filas.map(({ ultimo, total, ...p }) => {
+      void total;
+      // Nunca se entrega a la interfaz un enlace que no sea http(s) (defensa ante datos antiguos o importados).
+      return { ...p, sitioWeb: p.sitioWeb ? normalizarSitioWeb(p.sitioWeb) : null, ultimoIngreso: ultimo };
+    }),
+  };
 }
