@@ -89,14 +89,14 @@ export function SearchInput({
         onChange={(e) => setTexto(e.target.value)}
         className={cn(controlClasses(false), "pr-11 pl-10 [&::-webkit-search-cancel-button]:hidden")}
       />
-      <div className="absolute inset-y-0 right-0 flex items-center pr-1">
+      <div className="absolute inset-y-0 right-0 flex items-center">
         {pendiente ? (
           <Loader2 className="mr-3 size-[1.125rem] animate-spin text-texto-tenue" aria-label="Buscando" />
         ) : texto ? (
           <button
             type="button"
             onClick={() => setTexto("")}
-            className="flex size-9 items-center justify-center rounded-full text-texto-tenue hover:bg-superficie-2 hover:text-texto"
+            className="flex size-11 items-center justify-center rounded-full text-texto-suave hover:bg-superficie-2 hover:text-texto"
             aria-label="Limpiar búsqueda"
           >
             <X className="size-4" aria-hidden />

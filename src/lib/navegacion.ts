@@ -94,3 +94,72 @@ export function hrefActivo(ruta: string, items: readonly ItemNavegacion[]): stri
   }
   return mejor;
 }
+
+// ---------------------------------------------------------------------------
+// Enlace "volver" coherente con el origen
+// ---------------------------------------------------------------------------
+
+export interface DestinoVolver {
+  href: string;
+  label: string;
+}
+
+/** Secciones desde las que se llega a un formulario o ficha (prefijo más específico primero). */
+const ORIGENES_VOLVER: readonly { prefijo: string; label: string; exacto?: boolean }[] = [
+  { prefijo: "/panel", label: "Panel", exacto: true },
+  { prefijo: "/alertas/reposicion", label: "Lista de reposición" },
+  { prefijo: "/alertas", label: "Alertas" },
+  { prefijo: "/inventario/", label: "Ficha del insumo" },
+  { prefijo: "/inventario", label: "Inventario", exacto: true },
+  { prefijo: "/movimientos", label: "Historial de movimientos", exacto: true },
+  { prefijo: "/reportes", label: "Reportes" },
+];
+
+export const VOLVER_POR_DEFECTO: DestinoVolver = { href: "/inventario", label: "Inventario" };
+
+/**
+ * Valida un destino de "volver" (parámetro `?volver=` o cabecera `Referer`):
+ * solo rutas internas de las secciones conocidas; cualquier otra cosa (URL
+ * externa, `//host`, rutas desconocidas) se descarta. Devuelve la ruta con su
+ * consulta (para volver al listado con sus filtros) y la etiqueta a mostrar.
+ */
+export function validarVolver(valor: string | null | undefined): DestinoVolver | null {
+  if (!valor || valor.length > 500 || !valor.startsWith("/") || valor.startsWith("//") || /[\\\u0000-\u001f]/.test(valor)) return null;
+  const ruta = valor.split(/[?#]/)[0] ?? "";
+  for (const origen of ORIGENES_VOLVER) {
+    const coincide = origen.exacto
+      ? ruta === origen.prefijo
+      : origen.prefijo.endsWith("/")
+        ? ruta.startsWith(origen.prefijo) && ruta.length > origen.prefijo.length
+        : ruta === origen.prefijo || ruta.startsWith(`${origen.prefijo}/`);
+    if (coincide) return { href: valor.split("#")[0] ?? valor, label: origen.label };
+  }
+  return null;
+}
+
+/**
+ * Destino del enlace "volver" de una página a la que se llega desde varias
+ * secciones. Prioridad: `?volver=/ruta` explícito, luego la página anterior
+ * (`Referer` del mismo sitio) y, si no hay ninguno válido, `porDefecto`.
+ */
+export function resolverVolver(
+  parametro: string | null | undefined,
+  referer: string | null | undefined,
+  host: string | null | undefined,
+  porDefecto: DestinoVolver = VOLVER_POR_DEFECTO,
+): DestinoVolver {
+  const explicito = validarVolver(parametro);
+  if (explicito) return explicito;
+  if (referer && host) {
+    try {
+      const url = new URL(referer);
+      if (url.host === host) {
+        const previo = validarVolver(`${url.pathname}${url.search}`);
+        if (previo) return previo;
+      }
+    } catch {
+      // Referer malformado: se ignora.
+    }
+  }
+  return porDefecto;
+}

@@ -95,7 +95,8 @@
   --ri-borde-fuerte: #b9c6cc;
   --ri-texto: #10242b;
   --ri-texto-suave: #46606a;
-  --ri-texto-tenue: #64808a;
+  /* ≥ 4,5:1 sobre superficie (#fff 4,97), superficie-2 (4,75), fondo (4,62) y marca-50 (4,66). */
+  --ri-texto-tenue: #587480;
   color-scheme: light;
 }
 
@@ -136,5 +137,36 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * Impresión: cualquier página sale sin la navegación de la aplicación ni
+ * controles. El shell marca sus zonas con `data-shell`; los botones del UI kit
+ * llevan la clase `ri-boton`. Para ocultar algo más: `data-no-imprimir`.
+ */
+@media print {
+  body {
+    background: #fff !important;
+  }
+  [data-shell="lateral"],
+  [data-shell="superior"],
+  [data-shell="inferior"],
+  a[href="#contenido"],
+  [data-radix-portal],
+  [role="region"][aria-label*="otificaciones"],
+  .ri-boton,
+  [data-no-imprimir],
+  nav[aria-label="Paginación"] {
+    display: none !important;
+  }
+  [data-shell="contenido"] {
+    transition-property: none !important;
+    transition-duration: 0s !important;
+    padding-left: 0 !important;
+  }
+  [data-shell="contenido"] > main {
+    max-width: none !important;
+    padding: 0 !important;
   }
 }
