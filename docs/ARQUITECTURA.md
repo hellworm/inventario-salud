@@ -37,8 +37,9 @@ prisma/
   migrations/              Inicial (+ CHECKs, trigger de inmutabilidad, unaccent),
                            endurecimiento_seguridad (idempotencia, limitador, TRUNCATE, auditoría),
                            normaliza_numero_lote (lotes en forma canónica),
-                           proveedor_sitio_web (columna + CHECK "solo http(s)") e instituciones
-                           (nivel Institución, rol ADMIN_RED, alcance de la auditoría)
+                           proveedor_sitio_web (columna + CHECK "solo http(s)"), instituciones
+                           (nivel Institución, rol ADMIN_RED, alcance de la auditoría) y
+                           proveedor_por_insumo (Insumo.proveedorId + proveedores_insumo_institucion)
   seed.ts                  Seed demo (referencia idempotente + historial vía servicios)
 src/
   proxy.ts                 Redirección optimista a /login (las Server Actions pasan y responden
@@ -64,6 +65,8 @@ src/
     movimientos/           ComboboxInsumo, campos y piezas comunes de los formularios,
                            AvisoCambioCentro (§10)
     escaner/               Escáner con la cámara: BotonEscanear, DialogoEscaner, lector (§15)
+    proveedores/           Proveedor de un insumo: BloqueProveedor, EnlaceComprar,
+                           BotonCambiarProveedor (§16)
     inventario/, panel/, alertas/, reportes/, admin/   Piezas de cada área
   lib/                     Código ISOMÓRFICO (cliente y servidor), sin acceso a BD
     permisos.ts            ★ Fuente única de verdad de roles y permisos
@@ -106,7 +109,9 @@ acciones **no usan Prisma directamente**; si falta una consulta, se agrega un se
 ## 3. Modelo de datos (resumen)
 
 `Institucion` 1—N `Centro` 1—N `Ubicacion`. `Usuario` N—1 `Institucion` (salvo ADMIN_RED) y N—M
-`Centro` (`UsuarioCentro`). `Insumo` (catálogo común a toda la red) N—1 `Categoria`. `ParametroStock` (insumo × centro: mínimo/máximo). `Lote` (insumo + número, vencimiento).
+`Centro` (`UsuarioCentro`). `Insumo` (catálogo común a toda la red) N—1 `Categoria` y N—1 `Proveedor` opcional (`proveedorId`: proveedor
+predeterminado de la red); `ProveedorInsumoInstitucion` (insumo × institución → proveedor preferido
+de esa institución, único por par; §16). `ParametroStock` (insumo × centro: mínimo/máximo). `Lote` (insumo + número, vencimiento).
 `Existencia` (lote × ubicación → `cantidad`, con `CHECK (cantidad >= 0)`). `Movimiento` = libro mayor
 **inmutable**. `Proveedor` (RUT único normalizado; `sitioWeb` opcional, siempre `http(s)://`), `Sesion`, `RegistroAuditoria` (también
 inmutable), `LimiteIntentos` (tabla `intentos_login`: contadores del limitador).
@@ -177,8 +182,9 @@ Cuatro roles (nombres visibles en `NOMBRE_ROL`):
 | `reportes:ver`, `auditoria:ver` | ✔ | ✔ su institución | — | — |
 | `centros:gestionar`, `usuarios:gestionar`, `parametros:gestionar` | ✔ | ✔ su institución | — | — |
 | `proveedores:gestionar` (proveedores compartidos por la red) | ✔ | ✔ | — | — |
-| `catalogo:crear` (ver el catálogo de administración; crear insumos y categorías) | ✔ | ✔ | — | — |
-| `catalogo:gestionar` (editar, desactivar o eliminar insumos y categorías) | ✔ | — | — | — |
+| `proveedores-insumo:gestionar` (proveedor preferido de una institución para un insumo, §16) | ✔ cualquiera | ✔ la suya | — | — |
+| `catalogo:crear` (ver el catálogo de administración; crear insumos y categorías, con su proveedor predeterminado) | ✔ | ✔ | — | — |
+| `catalogo:gestionar` (editar, desactivar o eliminar insumos y categorías; cambiar el proveedor predeterminado de la red) | ✔ | — | — | — |
 | `instituciones:gestionar` | ✔ | — | — | — |
 
 La autorización se valida **siempre en el servidor y en tres capas**: página (`contextoPagina`),
@@ -509,6 +515,18 @@ listarDirectorioProveedores(actor, { centroId?, texto?, orden?: "uso" | "nombre"
 // insumos.ts
 asociarCodigoBarras(actor, { insumoId, codigoBarras })   // catalogo:gestionar (solo ADMIN_RED: el
   // catálogo es compartido); audita INSUMO_ACTUALIZADO
+
+// proveedor-insumo.ts — ★ única resolución del PROVEEDOR EFECTIVO de un insumo (§16)
+proveedorEfectivoDeInsumo(actor, insumoId, { centroId? }?): Promise<ProveedorEfectivo | null>
+detalleProveedorInsumo(actor, insumoId, { centroId? }?): Promise<DetalleProveedorInsumo>
+  // { efectivo, red, institucion, porInstitucion (solo ADMIN_RED), ultimoIngreso, permisos }
+definirProveedorRed(actor, { insumoId, proveedorId? })                    // catalogo:gestionar
+definirProveedorInstitucion(actor, { insumoId, institucionId?, proveedorId? })
+  // proveedores-insumo:gestionar; proveedorId vacío = volver al predeterminado de la red
+sqlProveedorEfectivo({ insumoId, predeterminado, institucionId }), proveedorDeFila(fila),
+institucionDeContexto(actor, centroId?)                                   // piezas para listados en SQL
+// inventario.ts
+contarInsumosPorProveedor(actor, { centroId? }?): Promise<Record<proveedorId, number>>
 
 // administración: insumos.ts, categorias.ts, centros.ts, proveedores.ts, auditoria-consultas.ts
 // reportes y exportaciones: reportes.ts, alertas.ts (listaReposicion), exportaciones.ts
@@ -1099,3 +1117,72 @@ asociación), `e2e/escaner.spec.ts` (flujos por entrada manual) y `e2e/escaner-c
   rel="noopener noreferrer"`, dominio visible e ícono de enlace externo; `tel:` y `mailto:`; "Editar"
   solo con `proveedores:gestionar`. El panel muestra 6 (`PROVEEDORES_EN_PANEL`); `/proveedores`,
   todos, con buscador.
+
+## 16. Proveedor por insumo
+
+El catálogo es compartido por toda la red, así que el proveedor de un insumo tiene **dos niveles**:
+
+| Nivel | Dónde vive | Quién lo define |
+|---|---|---|
+| **Red** (predeterminado) | `Insumo.proveedorId` (opcional) | `catalogo:gestionar` (ADMIN_RED): `definirProveedorRed` o el campo "Proveedor predeterminado" de la edición del insumo. Al **crear** un insumo (`catalogo:crear`, también un ADMIN de institución) se puede indicar. |
+| **Institución** (preferencia) | `ProveedorInsumoInstitucion` (`@@unique([insumoId, institucionId])`) | `proveedores-insumo:gestionar`: el ADMIN solo para SU institución; ADMIN_RED para cualquiera, indicando cuál (`definirProveedorInstitucion`). |
+
+**Proveedor efectivo** de un insumo en un contexto = el de la institución del contexto, si existe →
+si no, el predeterminado de la red → si no, ninguno. El contexto es la institución **del centro**
+(o la del usuario): `institucionDeContexto(actor, centroId)` devuelve la del actor para ADMIN,
+BODEGUERO y VISITANTE (nunca viene de la entrada) y, para ADMIN_RED, la del centro elegido o `null`
+en "Toda la red" (ahí ve el predeterminado de la red y, en la ficha, el desglose por institución).
+
+Reglas (todas en `servicios/proveedor-insumo.ts`; **no repitas la resolución en otro lado**):
+
+- **Listados:** `sqlProveedorEfectivo` agrega dos `LEFT JOIN` y las columnas `prov*`; `proveedorDeFila`
+  las convierte en `ProveedorEfectivo` (`{ id, rut, razonSocial, contacto, telefono, email, sitioWeb,
+  activo, origen: "INSTITUCION" | "RED" }`). Sin consultas por fila. Lo usan `listarInventario`
+  (campo `proveedor` y filtro `proveedorId`; `"sin"` = sin proveedor), `contarInsumosPorProveedor`,
+  `listarInsumosAdmin`, `obtenerAlertas` / `listaReposicion` y el reporte de existencias. Donde cada
+  fila es de un centro (alertas, reposición, existencias) la institución es `ce."institucionId"`: el
+  proveedor es el de la institución de **ese** centro, también en "Toda la red".
+- **Aislamiento:** quien no es ADMIN_RED solo lee la fila de su institución
+  (`detalleProveedorInsumo.porInstitucion` llega vacío) y solo escribe en la suya (otra institución
+  en la entrada → `NO_ENCONTRADO`). Un ADMIN no puede tocar el predeterminado de la red
+  (`SIN_PERMISO`).
+- **Proveedor inactivo:** no se puede asignar (`INACTIVO`, campo `proveedorId`) ni se ofrece en los
+  selectores; una asignación existente **no se borra**: se entrega con `activo: false` y la interfaz
+  la marca "Inactivo" y sugiere cambiarla. Las FK a `proveedores` son `Restrict`.
+- **Último ingreso:** si no hay proveedor efectivo, `detalleProveedorInsumo.ultimoIngreso` trae el
+  del último INGRESO del insumo en los centros del alcance. Es informativo ("Último proveedor"),
+  con "Usar como predeterminado" para quien puede cambiarlo.
+- **Ingreso:** `proveedorSugeridoAccion` (solo lectura) entrega el efectivo para el centro de destino
+  y el formulario lo preselecciona sin pisar uno elegido a mano. `registrarIngreso` **no** modifica
+  el proveedor del insumo, se registre con el que se registre.
+- **Auditoría:** `INSUMO_PROVEEDOR_RED_ACTUALIZADO` (evento de red, `institucionId: null`) e
+  `INSUMO_PROVEEDOR_INSTITUCION_ACTUALIZADO` (con la institución afectada, lo haga su administrador o
+  el de la red); ambos con `entidad: "Insumo"` y `cambios.proveedor`. Cambiarlo desde la edición del
+  insumo queda en `INSUMO_ACTUALIZADO`.
+- **Lista de reposición:** `ListaReposicion.porProveedor` (grupos por proveedor efectivo, "sin
+  proveedor" al final); `?agrupar=proveedor` en la página y en el CSV (mismas columnas, otro orden).
+  El CSV agrega Proveedor, RUT, Teléfono y Correo; el de existencias (y el de vencimientos, que
+  comparte formato), la columna Proveedor.
+
+Interfaz (`components/proveedores/`): `BloqueProveedor` (nombre, origen, "Ir a comprar", `tel:`,
+`mailto:`, aviso de inactivo, último proveedor y desglose), `EnlaceComprar` (reutiliza
+`normalizarSitioWeb`; `target="_blank" rel="noopener noreferrer"`), `NombreProveedor` (grillas) y
+`BotonCambiarProveedor` (diálogo con buscador de proveedores activos, ámbito explícito —"para tu
+institución" / "predeterminado de la red"—, "Volver al predeterminado de la red" y paso de
+confirmación). Aparece en: grilla y panel lateral de `/inventario` (columna desde `xl`; bajo el
+nombre en anchos menores; filtro `?proveedor=`), ficha del insumo, `/admin/insumos` (columna, campo
+al crear/editar y sección "Proveedor de tu institución"), alertas de stock y "Qué requiere atención",
+lista de reposición, formulario de ingreso, reporte de existencias y directorio de proveedores
+("Insumos que le compras" → `/inventario?proveedor=<id>`).
+
+El seed asigna el predeterminado a los insumos demo (cuatro quedan sin proveedor) y tres
+preferencias por institución; solo completa lo que está vacío, de modo que también sirve sobre una
+base demo ya sembrada y no pisa lo definido a mano.
+
+Pruebas: `tests/proveedor-insumo.test.ts` y `e2e/proveedor-insumo.spec.ts`.
+
+Límites conocidos: (1) no hay historial de proveedores por insumo más allá de la auditoría; (2) el
+filtro del inventario ofrece solo proveedores activos; (3) en "Toda la red" el inventario del
+administrador de la red muestra y filtra por el predeterminado de la red, no por las preferencias
+de cada institución (las ve en la ficha); (4) en los CSV, un teléfono que empieza con "+" lleva el
+apóstrofo de la protección contra fórmulas (`neutralizarFormula`).
