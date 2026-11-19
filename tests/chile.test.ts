@@ -3,7 +3,6 @@ import { calcularDv, formatearRut, limpiarRut, normalizarRut, validarRut } from 
 import {
   calcularEstadoStock,
   calcularEstadoVencimiento,
-  tramoDeVencimiento,
 } from "@/lib/estados";
 import {
   diaEnSantiago,
@@ -108,19 +107,12 @@ describe("estados derivados", () => {
   it("estado de vencimiento: el día de vencimiento aún es utilizable", () => {
     const hoy = "2026-06-10";
     expect(calcularEstadoVencimiento("2026-06-09", hoy)).toBe("VENCIDO");
-    expect(calcularEstadoVencimiento("2026-06-10", hoy)).toBe("POR_VENCER");
-    expect(calcularEstadoVencimiento("2026-09-08", hoy)).toBe("POR_VENCER");
-    expect(calcularEstadoVencimiento("2026-09-09", hoy)).toBe("VIGENTE");
+    // El día de vencimiento todavía se puede usar: es ROJO, no VENCIDO.
+    expect(calcularEstadoVencimiento("2026-06-10", hoy)).toBe("ROJO");
+    expect(calcularEstadoVencimiento("2026-09-09", hoy)).toBe("ROJO");
+    expect(calcularEstadoVencimiento("2026-09-10", hoy)).toBe("AMARILLO");
+    expect(calcularEstadoVencimiento("2026-12-10", hoy)).toBe("VERDE");
     expect(calcularEstadoVencimiento(null, hoy)).toBe("SIN_VENCIMIENTO");
-  });
-
-  it("tramos 30/60/90", () => {
-    expect(tramoDeVencimiento(-1)).toBeNull();
-    expect(tramoDeVencimiento(0)).toBe(30);
-    expect(tramoDeVencimiento(30)).toBe(30);
-    expect(tramoDeVencimiento(31)).toBe(60);
-    expect(tramoDeVencimiento(90)).toBe(90);
-    expect(tramoDeVencimiento(91)).toBeNull();
   });
 });
 

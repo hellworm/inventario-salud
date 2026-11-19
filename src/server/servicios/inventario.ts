@@ -4,17 +4,21 @@ import {
   calcularEstadoStock,
   calcularEstadoVencimiento,
   diasParaVencer,
-  DIAS_POR_VENCER,
+  limitesSemaforo,
+  peorEstadoVencimiento,
+  type ColorSemaforo,
+  type ConteoSemaforo,
   type EstadoStock,
   type EstadoVencimiento,
 } from "@/lib/estados";
-import { dateADia, hoyEnSantiago, sumarDias, type DiaISO } from "@/lib/fechas";
+import { dateADia, hoyEnSantiago, type DiaISO } from "@/lib/fechas";
 import type { Actor } from "@/lib/permisos";
 import type { Paginado } from "@/lib/resultado";
 import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { db } from "../db";
 import { noEncontrado } from "../errores";
 import { normalizarPagina, patronLike, textoDeBusqueda } from "./apoyo-admin";
+import { sqlEsColor } from "./semaforo";
 
 /**
  * Consultas de inventario. Conceptos:
@@ -26,7 +30,11 @@ import { normalizarPagina, patronLike, textoDeBusqueda } from "./apoyo-admin";
  *    stock en los centros del alcance.
  */
 
-/** Estados por los que se puede filtrar el inventario. */
+/**
+ * Estados por los que se puede filtrar el inventario. `VENCIDO` y `POR_VENCER`
+ * se conservan por compatibilidad (enlaces antiguos): equivalen a
+ * `semaforo: ["VENCIDO"]` y `semaforo: ["ROJO", "AMARILLO"]`.
+ */
 export const FILTROS_ESTADO_INVENTARIO = [
   "SIN_STOCK",
   "BAJO_MINIMO",
@@ -66,6 +74,11 @@ export interface FiltrosInventario {
    */
   texto?: string | null;
   estado?: FiltroEstadoInventario | null;
+  /**
+   * Semáforo de vencimiento: insumos con AL MENOS UN lote con stock de alguno
+   * de estos colores (un insumo con un lote rojo y otro verde aparece en ambos).
+   */
+  semaforo?: readonly ColorSemaforo[] | null;
   /** Orden del listado (por defecto, por nombre). */
   orden?: OrdenInventario | null;
   pagina?: number;
@@ -85,8 +98,8 @@ export interface FilaInventario {
   total: number;
   vencido: number;
   disponible: number;
-  /** Unidades (no vencidas) que vencen dentro de `DIAS_POR_VENCER` días. */
-  porVencer: number;
+  /** Desglose del semáforo: lotes con stock (por ubicación) de cada color. */
+  semaforo: ConteoSemaforo;
   /** Stock en la ubicación filtrada; `null` si no se filtró por ubicación. */
   enUbicacion: number | null;
   /** Lotes con stock > 0. */
@@ -112,10 +125,13 @@ interface FilaSql {
   activo: boolean;
   total: number;
   vencido: number;
-  por_vencer: number;
+  n_vencido: number;
+  n_rojo: number;
+  n_amarillo: number;
+  n_verde: number;
+  n_sin_fecha: number;
   en_ubicacion: number;
   lotes: number;
-  con_fecha: number;
   minimo: number | null;
   maximo: number | null;
   proximo: Date | null;
@@ -131,6 +147,15 @@ function filtroCentros(columna: Prisma.Sql, centros: string[] | null): Prisma.Sq
   return Prisma.sql`AND ${columna} IN (${Prisma.join(centros)})`;
 }
 
+/** Color de un insumo: el del lote con stock que vence antes (el peor). */
+export function estadoDeConteo(c: ConteoSemaforo): EstadoVencimiento {
+  if (c.VENCIDO > 0) return "VENCIDO";
+  if (c.ROJO > 0) return "ROJO";
+  if (c.AMARILLO > 0) return "AMARILLO";
+  if (c.VERDE > 0) return "VERDE";
+  return "SIN_VENCIMIENTO";
+}
+
 /**
  * Inventario agregado por insumo, con filtros y paginación.
  * Permiso: `inventario:ver` (y acceso al centro si se indica).
@@ -143,7 +168,8 @@ export async function listarInventario(
   verificarPermiso(actor, "inventario:ver");
   const centros = alcanceDeCentros(actor, filtros.centroId);
   const hoy = hoyEnSantiago(opciones.ahora);
-  const limite = sumarDias(hoy, DIAS_POR_VENCER);
+  const limites = limitesSemaforo(hoy);
+  const fecha = Prisma.sql`l."fechaVencimiento"`;
   const { pagina, porPagina, saltar } = normalizarPagina(filtros);
   const ubicacionId = filtros.ubicacionId || null;
   const texto = textoDeBusqueda(filtros.texto);
@@ -177,13 +203,23 @@ export async function listarInventario(
       condiciones.push(Prisma.sql`b.estado_stock = ${filtros.estado}`);
       break;
     case "VENCIDO":
-      condiciones.push(Prisma.sql`b.vencido > 0`);
+      condiciones.push(Prisma.sql`b.n_vencido > 0`);
       break;
     case "POR_VENCER":
-      condiciones.push(Prisma.sql`b.por_vencer > 0`);
+      condiciones.push(Prisma.sql`(b.n_rojo > 0 OR b.n_amarillo > 0)`);
       break;
     default:
       break;
+  }
+  const COLUMNA_COLOR: Readonly<Record<ColorSemaforo, Prisma.Sql>> = {
+    VENCIDO: Prisma.sql`b.n_vencido > 0`,
+    ROJO: Prisma.sql`b.n_rojo > 0`,
+    AMARILLO: Prisma.sql`b.n_amarillo > 0`,
+    VERDE: Prisma.sql`b.n_verde > 0`,
+  };
+  const colores = [...new Set(filtros.semaforo ?? [])].filter((c) => c in COLUMNA_COLOR);
+  if (colores.length > 0) {
+    condiciones.push(Prisma.sql`(${Prisma.join(colores.map((c) => COLUMNA_COLOR[c]), " OR ")})`);
   }
 
   const filas = await db.$queryRaw<FilaSql[]>(Prisma.sql`
@@ -192,12 +228,13 @@ export async function listarInventario(
         l."insumoId" AS insumo_id,
         SUM(e."cantidad")::int AS total,
         COALESCE(SUM(e."cantidad") FILTER (WHERE l."fechaVencimiento" < ${hoy}::date), 0)::int AS vencido,
-        COALESCE(SUM(e."cantidad") FILTER (
-          WHERE l."fechaVencimiento" >= ${hoy}::date AND l."fechaVencimiento" <= ${limite}::date
-        ), 0)::int AS por_vencer,
+        (COUNT(*) FILTER (WHERE e."cantidad" > 0 AND ${sqlEsColor(fecha, "VENCIDO", limites)}))::int AS n_vencido,
+        (COUNT(*) FILTER (WHERE e."cantidad" > 0 AND ${sqlEsColor(fecha, "ROJO", limites)}))::int AS n_rojo,
+        (COUNT(*) FILTER (WHERE e."cantidad" > 0 AND ${sqlEsColor(fecha, "AMARILLO", limites)}))::int AS n_amarillo,
+        (COUNT(*) FILTER (WHERE e."cantidad" > 0 AND ${sqlEsColor(fecha, "VERDE", limites)}))::int AS n_verde,
+        (COUNT(*) FILTER (WHERE e."cantidad" > 0 AND l."fechaVencimiento" IS NULL))::int AS n_sin_fecha,
         COALESCE(SUM(e."cantidad") FILTER (WHERE e."ubicacionId" = ${ubicacionId}), 0)::int AS en_ubicacion,
         (COUNT(DISTINCT l."id") FILTER (WHERE e."cantidad" > 0))::int AS lotes,
-        (COUNT(DISTINCT l."id") FILTER (WHERE e."cantidad" > 0 AND l."fechaVencimiento" IS NOT NULL))::int AS con_fecha,
         MIN(l."fechaVencimiento") FILTER (
           WHERE e."cantidad" > 0 AND l."fechaVencimiento" >= ${hoy}::date
         ) AS proximo
@@ -225,10 +262,13 @@ export async function listarInventario(
         c."nombre" AS categoria,
         COALESCE(ex.total, 0) AS total,
         COALESCE(ex.vencido, 0) AS vencido,
-        COALESCE(ex.por_vencer, 0) AS por_vencer,
+        COALESCE(ex.n_vencido, 0) AS n_vencido,
+        COALESCE(ex.n_rojo, 0) AS n_rojo,
+        COALESCE(ex.n_amarillo, 0) AS n_amarillo,
+        COALESCE(ex.n_verde, 0) AS n_verde,
+        COALESCE(ex.n_sin_fecha, 0) AS n_sin_fecha,
         COALESCE(ex.en_ubicacion, 0) AS en_ubicacion,
         COALESCE(ex.lotes, 0) AS lotes,
-        COALESCE(ex.con_fecha, 0) AS con_fecha,
         par.minimo, par.maximo, ex.proximo,
         CASE
           WHEN COALESCE(ex.total, 0) - COALESCE(ex.vencido, 0) <= 0 THEN 'SIN_STOCK'
@@ -253,11 +293,13 @@ export async function listarInventario(
   const items = filas.map((f): FilaInventario => {
     const disponible = f.total - f.vencido;
     const proximo = f.proximo ? dateADia(f.proximo) : null;
-    let estadoVencimiento: EstadoVencimiento;
-    if (f.vencido > 0) estadoVencimiento = "VENCIDO";
-    else if (f.por_vencer > 0) estadoVencimiento = "POR_VENCER";
-    else if (f.con_fecha > 0) estadoVencimiento = "VIGENTE";
-    else estadoVencimiento = "SIN_VENCIMIENTO";
+    const semaforo: ConteoSemaforo = {
+      VENCIDO: f.n_vencido,
+      ROJO: f.n_rojo,
+      AMARILLO: f.n_amarillo,
+      VERDE: f.n_verde,
+      sinVencimiento: f.n_sin_fecha,
+    };
     return {
       insumoId: f.id,
       codigo: f.codigo,
@@ -271,7 +313,7 @@ export async function listarInventario(
       total: f.total,
       vencido: f.vencido,
       disponible,
-      porVencer: f.por_vencer,
+      semaforo,
       enUbicacion: ubicacionId ? f.en_ubicacion : null,
       lotes: f.lotes,
       stockMinimo: f.minimo,
@@ -279,7 +321,7 @@ export async function listarInventario(
       proximoVencimiento: proximo,
       diasParaVencer: diasParaVencer(proximo, hoy),
       estadoStock: f.estado_stock,
-      estadoVencimiento,
+      estadoVencimiento: estadoDeConteo(semaforo),
     };
   });
 
@@ -348,9 +390,11 @@ export interface DetalleInsumo {
   total: number;
   vencido: number;
   disponible: number;
-  porVencer: number;
+  /** Desglose del semáforo: lotes con stock (por ubicación) de cada color. */
+  semaforo: ConteoSemaforo;
   stockMinimo: number | null;
   estadoStock: EstadoStock;
+  /** Color del insumo: el peor entre sus lotes con stock. */
   estadoVencimiento: EstadoVencimiento;
   proximoVencimiento: DiaISO | null;
   /** Existencias con stock > 0, en orden FEFO. */
@@ -436,17 +480,19 @@ export async function detalleInsumo(
 
   const total = detalle.reduce((s, e) => s + e.cantidad, 0);
   const vencido = detalle.filter((e) => e.estadoVencimiento === "VENCIDO").reduce((s, e) => s + e.cantidad, 0);
-  const porVencer = detalle
-    .filter((e) => e.estadoVencimiento === "POR_VENCER")
-    .reduce((s, e) => s + e.cantidad, 0);
+  const contar = (estado: EstadoVencimiento) => detalle.filter((e) => e.estadoVencimiento === estado).length;
+  const semaforo: ConteoSemaforo = {
+    VENCIDO: contar("VENCIDO"),
+    ROJO: contar("ROJO"),
+    AMARILLO: contar("AMARILLO"),
+    VERDE: contar("VERDE"),
+    sinVencimiento: contar("SIN_VENCIMIENTO"),
+  };
   const disponible = total - vencido;
   const stockMinimo = parametros.length > 0 ? parametros.reduce((s, p) => s + p.stockMinimo, 0) : null;
   const vigentes = detalle.filter((e) => e.estadoVencimiento !== "VENCIDO" && e.fechaVencimiento);
 
-  let estadoVencimiento: EstadoVencimiento = "SIN_VENCIMIENTO";
-  if (vencido > 0) estadoVencimiento = "VENCIDO";
-  else if (porVencer > 0) estadoVencimiento = "POR_VENCER";
-  else if (detalle.some((e) => e.fechaVencimiento)) estadoVencimiento = "VIGENTE";
+  const estadoVencimiento = peorEstadoVencimiento(detalle.map((e) => e.estadoVencimiento));
 
   const disponiblePorCentro = new Map<string, number>();
   for (const e of detalle) {
@@ -474,7 +520,7 @@ export async function detalleInsumo(
     total,
     vencido,
     disponible,
-    porVencer,
+    semaforo,
     stockMinimo,
     estadoStock: calcularEstadoStock(disponible, stockMinimo),
     estadoVencimiento,

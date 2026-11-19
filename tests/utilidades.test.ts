@@ -217,9 +217,9 @@ describe("B-04 — fechas de filtros acotadas (2000–2100)", () => {
     expect(leerDia({ desde: "2026-01-05" }, "desde")).toBe("2026-01-05");
     expect(leerDia({ desde: "9999-12-31" }, "desde")).toBeUndefined();
     const f = leerFiltros(
-      parametrosDe(new URLSearchParams("desde=9999-12-31&hasta=2026-11-19&pagina=99999999999999999999&q=%00gua&dias=60&tipo=RETIRO")),
+      parametrosDe(new URLSearchParams("desde=9999-12-31&hasta=2026-11-19&pagina=99999999999999999999&q=%00gua&semaforo=rojo,VERDE,zzz&tipo=RETIRO")),
     );
-    expect(f).toMatchObject({ desde: undefined, hasta: "2026-11-19", pagina: 1, texto: "gua", dias: 60, tipo: "RETIRO" });
+    expect(f).toMatchObject({ desde: undefined, hasta: "2026-11-19", pagina: 1, texto: "gua", semaforo: ["ROJO", "VERDE"], tipo: "RETIRO" });
   });
 
   it("construirHref omite los vacíos", () => {

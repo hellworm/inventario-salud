@@ -13,6 +13,7 @@ import {
   resumenPanel,
   type FiltroEstadoInventario,
 } from "@/server/servicios";
+import type { ColorSemaforo } from "@/lib/estados";
 import { crearEscenario, sembrarLoteVencido, type Escenario } from "./soporte/escenario";
 
 /**
@@ -53,7 +54,7 @@ describe("listarInventario", () => {
       total: 20,
       vencido: 4,
       disponible: 16,
-      porVencer: 6,
+      semaforo: { VENCIDO: 1, ROJO: 1, AMARILLO: 0, VERDE: 1, sinVencimiento: 0 },
       lotes: 3,
       stockMinimo: 30,
       stockMaximo: 80,
@@ -91,7 +92,20 @@ describe("listarInventario", () => {
     expect(await codigos("BAJO_MINIMO")).toEqual(["DIA-001"]);
     expect(await codigos("OK")).toEqual(["TEL-001"]);
     expect(await codigos("VENCIDO")).toEqual(["DIA-001"]);
+    // Compatibilidad: POR_VENCER equivale a semáforo rojo o amarillo.
     expect(await codigos("POR_VENCER")).toEqual(["DIA-001"]);
+  });
+
+  it("filtra por semáforo (insumos con algún lote con stock de ese color)", async () => {
+    const codigos = async (semaforo: ColorSemaforo[]) =>
+      (await listarInventario(e.admin, { centroId: e.centroA, semaforo })).items.map((i) => i.codigo);
+    expect(await codigos(["VENCIDO"])).toEqual(["DIA-001"]);
+    expect(await codigos(["ROJO"])).toEqual(["DIA-001"]);
+    expect(await codigos(["AMARILLO"])).toEqual([]);
+    expect(await codigos(["VERDE"])).toEqual(["DIA-001"]);
+    expect(await codigos(["AMARILLO", "VERDE"])).toEqual(["DIA-001"]);
+    // Sin colores no filtra; la tela (sin vencimiento) no es de ningún color.
+    expect(await codigos([])).toHaveLength(3);
   });
 
   it("filtra por texto (sin tildes ni mayúsculas), ubicación y categoría", async () => {
@@ -131,8 +145,8 @@ describe("detalleInsumo y lotesDisponibles", () => {
     expect(d).toMatchObject({ total: 20, vencido: 4, disponible: 16, estadoStock: "BAJO_MINIMO", proximoVencimiento: e.dia(20) });
     expect(d.existencias.map((x) => [x.numeroLote, x.ubicacion, x.cantidad, x.estadoVencimiento])).toEqual([
       ["D-VENC", "Bodega", 4, "VENCIDO"],
-      ["D-20", "Bodega", 6, "POR_VENCER"],
-      ["D-200", "Sala 1", 10, "VIGENTE"],
+      ["D-20", "Bodega", 6, "ROJO"],
+      ["D-200", "Sala 1", 10, "VERDE"],
     ]);
     expect(d.parametros).toEqual([
       { centroId: e.centroA, centro: "Centro A", stockMinimo: 30, stockMaximo: 80, disponible: 16, estadoStock: "BAJO_MINIMO" },
@@ -186,24 +200,24 @@ describe("listarMovimientos", () => {
 });
 
 describe("obtenerAlertas", () => {
-  it("detecta sin stock, bajo mínimo, vencidos y por vencer con sus tramos", async () => {
+  it("detecta sin stock, bajo mínimo, vencidos y lotes en rojo o amarillo", async () => {
     const a = await obtenerAlertas(e.admin);
     expect(a.stock.map((s) => [s.codigo, s.centro, s.tipo, s.disponible, s.faltante])).toEqual([
       ["GUA-001", "Centro A", "SIN_STOCK", 0, 50],
       ["DIA-001", "Centro A", "BAJO_MINIMO", 16, 14],
     ]);
-    expect(a.vencimientos.map((v) => [v.numeroLote, v.tipo, v.tramo, v.dias, v.cantidad])).toEqual([
-      ["D-VENC", "VENCIDO", null, -3, 4],
-      ["D-20", "POR_VENCER", 30, 20, 6],
-      ["D-B", "POR_VENCER", 60, 45, 40],
+    // D-200 (verde) no es alerta.
+    expect(a.vencimientos.map((v) => [v.numeroLote, v.tipo, v.dias, v.cantidad])).toEqual([
+      ["D-VENC", "VENCIDO", -3, 4],
+      ["D-20", "ROJO", 20, 6],
+      ["D-B", "ROJO", 45, 40],
     ]);
     expect(a.resumen).toEqual({
       sinStock: 1,
       bajoMinimo: 1,
       vencidos: 1,
-      porVencer30: 1,
-      porVencer60: 1,
-      porVencer90: 0,
+      rojo: 2,
+      amarillo: 0,
       total: 5,
     });
   });
@@ -221,13 +235,22 @@ describe("resumenPanel", () => {
   it("calcula KPIs, actividad diaria y últimos movimientos", async () => {
     const p = await resumenPanel(e.admin, { centroId: e.centroA, diasActividad: 7, ultimos: 3 });
     expect(p).toMatchObject({ insumosConStock: 2, lotesConStock: 4, unidadesTotales: 45, puedeVerMovimientos: true, movimientosHoy: 6 });
-    expect(p.alertas).toMatchObject({ sinStock: 1, bajoMinimo: 1, vencidos: 1, porVencer30: 1 });
+    expect(p.alertas).toMatchObject({ sinStock: 1, bajoMinimo: 1, vencidos: 1, rojo: 1, amarillo: 0 });
+    // Semáforo agregado en SQL: mismos conteos que las alertas, más el verde.
+    expect(p.semaforo).toMatchObject({
+      VENCIDO: { insumos: 1, lotes: 1, unidades: 4 },
+      ROJO: { insumos: 1, lotes: 1, unidades: 6 },
+      AMARILLO: { insumos: 0, lotes: 0, unidades: 0 },
+      VERDE: { insumos: 1, lotes: 1, unidades: 10 },
+      SIN_VENCIMIENTO: { insumos: 1, lotes: 1, unidades: 25 },
+    });
+    expect(p.enRojo.map((l) => [l.numeroLote, l.ubicacion, l.dias, l.cantidad, l.color])).toEqual([["D-20", "Bodega", 20, 6, "ROJO"]]);
     expect(p.actividad).toHaveLength(7);
     // Número de movimientos (no unidades): 4 de entrada y 2 de salida.
     expect(p.actividad.at(-1)).toEqual({ dia: e.hoy, entradas: 4, salidas: 2, movimientos: 6 });
     expect(p.ultimosMovimientos).toHaveLength(3);
     expect(p.porCentro).toEqual([
-      { centroId: e.centroA, centro: "Centro A", sinStock: 1, bajoMinimo: 1, vencidos: 1, porVencer: 1 },
+      { centroId: e.centroA, centro: "Centro A", sinStock: 1, bajoMinimo: 1, vencidos: 1, rojo: 1, amarillo: 0 },
     ]);
 
     const red = await resumenPanel(e.admin);

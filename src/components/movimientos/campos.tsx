@@ -279,7 +279,7 @@ export function SelectorLote({
               </span>
               <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-texto-suave">
                 {l.fechaVencimiento ? <span className="cifras">Vence {formatearDia(l.fechaVencimiento)}</span> : null}
-                {l.estadoVencimiento !== "VIGENTE" ? (
+                {l.estadoVencimiento !== "SIN_VENCIMIENTO" ? (
                   <BadgeEstadoVencimiento estado={l.estadoVencimiento} dias={l.diasParaVencer} />
                 ) : null}
                 {bloqueado ? <span>No se puede retirar</span> : null}

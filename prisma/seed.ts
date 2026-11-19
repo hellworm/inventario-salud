@@ -10,6 +10,7 @@
  * Uso: `npm run db:seed`  (para regenerar todo: `npm run db:reset`).
  */
 import { calcularDv } from "@/lib/chile/rut";
+import { digitoVerificadorGtin } from "@/lib/gs1";
 import { diaADate, hoyEnSantiago, inicioDelDia, sumarDias, type DiaISO } from "@/lib/fechas";
 import type { Actor } from "@/lib/permisos";
 import { hashearPassword } from "@/server/auth/password";
@@ -116,12 +117,18 @@ const CENTROS: {
 ];
 
 const PROVEEDORES = [
-  { rut: rut(76_931_245), razonSocial: "Insumos Renales del Pacífico SpA", contacto: "Paula Henríquez", telefono: "+56 2 2890 1144", email: "ventas@renalespacifico.example" },
-  { rut: rut(77_058_612), razonSocial: "Distribuidora Clínica Andina Ltda.", contacto: "Rodrigo Maturana", telefono: "+56 2 2714 8830", email: "pedidos@clinicaandina.example" },
-  { rut: rut(96_754_380), razonSocial: "Farmacéutica Austral S.A.", contacto: "Marcela Oyarzún", telefono: "+56 2 2433 9020", email: "contacto@farmaustral.example" },
-  { rut: rut(76_340_199), razonSocial: "Protección Sanitaria Biobío SpA", contacto: "Felipe Sanhueza", telefono: "+56 41 291 5507", email: "ventas@proteccionbiobio.example" },
-  { rut: rut(78_112_467), razonSocial: "Suministros Médicos Cordillera Ltda.", contacto: "Daniela Araya", telefono: "+56 32 268 3312", email: "ventas@smcordillera.example" },
+  { rut: rut(76_931_245), razonSocial: "Insumos Renales del Pacífico SpA", contacto: "Paula Henríquez", telefono: "+56 2 2890 1144", email: "ventas@renalespacifico.example", sitioWeb: "https://www.ejemplo-renalespacifico.cl/" },
+  { rut: rut(77_058_612), razonSocial: "Distribuidora Clínica Andina Ltda.", contacto: "Rodrigo Maturana", telefono: "+56 2 2714 8830", email: "pedidos@clinicaandina.example", sitioWeb: "https://www.ejemplo-clinicaandina.cl/" },
+  { rut: rut(96_754_380), razonSocial: "Farmacéutica Austral S.A.", contacto: "Marcela Oyarzún", telefono: "+56 2 2433 9020", email: "contacto@farmaustral.example", sitioWeb: "https://www.ejemplo-farmaustral.cl/" },
+  { rut: rut(76_340_199), razonSocial: "Protección Sanitaria Biobío SpA", contacto: "Felipe Sanhueza", telefono: "+56 41 291 5507", email: "ventas@proteccionbiobio.example", sitioWeb: "https://tienda.ejemplo-proteccionbiobio.cl/" },
+  { rut: rut(78_112_467), razonSocial: "Suministros Médicos Cordillera Ltda.", contacto: "Daniela Araya", telefono: "+56 32 268 3312", email: "ventas@smcordillera.example", sitioWeb: null },
 ] as const;
+
+/** EAN-13 ficticio (prefijo 780, Chile) con dígito verificador válido, para probar el escáner. */
+function ean13Demo(indice: number): string {
+  const cuerpo = `780${String(410_000_000 + indice * 7919).padStart(9, "0")}`;
+  return `${cuerpo}${digitoVerificadorGtin(cuerpo)}`;
+}
 
 interface DefInsumo {
   codigo: string;
@@ -265,7 +272,11 @@ const LOTES_VENCIDOS: { centro: ClaveCentro; codigo: string; ubicacion: "sala" |
   { centro: "conce", codigo: "HEP-5000", ubicacion: "sala", cantidad: 10, dias: 9 },
 ];
 
-/** Lotes recibidos hace poco con vencimiento corto (en `dias` días). */
+/**
+ * Lotes recibidos hace poco con vencimiento conocido (en `dias` días): hasta ~90
+ * quedan en ROJO del semáforo (menos de 3 meses) y entre ~95 y ~175 en AMARILLO
+ * (3 a 6 meses). El resto del stock vence en 8 a 24 meses (VERDE).
+ */
 const LOTES_POR_VENCER: { centro: ClaveCentro; codigo: string; dias: number }[] = [
   { centro: "nunoa", codigo: "HEP-5000", dias: 9 },
   { centro: "nunoa", codigo: "DIA-AF16", dias: 24 },
@@ -278,6 +289,14 @@ const LOTES_POR_VENCER: { centro: ClaveCentro; codigo: string; dias: number }[] 
   { centro: "conce", codigo: "EPO-4000", dias: 13 },
   { centro: "conce", codigo: "DIA-AF18", dias: 48 },
   { centro: "conce", codigo: "AGU-F16", dias: 85 },
+  // Amarillo (3 a 6 meses)
+  { centro: "nunoa", codigo: "DIA-AF16", dias: 150 },
+  { centro: "nunoa", codigo: "MAS-3P", dias: 118 },
+  { centro: "nunoa", codigo: "SUE-500", dias: 172 },
+  { centro: "valpo", codigo: "MAS-3P", dias: 104 },
+  { centro: "valpo", codigo: "SUE-500", dias: 132 },
+  { centro: "conce", codigo: "DIA-AF18", dias: 165 },
+  { centro: "conce", codigo: "MAS-N95", dias: 125 },
 ];
 
 const MOTIVOS_RETIRO: Record<Perfil, readonly string[]> = {
@@ -320,7 +339,7 @@ async function sembrarReferencia() {
       presentacion: d.presentacion ?? null,
       fabricante: d.fabricante ?? null,
       registroSanitario: d.registro ?? null,
-      codigoBarras: `780${String(4_100_000_000 + i * 7919).padStart(10, "0")}`,
+      codigoBarras: ean13Demo(i),
       requiereCadenaFrio: d.frio ?? false,
       controlaVencimiento: d.vence ?? true,
     };

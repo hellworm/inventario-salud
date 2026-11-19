@@ -1,6 +1,6 @@
 import * as React from "react";
-import { CalendarX2, MapPin } from "lucide-react";
-import { Badge, BadgeEstadoVencimiento } from "@/components/ui";
+import { MapPin } from "lucide-react";
+import { BadgeEstadoVencimiento, DesgloseSemaforo } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { formatearDia } from "@/lib/fechas";
 import { formatearNumero } from "@/lib/formato";
@@ -64,7 +64,7 @@ export function ExistenciasPorUbicacion({
                   <p className="cifras truncate text-sm font-semibold text-texto">Lote {e.numeroLote}</p>
                   <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-suave">
                     {e.fechaVencimiento ? <span className="cifras">Vence {formatearDia(e.fechaVencimiento)}</span> : null}
-                    {e.estadoVencimiento !== "VIGENTE" ? (
+                    {e.estadoVencimiento !== "SIN_VENCIMIENTO" ? (
                       <BadgeEstadoVencimiento estado={e.estadoVencimiento} dias={e.diasParaVencer} />
                     ) : null}
                   </p>
@@ -83,20 +83,28 @@ export function ExistenciasPorUbicacion({
   );
 }
 
-/** Badges de vencimiento a nivel de insumo: stock vencido y lo que vence pronto. */
-export function BadgesVencimientoInsumo({
+/**
+ * Semáforo de un insumo: el color del lote con stock que vence antes (el peor)
+ * y, si tiene lotes de más de un color, el desglose (cuántos de cada uno).
+ * `diasParaVencer` son los del próximo vencimiento vigente: no aplica si el
+ * peor estado es VENCIDO.
+ */
+export function SemaforoInsumo({
   fila,
+  className,
 }: {
-  fila: Pick<FilaInventario, "vencido" | "porVencer" | "diasParaVencer">;
+  fila: Pick<FilaInventario, "estadoVencimiento" | "semaforo" | "diasParaVencer">;
+  className?: string;
 }) {
+  const { semaforo: c } = fila;
+  const colores = [c.VENCIDO, c.ROJO, c.AMARILLO, c.VERDE].filter((n) => n > 0).length;
   return (
-    <>
-      {fila.vencido > 0 ? (
-        <Badge tono="peligro" icono={CalendarX2}>
-          <span className="cifras">{formatearNumero(fila.vencido)}</span> {fila.vencido === 1 ? "vencido" : "vencidos"}
-        </Badge>
-      ) : null}
-      {fila.porVencer > 0 ? <BadgeEstadoVencimiento estado="POR_VENCER" dias={fila.diasParaVencer} /> : null}
-    </>
+    <span className={cn("inline-flex flex-wrap items-center gap-x-2 gap-y-1", className)}>
+      <BadgeEstadoVencimiento
+        estado={fila.estadoVencimiento}
+        dias={fila.estadoVencimiento === "VENCIDO" ? undefined : fila.diasParaVencer}
+      />
+      {colores > 1 ? <DesgloseSemaforo conteo={c} /> : null}
+    </span>
   );
 }

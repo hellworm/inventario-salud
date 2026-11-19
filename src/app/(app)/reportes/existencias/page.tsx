@@ -11,7 +11,8 @@ import {
   NavReportes,
   VistaReporte,
 } from "@/components/reportes/piezas";
-import { Card, DataTable, EmptyState, PageHeader, Pagination, type Columna } from "@/components/ui";
+import { BadgeEstadoVencimiento, Card, DataTable, EmptyState, LeyendaSemaforo, PageHeader, Pagination, type Columna } from "@/components/ui";
+import { escribirSemaforo, OPCIONES_FILTRO_SEMAFORO } from "@/lib/estados";
 import { formatearDia, formatearFechaHora, hoyEnSantiago } from "@/lib/fechas";
 import { leerFiltros } from "@/lib/filtros-reportes";
 import { formatearCLP, formatearNumero, pluralizar } from "@/lib/formato";
@@ -40,12 +41,11 @@ function columnas(mostrarCentro: boolean): Columna<FilaExistencia>[] {
       encabezado: "Vencimiento",
       celda: (f) => {
         if (!f.fechaVencimiento) return <span className="text-texto-tenue">Sin vencimiento</span>;
-        const vencido = f.diasParaVencer !== null && f.diasParaVencer < 0;
         return (
-          <DosLineas
-            principal={<span className="cifras whitespace-nowrap">{formatearDia(f.fechaVencimiento)}</span>}
-            secundario={vencido ? <span className="font-semibold text-peligro-700">Vencido</span> : undefined}
-          />
+          <span className="inline-flex flex-col items-start gap-1 max-md:items-end">
+            <BadgeEstadoVencimiento estado={f.estadoVencimiento} dias={f.diasParaVencer} />
+            <span className="cifras text-xs whitespace-nowrap text-texto-suave">{formatearDia(f.fechaVencimiento)}</span>
+          </span>
         );
       },
     },
@@ -78,7 +78,7 @@ export default async function PaginaReporteExistencias({ searchParams }: PagePro
   const f = leerFiltros(await searchParams);
   const centroId = resolverCentro(centroActivoId, centros, f.centro);
   const [reporte, categorias] = await Promise.all([
-    reporteExistencias(actor, { centroId, categoriaId: f.categoriaId, texto: f.texto, pagina: f.pagina }),
+    reporteExistencias(actor, { centroId, categoriaId: f.categoriaId, texto: f.texto, semaforo: f.semaforo, pagina: f.pagina }),
     listarCategorias(actor),
   ]);
   const { totales } = reporte;
@@ -96,12 +96,17 @@ export default async function PaginaReporteExistencias({ searchParams }: PagePro
         descripcion={<>{alcance} · Stock actual por centro, ubicación y lote, valorizado al costo de ingreso.</>}
         volver={{ href: "/reportes", label: "Reportes" }}
         acciones={
-          <AccionesReporte hrefCsv={construirHref("/reportes/exportar/existencias", { centro: centroId, categoria: f.categoriaId, q: f.texto })} />
+          <AccionesReporte hrefCsv={construirHref("/reportes/exportar/existencias", {
+            centro: centroId,
+            categoria: f.categoriaId,
+            q: f.texto,
+            semaforo: escribirSemaforo(f.semaforo),
+          })} />
         }
       />
       <NavReportes activo="existencias" />
 
-      <BarraFiltros parametros={["q", "categoria", "centro"]}>
+      <BarraFiltros parametros={["q", "categoria", "semaforo", "centro"]}>
         <FiltroBusqueda placeholder="Insumo, código o lote…" />
         <FiltroSelect
           parametro="categoria"
@@ -109,8 +114,10 @@ export default async function PaginaReporteExistencias({ searchParams }: PagePro
           todos="Todas"
           opciones={categorias.map((c) => ({ value: c.id, label: c.nombre }))}
         />
+        <FiltroSelect parametro="semaforo" etiqueta="Semáforo" todos="Todos" opciones={[...OPCIONES_FILTRO_SEMAFORO]} />
         <FiltroCentro centroActivoId={centroActivoId} centros={centros} />
       </BarraFiltros>
+      <LeyendaSemaforo className="mb-4 px-1 print:hidden" />
 
       <Cifras
         cifras={[

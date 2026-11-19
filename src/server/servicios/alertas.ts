@@ -2,8 +2,8 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { calcularReposicion } from "@/lib/abastecimiento";
 import { nombreArchivoCsv, type CeldaCsv } from "@/lib/csv";
-import { DIAS_POR_VENCER, tramoDeVencimiento, type TramoVencimiento } from "@/lib/estados";
-import { dateADia, diaADate, diasEntre, formatearDia, hoyEnSantiago, sumarDias, type DiaISO } from "@/lib/fechas";
+import { calcularEstadoVencimiento, limitesSemaforo } from "@/lib/estados";
+import { dateADia, diaADate, diasEntre, formatearDia, hoyEnSantiago, type DiaISO } from "@/lib/fechas";
 import { normalizarTexto } from "@/lib/formato";
 import type { Actor } from "@/lib/permisos";
 import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
@@ -35,11 +35,13 @@ export interface AlertaStock {
   sugerido: number;
 }
 
-/** Alerta de vencimiento: un lote vencido o por vencer en una ubicación. */
+/**
+ * Alerta de vencimiento: un lote con stock en una ubicación que ya venció o
+ * está en rojo o amarillo según el semáforo (`@/lib/estados`). Los lotes en
+ * verde no son alerta.
+ */
 export interface AlertaVencimiento {
-  tipo: "VENCIDO" | "POR_VENCER";
-  /** 30 = vence en ≤30 días; 60 = entre 31 y 60; 90 = entre 61 y 90. `null` si ya venció. */
-  tramo: TramoVencimiento | null;
+  tipo: "VENCIDO" | "ROJO" | "AMARILLO";
   insumoId: string;
   codigo: string;
   nombre: string;
@@ -63,10 +65,11 @@ export interface ResumenAlertas {
   bajoMinimo: number;
   /** Existencias (lote × ubicación) vencidas con stock. */
   vencidos: number;
-  /** Tramos excluyentes: ≤30, 31–60 y 61–90 días. */
-  porVencer30: number;
-  porVencer60: number;
-  porVencer90: number;
+  /** Lotes con stock (por ubicación) en rojo: vencen en menos de 3 meses. */
+  rojo: number;
+  /** Lotes con stock (por ubicación) en amarillo: vencen en 3 a 6 meses. */
+  amarillo: number;
+  /** Suma de todo lo anterior (lo que muestran las pestañas de /alertas). */
   total: number;
 }
 
@@ -105,7 +108,8 @@ interface FilaStockSql {
  * Permiso: `alertas:ver` (y acceso al centro si se indica).
  *
  * El resultado está acotado por el catálogo (insumo × centro con mínimo) y por
- * los lotes con stock que vencen en ≤ 90 días; no crece con el historial.
+ * los lotes con stock que vencen en menos de 6 meses (vencidos, rojo y
+ * amarillo); no crece con el historial.
  */
 export async function obtenerAlertas(
   actor: Actor,
@@ -115,7 +119,7 @@ export async function obtenerAlertas(
   verificarPermiso(actor, "alertas:ver");
   const centros = alcanceDeCentros(actor, filtros.centroId);
   const hoy = hoyEnSantiago(opciones.ahora);
-  const limite = sumarDias(hoy, DIAS_POR_VENCER);
+  const limites = limitesSemaforo(hoy);
   const categoriaId = filtros.categoriaId || null;
   const filtroCentroSql =
     centros === null
@@ -149,7 +153,7 @@ export async function obtenerAlertas(
       where: {
         cantidad: { gt: 0 },
         lote: {
-          fechaVencimiento: { lte: diaADate(limite) },
+          fechaVencimiento: { lt: diaADate(limites.verdeDesde) },
           ...(categoriaId ? { insumo: { categoriaId } } : {}),
         },
         ubicacion: { centro: centros === null ? { activo: true } : { activo: true, id: { in: centros } } },
@@ -217,8 +221,7 @@ export async function obtenerAlertas(
       const fecha = dateADia(e.lote.fechaVencimiento as Date);
       const dias = diasEntre(hoy, fecha);
       return {
-        tipo: dias < 0 ? "VENCIDO" : "POR_VENCER",
-        tramo: tramoDeVencimiento(dias),
+        tipo: calcularEstadoVencimiento(fecha, hoy) as AlertaVencimiento["tipo"],
         insumoId: e.lote.insumo.id,
         codigo: e.lote.insumo.codigo,
         nombre: e.lote.insumo.nombre,
@@ -248,9 +251,8 @@ export async function obtenerAlertas(
     sinStock: stock.filter((a) => a.tipo === "SIN_STOCK").length,
     bajoMinimo: stock.filter((a) => a.tipo === "BAJO_MINIMO").length,
     vencidos: vencimientos.filter((a) => a.tipo === "VENCIDO").length,
-    porVencer30: vencimientos.filter((a) => a.tramo === 30).length,
-    porVencer60: vencimientos.filter((a) => a.tramo === 60).length,
-    porVencer90: vencimientos.filter((a) => a.tramo === 90).length,
+    rojo: vencimientos.filter((a) => a.tipo === "ROJO").length,
+    amarillo: vencimientos.filter((a) => a.tipo === "AMARILLO").length,
     total: 0,
   };
   resumen.total = stock.length + vencimientos.length;

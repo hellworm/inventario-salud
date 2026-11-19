@@ -112,7 +112,7 @@ describe("alertas con filtros", () => {
 
     const porNombre = await obtenerAlertas(e.admin, { texto: "DIALIZADOR" });
     expect(porNombre.stock.map((s) => s.codigo)).toEqual(["DIA-001"]);
-    expect(porNombre.resumen).toMatchObject({ sinStock: 0, bajoMinimo: 1, vencidos: 1, porVencer30: 2, porVencer60: 1 });
+    expect(porNombre.resumen).toMatchObject({ sinStock: 0, bajoMinimo: 1, vencidos: 1, rojo: 3, amarillo: 0 });
 
     const porCodigo = await obtenerAlertas(e.admin, { texto: "gua-001" });
     expect(porCodigo.stock.map((s) => s.tipo)).toEqual(["SIN_STOCK"]);
@@ -191,7 +191,7 @@ describe("reporteExistencias", () => {
   it("exporta todas las filas y audita", async () => {
     const { csv, filas } = await aCsv(await exportarExistencias(e.admin, { centroId: e.centroA }));
     expect(filas).toHaveLength(5);
-    expect(csv).toContain(`Centro A;Bodega;General;DIA-001;Dializador 1.8 m²;unidad;D-20;${formatearDia(e.dia(20))};20;6;1500;9000\r\n`);
+    expect(csv).toContain(`Centro A;Bodega;General;DIA-001;Dializador 1.8 m²;unidad;D-20;${formatearDia(e.dia(20))};20;Rojo;6;1500;9000\r\n`);
     const auditoria = await exportacionesAuditadas("existencias");
     expect(auditoria).toHaveLength(1);
     expect(auditoria[0]!.detalle).toMatchObject({ filtros: { centroId: e.centroA, filas: 5 } });
@@ -292,28 +292,58 @@ describe("reporteMovimientos", () => {
 });
 
 describe("reporteVencimientos", () => {
-  it("incluye vencidos y lotes dentro del horizonte, del más urgente al menos", async () => {
-    const r30 = await reporteVencimientos(e.admin, { dias: 30 });
-    expect(r30.horizonte).toBe(30);
-    expect(r30.items.map((f) => [f.numeroLote, f.diasParaVencer])).toEqual([
-      ["D-VENC", -3],
-      ["D-3", 3],
-      ["D-20", 20],
+  it("por defecto lista vencidos, rojo y amarillo, del más urgente al menos; el verde solo si se pide", async () => {
+    const porDefecto = await reporteVencimientos(e.admin);
+    expect(porDefecto.semaforo).toEqual(["VENCIDO", "ROJO", "AMARILLO"]);
+    expect(porDefecto.items.map((f) => [f.numeroLote, f.diasParaVencer, f.estadoVencimiento])).toEqual([
+      ["D-VENC", -3, "VENCIDO"],
+      ["D-3", 3, "ROJO"],
+      ["D-20", 20, "ROJO"],
+      ["D-B", 45, "ROJO"],
     ]);
-    expect(r30.totales).toEqual({ filas: 3, unidades: 12, valor: 9000, filasSinCosto: 2 });
 
-    const r90 = await reporteVencimientos(e.admin, { dias: 999 });
-    expect(r90.horizonte).toBe(90);
-    expect(r90.items.map((f) => f.numeroLote)).toEqual(["D-VENC", "D-3", "D-20", "D-B"]);
+    const rojoA = await reporteVencimientos(e.admin, { centroId: e.centroA, semaforo: ["ROJO"] });
+    expect(rojoA.items.map((f) => f.numeroLote)).toEqual(["D-3", "D-20"]);
+    expect(rojoA.totales).toEqual({ filas: 2, unidades: 8, valor: 9000, filasSinCosto: 1 });
+
+    const verde = await reporteVencimientos(e.admin, { semaforo: ["VERDE"] });
+    expect(verde.items.map((f) => [f.numeroLote, f.estadoVencimiento])).toEqual([["D-NUEVO", "VERDE"]]);
+    expect((await reporteVencimientos(e.admin, { semaforo: ["AMARILLO"] })).total).toBe(0);
     expect((await reporteVencimientos(e.admin, { centroId: e.centroB })).items.map((f) => f.numeroLote)).toEqual(["D-B"]);
   });
 
-  it("exporta con el estado de cada lote", async () => {
-    const { csv, filas } = await aCsv(await exportarVencimientos(e.admin, { dias: 30 }));
-    expect(filas).toHaveLength(3);
-    expect(csv).toMatch(/D-VENC;[^\r]*;Vencido\r\n/);
-    expect(csv).toMatch(/D-20;[^\r]*;Por vencer\r\n/);
-    expect(await exportacionesAuditadas("vencimientos")).toHaveLength(1);
+  it("el reporte de existencias trae el semáforo de cada lote y se puede filtrar por color", async () => {
+    const todo = await reporteExistencias(e.admin, { centroId: e.centroA });
+    expect(Object.fromEntries(todo.items.map((f) => [f.numeroLote, f.estadoVencimiento]))).toEqual({
+      "D-VENC": "VENCIDO",
+      "D-3": "ROJO",
+      "D-20": "ROJO",
+      "D-NUEVO": "VERDE",
+      "T-1": "SIN_VENCIMIENTO",
+    });
+    const vencidos = await reporteExistencias(e.admin, { centroId: e.centroA, semaforo: ["VENCIDO"] });
+    expect(vencidos.items.map((f) => f.numeroLote)).toEqual(["D-VENC"]);
+    expect(vencidos.totales.filas).toBe(1);
+  });
+
+  it("exporta con la columna de texto «Semáforo» (Vencido / Rojo / Amarillo / Verde)", async () => {
+    const exportacion = await exportarVencimientos(e.admin, { semaforo: ["VENCIDO", "ROJO"], centroId: e.centroA });
+    const columna = exportacion.encabezados.indexOf("Semáforo");
+    expect(columna).toBeGreaterThan(-1);
+    const { filas } = await aCsv(exportacion);
+    const lote = exportacion.encabezados.indexOf("Lote");
+    expect(filas.map((f) => [f[lote], f[columna]])).toEqual([
+      ["D-VENC", "Vencido"],
+      ["D-3", "Rojo"],
+      ["D-20", "Rojo"],
+    ]);
+    const auditoria = await exportacionesAuditadas("vencimientos");
+    expect(auditoria).toHaveLength(1);
+    expect(auditoria[0]!.detalle).toMatchObject({ filtros: { semaforo: ["VENCIDO", "ROJO"], filas: 3 } });
+
+    const existencias = await aCsv(await exportarExistencias(e.admin, { centroId: e.centroA, semaforo: ["VERDE"] }));
+    expect(existencias.csv).toMatch(/D-NUEVO;[^\r]*;Verde;/);
+    expect(existencias.filas).toHaveLength(1);
   });
 });
 
@@ -325,11 +355,16 @@ describe("resumenPanel: qué requiere atención hoy", () => {
     expect(p.atencion.sinStock).toMatchObject({ total: 1, items: [{ codigo: "GUA-001" }] });
     expect(p.atencion.vencidos).toMatchObject({ total: 1, items: [{ numeroLote: "D-VENC", cantidad: 4 }] });
     expect(p.atencion.venceEstaSemana).toMatchObject({ total: 1, items: [{ numeroLote: "D-3", dias: 3 }] });
-    expect(p.vencimientos).toEqual([
-      { clave: "VENCIDO", lotes: 1, unidades: 4 },
-      { clave: "30", lotes: 2, unidades: 8 },
-      { clave: "60", lotes: 0, unidades: 0 },
-      { clave: "90", lotes: 0, unidades: 0 },
+    expect(p.semaforo).toMatchObject({
+      VENCIDO: { insumos: 1, lotes: 1, unidades: 4 },
+      ROJO: { insumos: 1, lotes: 2, unidades: 8 },
+      AMARILLO: { insumos: 0, lotes: 0, unidades: 0 },
+      VERDE: { insumos: 1, lotes: 1, unidades: 30 },
+    });
+    // Productos en rojo: lo que vence antes, primero.
+    expect(p.enRojo.map((l) => [l.numeroLote, l.dias])).toEqual([
+      ["D-3", 3],
+      ["D-20", 20],
     ]);
     await esperarError(resumenPanel(e.visitante, { centroId: e.centroB }), "SIN_ACCESO_AL_CENTRO");
   });
@@ -337,7 +372,7 @@ describe("resumenPanel: qué requiere atención hoy", () => {
   it("limita los ítems por grupo pero conserva el total", async () => {
     const p = await resumenPanel(e.admin, { porGrupoAtencion: 1 });
     expect(p.atencion.sinStock.items).toHaveLength(1);
-    expect(p.vencimientos[2]).toEqual({ clave: "60", lotes: 1, unidades: 30 });
+    expect(p.semaforo.ROJO).toEqual({ insumos: 1, lotes: 3, unidades: 38 });
   });
 });
 

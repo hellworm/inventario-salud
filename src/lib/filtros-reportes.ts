@@ -4,11 +4,11 @@
  * que se ve en pantalla.
  *
  * Parámetros: `centro`, `categoria`, `q`, `desde`, `hasta` (YYYY-MM-DD),
- * `tipo` (TipoMovimiento), `insumo` (id), `dias` (30|60|90), `orden`
- * (cobertura|consumo), `pagina`.
+ * `tipo` (TipoMovimiento), `insumo` (id), `semaforo` (rojo|amarillo|verde|vencido,
+ * uno o varios separados por coma), `orden` (cobertura|consumo), `pagina`.
  */
-import { TIPOS_MOVIMIENTO, TRAMOS_VENCIMIENTO, type TipoMovimiento, type TramoVencimiento } from "./estados";
-import { leerDia, leerEntero, leerOpcion, leerPagina, leerTexto, type ParametrosUrl } from "./parametros-url";
+import { leerSemaforo, TIPOS_MOVIMIENTO, type ColorSemaforo, type TipoMovimiento } from "./estados";
+import { leerDia, leerOpcion, leerPagina, leerTexto, type ParametrosUrl } from "./parametros-url";
 
 export const ORDENES_REPORTE_CONSUMO = ["cobertura", "consumo"] as const;
 
@@ -20,13 +20,13 @@ export interface FiltrosUrl {
   hasta: string | undefined;
   tipo: TipoMovimiento | undefined;
   insumoId: string | undefined;
-  dias: TramoVencimiento | undefined;
+  /** Colores del semáforo pedidos (vacío = sin filtro). */
+  semaforo: ColorSemaforo[];
   orden: (typeof ORDENES_REPORTE_CONSUMO)[number] | undefined;
   pagina: number | undefined;
 }
 
 export function leerFiltros(sp: ParametrosUrl): FiltrosUrl {
-  const dias = leerEntero(sp, "dias");
   return {
     centro: leerTexto(sp, "centro"),
     categoriaId: leerTexto(sp, "categoria"),
@@ -35,7 +35,7 @@ export function leerFiltros(sp: ParametrosUrl): FiltrosUrl {
     hasta: leerDia(sp, "hasta"),
     tipo: leerOpcion(sp, "tipo", TIPOS_MOVIMIENTO),
     insumoId: leerTexto(sp, "insumo"),
-    dias: TRAMOS_VENCIMIENTO.find((t) => t === dias),
+    semaforo: leerSemaforo(leerTexto(sp, "semaforo")),
     orden: leerOpcion(sp, "orden", ORDENES_REPORTE_CONSUMO),
     pagina: leerPagina(sp, "pagina"),
   };

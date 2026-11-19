@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowDownToLine, ArrowUpFromLine, CalendarCheck2, CalendarX2, ClipboardList, PackageCheck, Trash2 } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, CalendarCheck2, ClipboardList, PackageCheck, Trash2 } from "lucide-react";
 import { BarraFiltros, FiltroBusqueda, FiltroCentro, FiltroSelect } from "@/components/admin/filtros-url";
 import {
   CLASE_ACCION_FILA,
@@ -14,22 +14,23 @@ import { PestanasEnlace, type PestanaEnlace } from "@/components/alertas/pestana
 import { CeldaInsumo, DosLineas } from "@/components/reportes/piezas";
 import {
   Alert,
-  Badge,
   BadgeEstadoStock,
   BadgeEstadoVencimiento,
   buttonClasses,
   Card,
   DataTable,
   EmptyState,
+  LeyendaSemaforo,
   PageHeader,
   Pagination,
   type Columna,
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { describirVencimiento, formatearDia } from "@/lib/fechas";
+import { limitesSemaforo, MESES_SEMAFORO_AMARILLO, MESES_SEMAFORO_ROJO } from "@/lib/estados";
+import { formatearDia, hoyEnSantiago, sumarDias } from "@/lib/fechas";
 import { leerFiltros } from "@/lib/filtros-reportes";
 import { formatearNumero, pluralizar } from "@/lib/formato";
-import { construirHref, leerOpcion, resolverCentro } from "@/lib/parametros-url";
+import { construirHref, leerOpcion, leerTexto, resolverCentro } from "@/lib/parametros-url";
 import { puede, type Rol } from "@/lib/permisos";
 import { POR_PAGINA_DEFECTO } from "@/lib/resultado";
 import { contextoPagina } from "@/server/auth/sesion";
@@ -45,14 +46,13 @@ import { SinCentroActivo } from "@/components/shell/sin-centro";
 
 export const metadata: Metadata = { title: "Alertas" };
 
-const PESTANAS = ["sin-stock", "bajo-minimo", "vencidos", "por-vencer"] as const;
+/** Pestañas: stock, vencidos y los dos colores de alerta del semáforo (rojo y amarillo). */
+const PESTANAS = ["sin-stock", "bajo-minimo", "vencidos", "rojo", "amarillo"] as const;
 type Pestana = (typeof PESTANAS)[number];
-const TRAMOS = ["30", "60", "90"] as const;
-
-const ETIQUETA_TRAMO: Record<(typeof TRAMOS)[number], string> = {
-  "30": "30 días o menos",
-  "60": "31 a 60 días",
-  "90": "61 a 90 días",
+const ETIQUETA_PESTANA: Record<"vencidos" | "rojo" | "amarillo", string> = {
+  vencidos: "Lotes vencidos con stock",
+  rojo: "Lotes en rojo",
+  amarillo: "Lotes en amarillo",
 };
 
 /** Disponible frente al mínimo, con una barra proporcional (el texto lleva el dato exacto). */
@@ -160,17 +160,11 @@ function columnasVencimiento(
     },
     {
       clave: "dias",
-      encabezado: vencidos ? "Vencimiento" : "Días restantes",
+      encabezado: vencidos ? "Vencimiento" : "Semáforo",
       movil: "destacado",
       celda: (a) => (
         <span className="inline-flex flex-col items-end gap-1 md:items-start">
-          {a.tipo === "VENCIDO" ? (
-            <Badge tono="peligro" icono={CalendarX2}>
-              {describirVencimiento(a.dias)}
-            </Badge>
-          ) : (
-            <BadgeEstadoVencimiento estado="POR_VENCER" dias={a.dias} />
-          )}
+          <BadgeEstadoVencimiento estado={a.tipo} dias={a.dias} />
           <span className="cifras text-xs whitespace-nowrap text-texto-suave">
             <span className="sr-only">{vencidos ? "Venció el " : "Vence el "}</span>
             {formatearDia(a.fechaVencimiento)}
@@ -262,7 +256,7 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
   const sp = await searchParams;
   const filtros = leerFiltros(sp);
   const centroId = resolverCentro(centroActivoId, centros, filtros.centro);
-  const tramo = leerOpcion(sp, "tramo", TRAMOS);
+  const limites = limitesSemaforo(hoyEnSantiago());
 
   const puedeIngresar = puede(actor.rol, "movimientos:ingreso");
   const [alertas, categorias, ubicaciones] = await Promise.all([
@@ -271,15 +265,20 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
     puedeIngresar ? listarUbicaciones(actor, { centroId: centroActivoId }) : [],
   ]);
   const { resumen } = alertas;
-  const porVencerTotal = resumen.porVencer30 + resumen.porVencer60 + resumen.porVencer90;
   const conteos: Record<Pestana, number> = {
     "sin-stock": resumen.sinStock,
     "bajo-minimo": resumen.bajoMinimo,
     vencidos: resumen.vencidos,
-    "por-vencer": porVencerTotal,
+    rojo: resumen.rojo,
+    amarillo: resumen.amarillo,
   };
   // Sin pestaña en la URL se abre la primera con alertas (lo más urgente primero).
-  const pestana: Pestana = leerOpcion(sp, "tab", PESTANAS) ?? PESTANAS.find((p) => conteos[p] > 0) ?? "sin-stock";
+  // `tab=por-vencer` (enlaces antiguos, tramos de 30/60/90 días) equivale hoy a "rojo".
+  const pestana: Pestana =
+    leerOpcion(sp, "tab", PESTANAS) ??
+    (leerTexto(sp, "tab") === "por-vencer" ? "rojo" : undefined) ??
+    PESTANAS.find((p) => conteos[p] > 0) ??
+    "sin-stock";
 
   const comunes = { centro: centroActivoId ? undefined : filtros.centro, categoria: filtros.categoriaId, q: filtros.texto };
   const hrefPestana = (tab: Pestana, extra: Record<string, string | undefined> = {}) =>
@@ -289,7 +288,8 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
     { href: hrefPestana("sin-stock"), etiqueta: "Sin stock", contador: conteos["sin-stock"], tono: "peligro", activa: pestana === "sin-stock" },
     { href: hrefPestana("bajo-minimo"), etiqueta: "Bajo mínimo", contador: conteos["bajo-minimo"], tono: "alerta", activa: pestana === "bajo-minimo" },
     { href: hrefPestana("vencidos"), etiqueta: "Vencidos", contador: conteos.vencidos, tono: "peligro", activa: pestana === "vencidos" },
-    { href: hrefPestana("por-vencer"), etiqueta: "Por vencer", contador: conteos["por-vencer"], tono: "alerta", activa: pestana === "por-vencer" },
+    { href: hrefPestana("rojo"), etiqueta: "Rojo", contador: conteos.rojo, tono: "peligro", activa: pestana === "rojo" },
+    { href: hrefPestana("amarillo"), etiqueta: "Amarillo", contador: conteos.amarillo, tono: "alerta", activa: pestana === "amarillo" },
   ];
 
   const mostrarCentro = centroId === null && centros.length > 1;
@@ -308,9 +308,11 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
   const vencimientos =
     pestana === "vencidos"
       ? alertas.vencimientos.filter((a) => a.tipo === "VENCIDO")
-      : pestana === "por-vencer"
-        ? alertas.vencimientos.filter((a) => a.tipo === "POR_VENCER" && (!tramo || String(a.tramo) === tramo))
-        : null;
+      : pestana === "rojo"
+        ? alertas.vencimientos.filter((a) => a.tipo === "ROJO")
+        : pestana === "amarillo"
+          ? alertas.vencimientos.filter((a) => a.tipo === "AMARILLO")
+          : null;
 
   const vacio = hayFiltros ? (
     <EmptyState compacto titulo="Sin resultados" descripcion="Ninguna alerta coincide con los filtros aplicados." />
@@ -325,9 +327,13 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
     <EmptyState
       compacto
       icono={CalendarCheck2}
-      titulo={pestana === "vencidos" ? "Sin lotes vencidos" : "Nada por vencer"}
+      titulo={pestana === "vencidos" ? "Sin lotes vencidos" : pestana === "rojo" ? "Nada en rojo" : "Nada en amarillo"}
       descripcion={
-        pestana === "vencidos" ? "No hay lotes vencidos con stock." : "Ningún lote con stock vence en los próximos 90 días."
+        pestana === "vencidos"
+          ? "No hay lotes vencidos con stock."
+          : pestana === "rojo"
+            ? `Ningún lote con stock vence en menos de ${MESES_SEMAFORO_ROJO} meses.`
+            : `Ningún lote con stock vence en ${MESES_SEMAFORO_ROJO} a ${MESES_SEMAFORO_AMARILLO} meses.`
       }
     />
   );
@@ -381,30 +387,24 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
           </Alert>
         ) : null}
 
-        {pestana === "por-vencer" ? (
-          <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Filtrar por días restantes">
-            {[undefined, ...TRAMOS].map((t) => {
-              const activo = tramo === t;
-              const cantidad =
-                t === undefined ? porVencerTotal : t === "30" ? resumen.porVencer30 : t === "60" ? resumen.porVencer60 : resumen.porVencer90;
-              return (
-                <Link
-                  key={t ?? "todos"}
-                  href={hrefPestana("por-vencer", { tramo: t })}
-                  scroll={false}
-                  aria-current={activo ? "true" : undefined}
-                  className={cn(
-                    "inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors md:min-h-9 md:pointer-coarse:min-h-11",
-                    activo
-                      ? "border-marca-600 bg-marca-50 text-marca-800"
-                      : "border-borde-fuerte/70 bg-superficie text-texto-suave hover:border-borde-fuerte hover:text-texto",
-                  )}
-                >
-                  {t === undefined ? "Todos" : ETIQUETA_TRAMO[t]}
-                  <span className="cifras text-xs font-semibold">{formatearNumero(cantidad)}</span>
-                </Link>
-              );
-            })}
+        {pestana === "rojo" || pestana === "amarillo" ? (
+          <div className="mb-4 rounded-control border border-borde bg-superficie px-4 py-3">
+            <p className="text-sm text-texto">
+              {pestana === "rojo" ? (
+                <>
+                  <strong className="font-semibold">Rojo:</strong> lotes con stock que vencen en menos de {MESES_SEMAFORO_ROJO} meses
+                  (antes del {formatearDia(limites.amarilloDesde)}).{" "}
+                  {permisos.retirar ? "Úsalos primero para que no se pierdan." : "Conviene usarlos primero."}
+                </>
+              ) : (
+                <>
+                  <strong className="font-semibold">Amarillo:</strong> lotes con stock que vencen en {MESES_SEMAFORO_ROJO} a{" "}
+                  {MESES_SEMAFORO_AMARILLO} meses (entre el {formatearDia(limites.amarilloDesde)} y el{" "}
+                  {formatearDia(sumarDias(limites.verdeDesde, -1))}). Tenlos presentes al planificar el consumo y las compras.
+                </>
+              )}
+            </p>
+            <LeyendaSemaforo className="mt-2" />
           </div>
         ) : null}
 
@@ -434,7 +434,7 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
               <>
                 <Card relleno={false} className="overflow-hidden">
                   <DataTable
-                    titulo={pestana === "vencidos" ? "Lotes vencidos con stock" : "Lotes por vencer"}
+                    titulo={ETIQUETA_PESTANA[pestana as keyof typeof ETIQUETA_PESTANA] ?? "Lotes"}
                     columnas={columnasVencimiento(mostrarCentro, pestana === "vencidos", permisos)}
                     filas={p.items}
                     claveFila={(a) => `${a.loteId}:${a.ubicacionId}`}

@@ -47,7 +47,7 @@ describe("planificarFefo", () => {
     loteId: numeroLote,
     numeroLote,
     fechaVencimiento,
-    estadoVencimiento: vencido ? "VENCIDO" : fechaVencimiento ? "VIGENTE" : "SIN_VENCIMIENTO",
+    estadoVencimiento: vencido ? "VENCIDO" : fechaVencimiento ? "VERDE" : "SIN_VENCIMIENTO",
     cantidad,
   });
   const lotes = [

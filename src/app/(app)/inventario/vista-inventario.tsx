@@ -25,34 +25,41 @@ import {
   Pagination,
   SearchInput,
   Select,
+  LeyendaSemaforo,
+  SEMAFORO_UI,
   Sheet,
   SheetContent,
   Skeleton,
 } from "@/components/ui";
-import { BadgesVencimientoInsumo, ExistenciasPorUbicacion } from "@/components/inventario/existencias";
+import { ExistenciasPorUbicacion, SemaforoInsumo } from "@/components/inventario/existencias";
+import { COLOR_DE_FILTRO, ETIQUETA_ESTADO_VENCIMIENTO, FILTROS_SEMAFORO, type EstadoStock, type FiltroSemaforo } from "@/lib/estados";
 import { enfocarFila, useParametrosUrl } from "@/components/inventario/parametros-url";
 import { cn } from "@/lib/cn";
-import { describirVencimiento, formatearDia } from "@/lib/fechas";
+import { formatearDia } from "@/lib/fechas";
 import { formatearNumero } from "@/lib/formato";
 import type { Paginado } from "@/lib/resultado";
 import { unidadSegun } from "@/lib/unidades";
 import type {
   DetalleInsumo,
   FilaInventario,
-  FiltroEstadoInventario,
   OpcionCategoria,
   OpcionUbicacion,
   OrdenInventario,
 } from "@/server/servicios";
 
-const ESTADOS: readonly { valor: FiltroEstadoInventario | ""; etiqueta: string }[] = [
+// El filtro `?estado=` es solo de STOCK (`ESTADOS_STOCK`); el vencimiento se filtra con `?semaforo=`.
+const ESTADOS: readonly { valor: EstadoStock | ""; etiqueta: string }[] = [
   { valor: "", etiqueta: "Todos" },
   { valor: "SIN_STOCK", etiqueta: "Sin stock" },
   { valor: "BAJO_MINIMO", etiqueta: "Bajo mínimo" },
-  { valor: "POR_VENCER", etiqueta: "Por vencer" },
-  { valor: "VENCIDO", etiqueta: "Vencidos" },
   { valor: "OK", etiqueta: "Stock suficiente" },
 ];
+
+const CLASE_CHIP =
+  "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-medium whitespace-nowrap transition-colors pointer-fine:min-h-10";
+const CLASE_CHIP_ACTIVO = "border-marca-600 bg-marca-600 text-white";
+const CLASE_CHIP_INACTIVO = "border-borde-fuerte/70 bg-superficie text-texto-suave hover:border-borde-fuerte hover:text-texto";
+const CLASE_ETIQUETA_FILTRO = "w-24 shrink-0 text-xs font-medium text-texto-suave max-sm:hidden";
 
 const ORDENES: readonly { valor: OrdenInventario; etiqueta: string }[] = [
   { valor: "NOMBRE", etiqueta: "Nombre (A–Z)" },
@@ -66,7 +73,9 @@ export interface FiltrosVista {
   q: string;
   categoria: string;
   ubicacion: string;
-  estado: FiltroEstadoInventario | "";
+  estado: EstadoStock | "";
+  /** Valor canónico de `?semaforo=` ("rojo", "rojo,amarillo"…) o vacío. */
+  semaforo: string;
   orden: OrdenInventario | "";
 }
 
@@ -115,7 +124,11 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
     iniciar(() => router.replace("/inventario", { scroll: false }));
   };
 
-  const hayFiltros = Boolean(filtros.q || filtros.categoria || filtros.ubicacion || filtros.estado);
+  const hayFiltros = Boolean(filtros.q || filtros.categoria || filtros.ubicacion || filtros.estado || filtros.semaforo);
+  const semaforoActivo = new Set(filtros.semaforo ? filtros.semaforo.split(",") : []);
+  /** Un toque elige ese color; tocar el único color elegido lo quita. */
+  const alternarSemaforo = (f: FiltroSemaforo) =>
+    filtrar({ semaforo: semaforoActivo.size === 1 && semaforoActivo.has(f) ? null : f });
   const centros = [...new Map(ubicaciones.map((u) => [u.centroId, u.centro])).entries()];
   const filaAbierta = inventario.items.find((f) => f.insumoId === idAbierto) ?? null;
   const detalleAbierto = detalle && detalle.insumo.id === idAbierto ? detalle : null;
@@ -165,7 +178,10 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
             opciones={ORDENES.map((o) => ({ value: o.valor, label: `Orden: ${o.etiqueta}` }))}
           />
         </div>
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none] sm:-mx-5 sm:px-5" role="group" aria-label="Filtrar por estado">
+        <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none] sm:-mx-5 sm:px-5" role="group" aria-label="Filtrar por estado de stock">
+          <span className={CLASE_ETIQUETA_FILTRO} aria-hidden>
+            Stock
+          </span>
           {ESTADOS.map((e) => {
             const activo = filtros.estado === e.valor;
             return (
@@ -174,18 +190,52 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                 type="button"
                 aria-pressed={activo}
                 onClick={() => filtrar({ estado: e.valor || null })}
-                className={cn(
-                  "inline-flex min-h-11 shrink-0 items-center rounded-full border px-4 text-sm font-medium whitespace-nowrap transition-colors pointer-fine:min-h-10",
-                  activo
-                    ? "border-marca-600 bg-marca-600 text-white"
-                    : "border-borde-fuerte/70 bg-superficie text-texto-suave hover:border-borde-fuerte hover:text-texto",
-                )}
+                className={cn(CLASE_CHIP, activo ? CLASE_CHIP_ACTIVO : CLASE_CHIP_INACTIVO)}
               >
-                {e.etiqueta}
+                {e.valor === "" ? (
+                  <>
+                    <span className="sm:hidden">Todo el stock</span>
+                    <span className="max-sm:hidden">Todos</span>
+                  </>
+                ) : (
+                  e.etiqueta
+                )}
               </button>
             );
           })}
         </div>
+        <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none] sm:-mx-5 sm:px-5" role="group" aria-label="Filtrar por semáforo de vencimiento">
+          <span className={CLASE_ETIQUETA_FILTRO} aria-hidden>
+            Vencimiento
+          </span>
+          <button
+            type="button"
+            aria-pressed={semaforoActivo.size === 0}
+            onClick={() => filtrar({ semaforo: null })}
+            className={cn(CLASE_CHIP, semaforoActivo.size === 0 ? CLASE_CHIP_ACTIVO : CLASE_CHIP_INACTIVO)}
+          >
+            <span className="sm:hidden">Todo vencimiento</span>
+            <span className="max-sm:hidden">Todos</span>
+          </button>
+          {FILTROS_SEMAFORO.map((f) => {
+            const color = COLOR_DE_FILTRO[f];
+            const { icono: Icono, texto } = SEMAFORO_UI[color];
+            const activo = semaforoActivo.has(f);
+            return (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={activo}
+                onClick={() => alternarSemaforo(f)}
+                className={cn(CLASE_CHIP, activo ? CLASE_CHIP_ACTIVO : CLASE_CHIP_INACTIVO)}
+              >
+                <Icono className={cn("size-4 shrink-0", activo ? "text-white" : texto)} aria-hidden />
+                {color === "VENCIDO" ? "Vencidos" : ETIQUETA_ESTADO_VENCIMIENTO[color]}
+              </button>
+            );
+          })}
+        </div>
+        <LeyendaSemaforo conVencido={false} className="border-t border-borde pt-3" />
       </Card>
 
       <div className="mb-2 flex min-h-10 flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1">
@@ -249,8 +299,8 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                     <th scope="col" className="hidden px-4 py-3 text-left font-semibold xl:table-cell">Categoría</th>
                     <th scope="col" className="px-4 py-3 text-right font-semibold whitespace-nowrap">Disponible</th>
                     <th scope="col" className="px-4 py-3 text-right font-semibold">Lotes</th>
-                    <th scope="col" className="px-4 py-3 text-left font-semibold whitespace-nowrap">Próximo vencimiento</th>
-                    <th scope="col" className="px-4 py-3 text-left font-semibold">Estado</th>
+                    <th scope="col" className="px-4 py-3 text-left font-semibold whitespace-nowrap">Vencimiento</th>
+                    <th scope="col" className="px-4 py-3 text-left font-semibold">Stock</th>
                     <th scope="col" className="w-10 px-2 py-3">
                       <span className="sr-only">Ver lotes</span>
                     </th>
@@ -298,12 +348,15 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                         ) : null}
                       </td>
                       <td className="cifras px-4 py-3 text-right align-middle text-texto">{formatearNumero(f.lotes)}</td>
-                      <td className="px-4 py-3 align-middle whitespace-nowrap">
-                        {f.proximoVencimiento ? (
+                      <td className="px-4 py-3 align-middle">
+                        {f.lotes > 0 ? (
                           <>
-                            <span className="cifras text-texto">{formatearDia(f.proximoVencimiento)}</span>
-                            {f.diasParaVencer !== null && f.diasParaVencer <= 180 ? (
-                              <span className="block text-xs text-texto-tenue">{describirVencimiento(f.diasParaVencer)}</span>
+                            <SemaforoInsumo fila={f} />
+                            {f.proximoVencimiento ? (
+                              <span className="cifras mt-0.5 block text-xs whitespace-nowrap text-texto-tenue">
+                                {f.semaforo.VENCIDO > 0 ? "Próximo: " : "Vence el "}
+                                {formatearDia(f.proximoVencimiento)}
+                              </span>
                             ) : null}
                           </>
                         ) : (
@@ -311,10 +364,7 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                         )}
                       </td>
                       <td className="px-4 py-3 align-middle">
-                        <span className="flex flex-wrap items-center gap-1.5 2xl:flex-nowrap">
-                          <BadgeEstadoStock estado={f.estadoStock} />
-                          <BadgesVencimientoInsumo fila={f} />
-                        </span>
+                        <BadgeEstadoStock estado={f.estadoStock} />
                       </td>
                       <td className="px-2 py-3 align-middle text-texto-tenue">
                         <ChevronRight className="size-5" aria-hidden />
@@ -353,7 +403,7 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                     </span>
                     <span className="mt-2 flex flex-wrap items-center gap-1.5">
                       <BadgeEstadoStock estado={f.estadoStock} />
-                      <BadgesVencimientoInsumo fila={f} />
+                      {f.lotes > 0 ? <SemaforoInsumo fila={f} /> : null}
                     </span>
                     <span className="mt-2 flex items-center justify-between gap-3 text-xs text-texto-suave">
                       <span className="cifras">
@@ -447,7 +497,15 @@ function PanelInsumo({ detalle, mostrarCentro, permisos }: { detalle: DetalleIns
       <div className="flex-1 space-y-5 p-5">
         <div className="flex flex-wrap items-center gap-1.5">
           <BadgeEstadoStock estado={detalle.estadoStock} />
-          <BadgesVencimientoInsumo fila={{ vencido: detalle.vencido, porVencer: detalle.porVencer, diasParaVencer: detalle.existencias.find((e) => e.estadoVencimiento === "POR_VENCER")?.diasParaVencer ?? null }} />
+          {detalle.existencias.length > 0 ? (
+            <SemaforoInsumo
+              fila={{
+                estadoVencimiento: detalle.estadoVencimiento,
+                semaforo: detalle.semaforo,
+                diasParaVencer: detalle.existencias.find((e) => e.estadoVencimiento !== "VENCIDO" && e.fechaVencimiento)?.diasParaVencer ?? null,
+              }}
+            />
+          ) : null}
           {insumo.requiereCadenaFrio ? (
             <span className="inline-flex items-center gap-1 text-xs font-semibold text-info-700">
               <Snowflake className="size-3.5" aria-hidden />

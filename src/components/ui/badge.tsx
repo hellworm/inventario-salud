@@ -3,11 +3,11 @@ import {
   ArrowDownToLine,
   ArrowLeftRight,
   ArrowUpFromLine,
-  CalendarClock,
   CalendarX2,
   CircleCheck,
   CircleSlash,
   Infinity as InfinityIcon,
+  OctagonAlert,
   PackageX,
   SlidersHorizontal,
   Trash2,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
+  DESCRIPCION_SEMAFORO,
   ETIQUETA_ESTADO_STOCK,
   ETIQUETA_ESTADO_VENCIMIENTO,
   ETIQUETA_TIPO_MOVIMIENTO,
@@ -74,16 +75,56 @@ export function BadgeEstadoStock({ estado, className }: { estado: EstadoStock; c
   );
 }
 
-const ESTADO_VENCIMIENTO: Record<EstadoVencimiento, { tono: BadgeTono; icono: LucideIcon }> = {
-  VENCIDO: { tono: "peligro", icono: CalendarX2 },
-  POR_VENCER: { tono: "alerta", icono: CalendarClock },
-  VIGENTE: { tono: "exito", icono: CircleCheck },
-  SIN_VENCIMIENTO: { tono: "neutro", icono: InfinityIcon },
+/**
+ * Apariencia del SEMÁFORO DE VENCIMIENTO. Cada color tiene además una FORMA
+ * propia (octágono, triángulo, círculo) y siempre va con su nombre escrito:
+ * se distingue sin ver el color (daltonismo, impresión en blanco y negro).
+ * VENCIDO no es un color del semáforo: es un estado aparte y más grave (sólido).
+ */
+export const SEMAFORO_UI: Readonly<
+  Record<
+    EstadoVencimiento,
+    {
+      tono: BadgeTono;
+      icono: LucideIcon;
+      /** Clases extra del badge. */
+      badge?: string;
+      /** Color del ícono suelto (leyendas, desgloses). */
+      texto: string;
+      /** Fondo suave + texto, para íconos en recuadro. */
+      suave: string;
+      /** Borde de acento (tarjetas del panel). */
+      acento: string;
+    }
+  >
+> = {
+  VENCIDO: {
+    tono: "peligro",
+    icono: CalendarX2,
+    badge: "bg-peligro-700 text-white ring-peligro-800",
+    texto: "text-peligro-800",
+    suave: "bg-peligro-700 text-white",
+    acento: "border-l-peligro-800",
+  },
+  ROJO: { tono: "peligro", icono: OctagonAlert, texto: "text-peligro-700", suave: "bg-peligro-50 text-peligro-700", acento: "border-l-peligro-600" },
+  AMARILLO: { tono: "alerta", icono: TriangleAlert, texto: "text-alerta-700", suave: "bg-alerta-100 text-alerta-800", acento: "border-l-alerta-500" },
+  VERDE: { tono: "exito", icono: CircleCheck, texto: "text-exito-700", suave: "bg-exito-50 text-exito-700", acento: "border-l-exito-600" },
+  SIN_VENCIMIENTO: { tono: "neutro", icono: InfinityIcon, texto: "text-texto-suave", suave: "bg-superficie-2 text-texto-suave", acento: "border-l-borde-fuerte" },
 };
 
+/** "12 días", "hoy", "mañana", "hace 3 días": cuánto falta (o pasó) en palabras breves. */
+function plazoBreve(dias: number): string {
+  if (dias < -1) return `hace ${-dias} días`;
+  if (dias === -1) return "ayer";
+  if (dias === 0) return "hoy";
+  if (dias === 1) return "mañana";
+  return `${dias} días`;
+}
+
 /**
- * Estado de vencimiento con color + ícono + texto. Con `dias` muestra el
- * detalle ("Vence en 12 días") en vez de la etiqueta genérica.
+ * Semáforo de vencimiento: color + forma + nombre del color. Con `dias`
+ * agrega el plazo ("Rojo · 12 días", "Vencido · hace 3 días"); en verde y sin
+ * vencimiento no hace falta (la fecha va al lado).
  */
 export function BadgeEstadoVencimiento({
   estado,
@@ -94,14 +135,19 @@ export function BadgeEstadoVencimiento({
   dias?: number | null;
   className?: string;
 }) {
-  const { tono, icono } = ESTADO_VENCIMIENTO[estado];
-  let texto: string = ETIQUETA_ESTADO_VENCIMIENTO[estado];
-  if (dias !== undefined && dias !== null && estado === "POR_VENCER") {
-    texto = dias === 0 ? "Vence hoy" : dias === 1 ? "Vence mañana" : `Vence en ${dias} días`;
-  }
+  const { tono, icono, badge } = SEMAFORO_UI[estado];
+  const conPlazo = dias !== undefined && dias !== null && (estado === "VENCIDO" || estado === "ROJO" || estado === "AMARILLO");
   return (
-    <Badge tono={tono} icono={icono} className={className}>
-      {texto}
+    <Badge tono={tono} icono={icono} className={cn(badge, className)} title={DESCRIPCION_SEMAFORO[estado]}>
+      {ETIQUETA_ESTADO_VENCIMIENTO[estado]}
+      {conPlazo ? (
+        <span className="cifras font-medium">
+          <span aria-hidden>· </span>
+          <span className="sr-only">{estado === "VENCIDO" ? ", venció " : ", vence "}</span>
+          {dias >= 0 && dias > 1 ? <span className="sr-only">en </span> : null}
+          {plazoBreve(dias)}
+        </span>
+      ) : null}
     </Badge>
   );
 }

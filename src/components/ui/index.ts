@@ -17,6 +17,7 @@ export * from "./pagination";
 export * from "./password-input";
 export * from "./search-input";
 export * from "./select";
+export * from "./semaforo";
 export * from "./sheet";
 export * from "./skeleton";
 export * from "./stat-card";

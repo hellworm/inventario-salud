@@ -89,6 +89,20 @@ export function sumarDias(dia: DiaISO, cantidad: number): DiaISO {
   return dateADia(d);
 }
 
+/**
+ * Suma meses calendario a un día ISO. Conserva el día del mes; si el mes de
+ * destino no lo tiene, usa su último día (31-01 + 1 mes = 28-02 o 29-02).
+ * Es la misma regla de PostgreSQL para `fecha + interval 'N months'`.
+ */
+export function sumarMeses(dia: DiaISO, cantidad: number): DiaISO {
+  const [anio, mes, diaMes] = dia.split("-").map(Number) as [number, number, number];
+  const indice = anio * 12 + (mes - 1) + cantidad;
+  const anioDestino = Math.floor(indice / 12);
+  const mesDestino = indice - anioDestino * 12; // 0–11
+  const ultimoDia = new Date(Date.UTC(anioDestino, mesDestino + 1, 0)).getUTCDate();
+  return dateADia(new Date(Date.UTC(anioDestino, mesDestino, Math.min(diaMes, ultimoDia))));
+}
+
 /** Días completos desde `desde` hasta `hasta` (negativo si `hasta` es anterior). */
 export function diasEntre(desde: DiaISO, hasta: DiaISO): number {
   return Math.round((diaADate(hasta).getTime() - diaADate(desde).getTime()) / 86_400_000);
