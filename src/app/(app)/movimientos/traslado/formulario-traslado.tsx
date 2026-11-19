@@ -163,7 +163,7 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
   };
 
   return (
-    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
+    <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
       {confirmado ? (
         <Confirmacion
           titulo="Traslado registrado"
@@ -319,7 +319,7 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
       )}
 
       <PanelExistencias
-        className="lg:sticky lg:top-20"
+        className="xl:sticky xl:top-20"
         insumo={confirmado?.insumo ?? insumo}
         estado={existencias}
         mostrarCentro={mostrarCentro}

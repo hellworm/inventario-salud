@@ -5,6 +5,7 @@ import { textoParam } from "@/lib/parametros";
 import { puede } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { buscarInsumos, listarUbicaciones, obtenerOpcionInsumo } from "@/server/servicios";
+import { volverDeFormulario } from "../volver";
 import { FormularioRetiro } from "./formulario-retiro";
 
 export const metadata: Metadata = { title: "Registrar retiro" };
@@ -12,6 +13,7 @@ export const metadata: Metadata = { title: "Registrar retiro" };
 export default async function PaginaRetiro({ searchParams }: PageProps<"/movimientos/retiro">) {
   const { actor, centroId, centro } = await contextoPagina("movimientos:retiro");
   const sp = await searchParams;
+  const volver = await volverDeFormulario(sp.volver);
   const insumoParam = textoParam(sp.insumo);
   const [ubicaciones, insumosIniciales, insumoInicial] = await Promise.all([
     listarUbicaciones(actor, { centroId }),
@@ -29,7 +31,7 @@ export default async function PaginaRetiro({ searchParams }: PageProps<"/movimie
             ? `Salida de insumos de ${centro.nombre} para su uso.`
             : "Salida de insumos para su uso. Estás viendo toda la red: revisa bien la ubicación."
         }
-        volver={{ href: "/inventario", label: "Inventario" }}
+        volver={volver}
       />
       {ubicaciones.length === 0 ? (
         <EmptyState

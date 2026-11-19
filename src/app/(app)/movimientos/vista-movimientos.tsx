@@ -118,7 +118,7 @@ export function VistaMovimientos({
             key={limpiezas}
             valorInicial={limpiezas > 0 ? "" : undefined}
             className="min-w-0 flex-1"
-            placeholder="Buscar insumo, lote o documento"
+            placeholder="Insumo, lote o guía"
             label="Buscar en los movimientos"
           />
           <Button
@@ -129,7 +129,7 @@ export function VistaMovimientos({
             onClick={() => setFiltrosAbiertos((v) => !v)}
           >
             <SlidersHorizontal aria-hidden />
-            Filtros
+            <span className="max-sm:sr-only">Filtros</span>
             {activos > 0 ? (
               <span className="cifras flex size-5 items-center justify-center rounded-full bg-marca-600 text-xs font-semibold text-white">{activos}</span>
             ) : null}
@@ -147,11 +147,11 @@ export function VistaMovimientos({
               opciones={TIPOS_MOVIMIENTO.map((t) => ({ value: t, label: ETIQUETA_TIPO_MOVIMIENTO[t] }))}
             />
           </Field>
-          <Field label="Desde">
-            <Input type="date" className="cifras" value={filtros.desde} max={filtros.hasta || undefined} onChange={(e) => filtrar({ desde: e.target.value })} />
+          <Field label="Desde" ayuda={filtros.desde ? `Desde el ${formatearDia(filtros.desde)}` : undefined}>
+            <Input type="date" lang="es-CL" className="cifras" value={filtros.desde} max={filtros.hasta || undefined} onChange={(e) => filtrar({ desde: e.target.value })} />
           </Field>
-          <Field label="Hasta">
-            <Input type="date" className="cifras" value={filtros.hasta} min={filtros.desde || undefined} onChange={(e) => filtrar({ hasta: e.target.value })} />
+          <Field label="Hasta" ayuda={filtros.hasta ? `Hasta el ${formatearDia(filtros.hasta)}` : undefined}>
+            <Input type="date" lang="es-CL" className="cifras" value={filtros.hasta} min={filtros.desde || undefined} onChange={(e) => filtrar({ hasta: e.target.value })} />
           </Field>
           <Field label="Ubicación">
             <SelectUbicacion ubicaciones={ubicaciones} valor={filtros.ubicacion} onCambiar={(id) => filtrar({ ubicacion: id })} placeholder="Todas" />
@@ -220,18 +220,21 @@ export function VistaMovimientos({
           )
         ) : (
           <>
-            <div className="hidden overflow-x-auto md:block">
+            {/* Tabla desde `lg`: a 768 px (tablet vertical) las 6 columnas no caben y se usan las tarjetas. */}
+            <div className="relative hidden overflow-x-auto lg:block">
               <table className="w-full border-collapse text-sm">
                 <caption className="sr-only">Historial de movimientos. Elige un movimiento para ver su detalle.</caption>
                 <thead>
                   <tr className="border-b border-borde bg-superficie-2 text-xs tracking-wide text-texto-suave uppercase">
-                    <th scope="col" className="px-4 py-3 text-left font-semibold">Fecha</th>
+                    <th scope="col" className="px-4 py-3 text-left font-semibold">
+                      Fecha<span className="xl:hidden"> y usuario</span>
+                    </th>
                     <th scope="col" className="px-4 py-3 text-left font-semibold">Tipo</th>
                     <th scope="col" className="px-4 py-3 text-left font-semibold">Insumo y lote</th>
                     <th scope="col" className="px-4 py-3 text-right font-semibold">Cantidad</th>
                     <th scope="col" className="hidden px-4 py-3 text-right font-semibold whitespace-nowrap xl:table-cell">Saldo del lote</th>
                     <th scope="col" className="px-4 py-3 text-left font-semibold">Ubicación</th>
-                    <th scope="col" className="hidden px-4 py-3 text-left font-semibold lg:table-cell">Usuario</th>
+                    <th scope="col" className="hidden px-4 py-3 text-left font-semibold xl:table-cell">Usuario</th>
                     <th scope="col" className="w-10 px-2 py-3">
                       <span className="sr-only">Ver detalle</span>
                     </th>
@@ -258,23 +261,26 @@ export function VistaMovimientos({
                         >
                           {formatearFechaHora(m.creadoEn)}
                         </button>
+                        <span className="block max-w-40 truncate text-xs text-texto-suave xl:hidden">{m.usuario}</span>
                       </td>
                       <td className="px-4 py-3 align-middle">
                         <BadgeTipoMovimiento tipo={m.tipo} />
                       </td>
-                      <td className="max-w-0 px-4 py-3 align-middle md:w-[34%]">
-                        <span className="block truncate font-medium text-texto">{m.insumoNombre}</span>
+                      <td className="px-4 py-3 align-middle">
+                        <span className="line-clamp-2 font-medium text-texto" title={m.insumoNombre}>
+                          {m.insumoNombre}
+                        </span>
                         <span className="cifras block truncate text-xs text-texto-suave">Lote {m.numeroLote}</span>
                       </td>
                       <td className="px-4 py-3 text-right align-middle">
                         <Cantidad m={m} />
                       </td>
                       <td className="cifras hidden px-4 py-3 text-right align-middle text-texto-suave xl:table-cell">{formatearNumero(m.saldoPosterior)}</td>
-                      <td className="max-w-0 px-4 py-3 align-middle md:w-[18%]">
-                        <span className="block truncate text-texto">{m.ubicacion}</span>
-                        {mostrarCentro ? <span className="block truncate text-xs text-texto-tenue">{m.centro}</span> : null}
+                      <td className="px-4 py-3 align-middle">
+                        <span className="line-clamp-2 text-texto">{m.ubicacion}</span>
+                        {mostrarCentro ? <span className="line-clamp-2 text-xs text-texto-suave">{m.centro}</span> : null}
                       </td>
-                      <td className="hidden px-4 py-3 align-middle whitespace-nowrap text-texto-suave lg:table-cell">{m.usuario}</td>
+                      <td className="hidden px-4 py-3 align-middle whitespace-nowrap text-texto-suave xl:table-cell">{m.usuario}</td>
                       <td className="px-2 py-3 align-middle text-texto-tenue">
                         <ChevronRight className="size-5" aria-hidden />
                       </td>
@@ -284,7 +290,7 @@ export function VistaMovimientos({
               </table>
             </div>
 
-            <ul className="divide-y divide-borde md:hidden" aria-label="Historial de movimientos">
+            <ul className="divide-y divide-borde lg:hidden" aria-label="Historial de movimientos">
               {movimientos.items.map((m) => (
                 <li key={m.id}>
                   <button
@@ -309,7 +315,7 @@ export function VistaMovimientos({
                       <span className="cifras text-xs text-texto-suave">{formatearFechaHora(m.creadoEn)}</span>
                     </span>
                     <span className="mt-1.5 flex items-center justify-between gap-3 text-xs text-texto-suave">
-                      <span className="truncate">
+                      <span className="min-w-0">
                         {m.ubicacion}
                         {mostrarCentro ? ` · ${m.centro}` : ""} · {m.usuario}
                       </span>
@@ -436,10 +442,12 @@ function DetalleMovimiento({ m, traslado, onCerrar }: { m: FilaMovimiento; trasl
         <Dato etiqueta="Nota" ancho>
           {m.nota ?? "—"}
         </Dato>
-        <Dato etiqueta="Identificador" ancho>
-          <span className="cifras text-sm text-texto-suave">{m.id}</span>
-        </Dato>
       </dl>
+
+      {/* Dato técnico (útil para soporte o auditoría): discreto, fuera de la ficha. */}
+      <p className="mt-5 border-t border-borde pt-3 text-xs text-texto-suave">
+        Identificador del registro: <span className="font-mono break-all select-all">{m.id}</span>
+      </p>
 
       <DialogFooter>
         <Button variant="secundario" onClick={onCerrar}>

@@ -401,7 +401,7 @@ export function Sugerencias({
             aria-pressed={activa}
             onClick={() => onElegir(o.valor)}
             className={cn(
-              "inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-colors",
+              "inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-colors pointer-fine:min-h-10",
               activa
                 ? "border-marca-600 bg-marca-50 text-marca-900 ring-1 ring-marca-600"
                 : "border-borde-fuerte/70 bg-superficie text-texto-suave hover:border-borde-fuerte hover:text-texto",

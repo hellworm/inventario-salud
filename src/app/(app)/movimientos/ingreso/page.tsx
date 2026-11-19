@@ -6,6 +6,7 @@ import { hoyEnSantiago } from "@/lib/fechas";
 import { puede } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { buscarInsumos, listarProveedoresActivos, listarUbicaciones, obtenerOpcionInsumo } from "@/server/servicios";
+import { volverDeFormulario } from "../volver";
 import { FormularioIngreso } from "./formulario-ingreso";
 
 export const metadata: Metadata = { title: "Registrar ingreso" };
@@ -15,6 +16,7 @@ const texto = (v: string | string[] | undefined) => (typeof v === "string" && v.
 export default async function PaginaIngreso({ searchParams }: PageProps<"/movimientos/ingreso">) {
   const { actor, centroId, centro } = await contextoPagina("movimientos:ingreso");
   const sp = await searchParams;
+  const volver = await volverDeFormulario(sp.volver);
   const insumoParam = texto(sp.insumo);
   const [ubicaciones, proveedores, insumosIniciales, insumoInicial] = await Promise.all([
     listarUbicaciones(actor, { centroId }),
@@ -33,7 +35,7 @@ export default async function PaginaIngreso({ searchParams }: PageProps<"/movimi
             ? `Entrada de insumos a ${centro.nombre}.`
             : "Entrada de insumos. Estás viendo toda la red: elige con cuidado la ubicación de destino."
         }
-        volver={{ href: "/inventario", label: "Inventario" }}
+        volver={volver}
       />
       {ubicaciones.length === 0 ? (
         <EmptyState
