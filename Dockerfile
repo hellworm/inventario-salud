@@ -62,9 +62,11 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 # La salida standalone ya trae server.js y solo los node_modules necesarios.
-# (El proyecto no tiene carpeta public/; si se agrega, copiarla también.)
+# No incluye los estáticos ni public/ (manifiesto e íconos de la app instalable):
+# se copian aparte. Fuera de Docker lo mismo lo hace `npm start` (scripts/iniciar.mjs).
 COPY --from=construccion --chown=node:node /app/.next/standalone ./
 COPY --from=construccion --chown=node:node /app/.next/static ./.next/static
+COPY --from=construccion --chown=node:node /app/public ./public
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

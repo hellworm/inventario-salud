@@ -70,7 +70,7 @@ export default defineConfig({
     ? undefined
     : {
         // Requiere `npm run build` previo. Si ya hay un servidor en el puerto, se reutiliza.
-        command: `npx next start -p ${PUERTO}`,
+        command: `node scripts/iniciar.mjs -p ${PUERTO}`,
         url: `${URL_BASE}/login`,
         reuseExistingServer: true,
         timeout: 120_000,
