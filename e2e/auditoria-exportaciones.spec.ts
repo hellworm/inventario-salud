@@ -153,8 +153,10 @@ test.describe("Auditoría", () => {
     await expect(retiro).toContainText(`2 × ${insumo.nombre}`);
 
     const exportaciones = await registrosDeAuditoria(admin, `desde=${hoy}&hasta=${hoy}&accion=REPORTE_EXPORTADO`);
-    await expect(exportaciones.first()).toContainText(CUENTAS.admin.nombre);
-    await expect(exportaciones.first()).toContainText("Exportación a CSV");
+    // Otros tests exportan en paralelo con otras cuentas: se busca la exportación de ESTA cuenta.
+    const propia = exportaciones.filter({ hasText: CUENTAS.admin.nombre }).first();
+    await expect(propia).toBeVisible();
+    await expect(propia).toContainText("Exportación a CSV");
   });
 
   test("registra inicios de sesión y altas de usuarios; es de solo lectura", async ({ abrirComo }) => {

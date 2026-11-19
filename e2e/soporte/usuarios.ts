@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { marcar } from "./datos";
-import { CENTROS, sufijo } from "./entorno";
+import { CENTROS, INSTITUCION_DE_CENTRO, INSTITUCIONES, sufijo } from "./entorno";
 import { iniciarSesion } from "./fixtures";
 
 /** Ayudantes para crear y usar cuentas propias de cada test (por la interfaz de administración). */
@@ -11,10 +11,19 @@ export interface UsuarioPrueba {
   temporal: string;
 }
 
-export type RolNuevo = "Administrador" | "Bodeguero" | "Visitante";
+export type RolNuevo = "Administrador de la red" | "Administrador de institución" | "Bodeguero" | "Visitante";
 
-/** Crea un usuario desde /admin/usuarios y devuelve su contraseña temporal. */
-export async function crearUsuario(admin: Page, rol: RolNuevo, centros: string[] = [CENTROS.nunoa]): Promise<UsuarioPrueba> {
+/**
+ * Crea un usuario desde /admin/usuarios y devuelve su contraseña temporal.
+ * `admin` puede ser el administrador de la red (elige la institución: la de los
+ * centros indicados o `institucion`) o un administrador de institución (no la elige).
+ */
+export async function crearUsuario(
+  admin: Page,
+  rol: RolNuevo,
+  centros: string[] = [CENTROS.nunoa],
+  institucion: string = INSTITUCION_DE_CENTRO[centros[0] ?? ""] ?? INSTITUCIONES.andes,
+): Promise<UsuarioPrueba> {
   const s = sufijo().toLowerCase();
   const usuario = { nombre: `Prueba E2E ${s}`, email: `e2e.${s}@redinsumos.cl` };
   await admin.goto("/admin/usuarios");
@@ -24,7 +33,12 @@ export async function crearUsuario(admin: Page, rol: RolNuevo, centros: string[]
   // Con mayúsculas y espacios: el correo se normaliza.
   await dialogo.getByLabel("Correo electrónico").fill(`  ${usuario.email.toUpperCase()} `);
   await marcar(dialogo.getByRole("radio", { name: new RegExp(`^${rol}`) }));
-  if (rol !== "Administrador") {
+  if (rol !== "Administrador de la red") {
+    // Solo el administrador de la red elige la institución; para el de institución es la suya.
+    const selector = dialogo.locator('select[name="institucionId"]');
+    if (await selector.count()) await selector.selectOption({ label: institucion });
+  }
+  if (rol === "Bodeguero" || rol === "Visitante") {
     for (const centro of centros) await marcar(dialogo.getByRole("checkbox", { name: centro }));
   }
   await dialogo.getByRole("button", { name: "Crear usuario" }).click();

@@ -2,7 +2,12 @@ import path from "node:path";
 
 /** Cuentas del seed de demostración (prisma/seed.ts). */
 export const CUENTAS = {
+  /** Administrador de la red (ADMIN_RED): ve y gestiona todas las instituciones. */
   admin: { email: "admin@redinsumos.cl", password: "Admin.Demo.2026", nombre: "Carolina Fuentes" },
+  /** Administrador de la institución "Centros de Diálisis Andes SpA" (Ñuñoa y Concepción). */
+  andes: { email: "admin.andes@redinsumos.cl", password: "AdminAndes.Demo.2026", nombre: "Rodrigo Espinoza" },
+  /** Administrador de la institución "Corporación Municipal de Salud Cerro Alegre" (Consultorio Cerro Alegre). */
+  cerro: { email: "admin.cerroalegre@redinsumos.cl", password: "AdminCerro.Demo.2026", nombre: "Valentina Pizarro" },
   bodega: { email: "bodega@redinsumos.cl", password: "Bodega.Demo.2026", nombre: "Matías Rojas" },
   visita: { email: "visita@redinsumos.cl", password: "Visita.Demo.2026", nombre: "Javiera Soto" },
   valpo: { email: "bodega.valparaiso@redinsumos.cl", password: "Bodega.Valpo.2026", nombre: "Ignacio Vera" },
@@ -19,6 +24,19 @@ export const CENTROS = {
   conce: "Centro de Diálisis Concepción",
 } as const;
 
+/** Instituciones del seed: Andes (Ñuñoa + Concepción) y Cerro Alegre (Consultorio Cerro Alegre). */
+export const INSTITUCIONES = {
+  andes: "Centros de Diálisis Andes SpA",
+  cerro: "Corporación Municipal de Salud Cerro Alegre",
+} as const;
+
+/** Institución de cada centro del seed. */
+export const INSTITUCION_DE_CENTRO: Record<string, string> = {
+  [CENTROS.nunoa]: INSTITUCIONES.andes,
+  [CENTROS.conce]: INSTITUCIONES.andes,
+  [CENTROS.valpo]: INSTITUCIONES.cerro,
+};
+
 /** Ubicaciones del seed (nombre exacto) por centro. */
 export const UBICACIONES = {
   nunoaBodega: { nombre: "Bodega central", centro: CENTROS.nunoa },
@@ -27,7 +45,8 @@ export const UBICACIONES = {
   valpoBodega: { nombre: "Bodega de insumos", centro: CENTROS.valpo },
   conceBodega: { nombre: "Bodega", centro: CENTROS.conce },
 } as const;
-export type Ubicacion = (typeof UBICACIONES)[keyof typeof UBICACIONES];
+/** Una ubicación por nombre y centro (las del seed o las que crea un test). */
+export type Ubicacion = { nombre: string; centro: string };
 
 /** Archivo con la sesión guardada de cada rol (lo genera `sesiones.setup.ts`). */
 export function rutaSesion(rol: Rol): string {
