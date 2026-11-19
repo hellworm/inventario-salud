@@ -1,0 +1,25 @@
+{
+  "name": "RedInsumos",
+  "short_name": "RedInsumos",
+  "description": "Inventario en red de insumos médicos para centros de salud.",
+  "lang": "es-CL",
+  "dir": "ltr",
+  "start_url": "/panel",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f7f8",
+  "theme_color": "#1a7480",
+  "categories": ["medical", "business", "productivity"],
+  "icons": [
+    { "src": "/icons/icono-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icono-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icono-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Registrar retiro", "url": "/movimientos/retiro" },
+    { "name": "Registrar ingreso", "url": "/movimientos/ingreso" },
+    { "name": "Inventario", "url": "/inventario" }
+  ]
+}

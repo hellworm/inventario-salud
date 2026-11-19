@@ -9,6 +9,11 @@ export const metadata: Metadata = {
   title: { default: "RedInsumos", template: "%s · RedInsumos" },
   description: "Inventario en red de insumos médicos para centros de salud.",
   robots: { index: false, follow: false },
+  applicationName: "RedInsumos",
+  manifest: "/manifest.webmanifest",
+  icons: { apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }] },
+  appleWebApp: { capable: true, title: "RedInsumos", statusBarStyle: "default" },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {

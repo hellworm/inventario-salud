@@ -12,6 +12,7 @@ export default function ErrorApp({ error, reset }: { error: Error & { digest?: s
 
   return (
     <EmptyState
+      nivelTitulo={1}
       icono={ServerCrash}
       titulo="Algo salió mal"
       descripcion={

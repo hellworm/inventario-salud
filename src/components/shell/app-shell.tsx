@@ -6,13 +6,16 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Building2,
   Check,
+  ChevronDown,
   ChevronsUpDown,
   KeyRound,
+  LifeBuoy,
   LogOut,
   Menu,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
+  X,
 } from "lucide-react";
 import { cambiarCentroActivoAccion, cerrarSesionAccion } from "@/acciones/auth";
 import {
@@ -24,6 +27,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   Sheet,
+  SheetClose,
   SheetContent,
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -61,27 +65,53 @@ function iniciales(nombre: string): string {
 // Navegación (barra lateral y drawer)
 // ---------------------------------------------------------------------------
 
+/**
+ * Presentación de la barra lateral:
+ * - "completa": íconos y nombres (drawer, o escritorio ancho expandido).
+ * - "rail": solo íconos (el nombre sigue disponible para lectores de pantalla
+ *   y aparece como pista al pasar el mouse o enfocar).
+ * - "adaptable": rail entre `lg` y `xl` (tablet horizontal), completa desde `xl`.
+ */
+type ModoNavegacion = "completa" | "rail" | "adaptable";
+
+/** Clases según el modo: `rail` aplica siempre o solo bajo `xl`. */
+function porModo(modo: ModoNavegacion, clases: { completa: string; rail: string; adaptable: string }): string {
+  return clases[modo];
+}
+
 function ListaNavegacion({
   grupos,
   activo,
-  colapsada = false,
+  modo = "completa",
   alNavegar,
+  alSenalar,
 }: {
   grupos: GrupoNavegacion[];
   activo: string | null;
-  colapsada?: boolean;
+  modo?: ModoNavegacion;
   alNavegar?: () => void;
+  /** Avisa qué enlace está bajo el mouse o con foco (para la pista del rail). */
+  alSenalar?: (item: { etiqueta: string; elemento: HTMLElement } | null) => void;
 }) {
   return (
-    <nav aria-label="Principal" className="flex flex-col gap-5">
+    <nav aria-label="Principal" className="flex flex-col gap-4">
       {grupos.map((grupo, i) => (
         <div key={grupo.titulo ?? i}>
           {grupo.titulo ? (
-            colapsada ? (
-              <div className="mx-auto mb-2 h-px w-8 bg-borde" aria-hidden />
-            ) : (
-              <p className="mb-1.5 px-3 text-xs font-semibold tracking-wider text-texto-tenue uppercase">{grupo.titulo}</p>
-            )
+            <>
+              <div
+                className={porModo(modo, { completa: "hidden", rail: "mx-auto mb-2 h-px w-8 bg-borde", adaptable: "mx-auto mb-2 h-px w-8 bg-borde xl:hidden" })}
+                aria-hidden
+              />
+              <p
+                className={cn(
+                  "mb-1 px-3 text-xs font-semibold tracking-wider text-texto-tenue uppercase",
+                  porModo(modo, { completa: "", rail: "sr-only", adaptable: "max-xl:sr-only" }),
+                )}
+              >
+                {grupo.titulo}
+              </p>
+            </>
           ) : null}
           <ul className="flex flex-col gap-0.5">
             {grupo.items.map(({ href, etiqueta, icono: Icono }) => {
@@ -92,10 +122,14 @@ function ListaNavegacion({
                     href={href}
                     onClick={alNavegar}
                     aria-current={esActivo ? "page" : undefined}
-                    title={colapsada ? etiqueta : undefined}
+                    onMouseEnter={alSenalar ? (e) => alSenalar({ etiqueta, elemento: e.currentTarget }) : undefined}
+                    onMouseLeave={alSenalar ? () => alSenalar(null) : undefined}
+                    onFocus={alSenalar ? (e) => alSenalar({ etiqueta, elemento: e.currentTarget }) : undefined}
+                    onBlur={alSenalar ? () => alSenalar(null) : undefined}
                     className={cn(
-                      "group relative flex min-h-11 items-center gap-3 rounded-lg text-[0.9375rem] font-medium transition-colors",
-                      colapsada ? "justify-center px-0" : "px-3",
+                      // 44 px en pantallas táctiles; 40 px con mouse para que los 15 ítems del administrador quepan en 900 px de alto.
+                      "group relative flex min-h-11 items-center gap-3 rounded-lg text-[0.9375rem] font-medium transition-colors pointer-fine:min-h-10",
+                      porModo(modo, { completa: "px-3", rail: "justify-center px-0", adaptable: "max-xl:justify-center max-xl:px-0 xl:px-3" }),
                       esActivo
                         ? "bg-marca-50 text-marca-800"
                         : "text-texto-suave hover:bg-superficie-2 hover:text-texto",
@@ -108,7 +142,7 @@ function ListaNavegacion({
                       className={cn("size-5 shrink-0", esActivo ? "text-marca-700" : "text-texto-tenue group-hover:text-texto-suave")}
                       aria-hidden
                     />
-                    <span className={cn("truncate", colapsada && "sr-only")}>{etiqueta}</span>
+                    <span className={porModo(modo, { completa: "truncate", rail: "sr-only", adaptable: "max-xl:sr-only xl:truncate" })}>{etiqueta}</span>
                   </Link>
                 </li>
               );
@@ -171,7 +205,8 @@ function SelectorCentro({
           "hover:border-borde hover:bg-superficie-2 data-[state=open]:border-borde data-[state=open]:bg-superficie-2",
           pendiente && "opacity-60",
         )}
-        aria-label={`Centro activo: ${titulo}. Cambiar centro`}
+        // El nombre accesible empieza por el texto visible (WCAG 2.5.3).
+        aria-label={`${titulo}, ${subtitulo}. Cambiar centro activo`}
       >
         {contenido}
         <ChevronsUpDown className="size-4 shrink-0 text-texto-tenue" aria-hidden />
@@ -215,7 +250,8 @@ function MenuUsuario({ usuario }: Pick<AppShellProps, "usuario">) {
     <DropdownMenu>
       <DropdownMenuTrigger
         className="flex min-h-11 items-center gap-2.5 rounded-full py-1 pr-1 pl-1 transition-colors hover:bg-superficie-2 data-[state=open]:bg-superficie-2 sm:rounded-xl sm:pr-3"
-        aria-label={`Menú de usuario: ${usuario.nombre}`}
+        // El nombre accesible empieza por el texto visible (WCAG 2.5.3).
+        aria-label={`${usuario.nombre}, ${NOMBRE_ROL[usuario.rol]}. Menú de usuario`}
       >
         <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-marca-600 text-sm font-semibold text-white">
           {iniciales(usuario.nombre)}
@@ -238,6 +274,13 @@ function MenuUsuario({ usuario }: Pick<AppShellProps, "usuario">) {
             Cambiar contraseña
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/ayuda">
+            <LifeBuoy aria-hidden />
+            Ayuda
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           peligro
           disabled={saliendo}
@@ -255,8 +298,74 @@ function MenuUsuario({ usuario }: Pick<AppShellProps, "usuario">) {
 }
 
 // ---------------------------------------------------------------------------
+// Zona con scroll e indicio de "hay más contenido"
+// ---------------------------------------------------------------------------
+
+/** Contenedor con scroll vertical que muestra un degradado arriba/abajo cuando queda contenido oculto. */
+function ZonaScroll({ className, children }: { className?: string; children: React.ReactNode }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [oculto, setOculto] = React.useState({ arriba: false, abajo: false });
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const medir = () => {
+      const arriba = el.scrollTop > 4;
+      const abajo = el.scrollTop + el.clientHeight < el.scrollHeight - 4;
+      setOculto((previo) => (previo.arriba === arriba && previo.abajo === abajo ? previo : { arriba, abajo }));
+    };
+    const observador = new ResizeObserver(medir);
+    observador.observe(el);
+    if (el.firstElementChild) observador.observe(el.firstElementChild);
+    el.addEventListener("scroll", medir, { passive: true });
+    return () => {
+      observador.disconnect();
+      el.removeEventListener("scroll", medir);
+    };
+  }, []);
+
+  const degradado = "pointer-events-none absolute inset-x-0 z-10 h-10 from-superficie via-superficie/80 to-transparent transition-opacity duration-150";
+  return (
+    <div className="relative min-h-0 flex-1">
+      <div ref={ref} className={cn("h-full overflow-y-auto overscroll-contain", className)}>
+        {children}
+      </div>
+      <div aria-hidden className={cn(degradado, "top-0 bg-gradient-to-b", oculto.arriba ? "opacity-100" : "opacity-0")} />
+      <div
+        aria-hidden
+        data-mas-contenido={oculto.abajo || undefined}
+        className={cn(degradado, "bottom-0 flex items-end justify-center bg-gradient-to-t pb-0.5", oculto.abajo ? "opacity-100" : "opacity-0")}
+      >
+        <ChevronDown className="size-4 text-texto-suave" />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Shell
 // ---------------------------------------------------------------------------
+
+const CONSULTA_XL = "(min-width: 80rem)";
+
+function suscribirXl(avisar: () => void) {
+  const consulta = window.matchMedia(CONSULTA_XL);
+  consulta.addEventListener("change", avisar);
+  return () => consulta.removeEventListener("change", avisar);
+}
+
+/**
+ * `true` desde `xl` (1280 px). El DISEÑO no depende de esto (va por CSS, sin
+ * saltos al hidratar): solo se usa para textos y estados accesibles del botón
+ * del menú y para la pista del rail.
+ */
+function useEsXl(): boolean {
+  return React.useSyncExternalStore(
+    suscribirXl,
+    () => window.matchMedia(CONSULTA_XL).matches,
+    () => true,
+  );
+}
 
 export function AppShell({
   usuario,
@@ -269,19 +378,41 @@ export function AppShell({
   const ruta = usePathname();
   const [colapsada, setColapsada] = React.useState(sidebarColapsadaInicial);
   const [menuAbierto, setMenuAbierto] = React.useState(false);
+  const [pista, setPista] = React.useState<{ etiqueta: string; arriba: number } | null>(null);
+  const esXl = useEsXl();
 
   const grupos = React.useMemo(() => navegacionPara(usuario.rol), [usuario.rol]);
   const inferior = React.useMemo(() => navegacionInferior(usuario.rol), [usuario.rol]);
   const activo = hrefActivo(ruta, grupos.flatMap((g) => g.items));
   const activoInferior = inferior.some((i) => i.href === activo) ? activo : null;
 
+  // Menú lateral completo solo desde `xl`; entre `lg` y `xl` (tablet horizontal)
+  // queda como rail de íconos y el botón inferior abre el menú completo en un panel.
+  const modo: ModoNavegacion = colapsada ? "rail" : "adaptable";
+  const enRail = colapsada || !esXl;
+
   function alternarSidebar() {
+    if (!window.matchMedia(CONSULTA_XL).matches) {
+      setMenuAbierto(true);
+      return;
+    }
     setColapsada((valor) => {
       const nuevo = !valor;
       document.cookie = `${COOKIE_SIDEBAR}=${nuevo ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`;
       return nuevo;
     });
   }
+
+  const senalar = React.useCallback(
+    (item: { etiqueta: string; elemento: HTMLElement } | null) => {
+      if (!item) return setPista(null);
+      const caja = item.elemento.getBoundingClientRect();
+      setPista({ etiqueta: item.etiqueta, arriba: caja.top + caja.height / 2 });
+    },
+    [],
+  );
+
+  const textoBoton = !esXl ? "Abrir menú completo" : colapsada ? "Expandir menú" : "Contraer menú";
 
   return (
     <div className="min-h-dvh">
@@ -292,41 +423,61 @@ export function AppShell({
         Saltar al contenido
       </a>
 
-      {/* Barra lateral (escritorio) */}
+      {/* Barra lateral (desde tablet horizontal) */}
       <aside
+        data-shell="lateral"
         className={cn(
-          "fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-borde bg-superficie transition-[width] duration-200 lg:flex",
-          colapsada ? "w-[4.75rem]" : "w-[17rem]",
+          "fixed inset-y-0 left-0 z-30 hidden w-[4.75rem] flex-col border-r border-borde bg-superficie transition-[width] duration-200 lg:flex",
+          !colapsada && "xl:w-[17rem]",
         )}
       >
-        <div className={cn("flex h-16 shrink-0 items-center border-b border-borde", colapsada ? "justify-center" : "px-5")}>
-          <Link href="/panel" aria-label="RedInsumos, ir al panel" className="rounded-lg">
-            {colapsada ? <Isotipo /> : <Logo />}
+        <div className={cn("flex h-16 shrink-0 items-center justify-center border-b border-borde", !colapsada && "xl:justify-start xl:px-5")}>
+          <Link href="/panel" aria-label="RedInsumos, ir al panel" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg">
+            <Isotipo className={cn(!colapsada && "xl:hidden")} />
+            <Logo className={cn("hidden", !colapsada && "xl:inline-flex")} />
           </Link>
         </div>
-        <div className="flex-1 overflow-y-auto px-3 py-4">
-          <ListaNavegacion grupos={grupos} activo={activo} colapsada={colapsada} />
-        </div>
-        <div className="shrink-0 border-t border-borde p-3">
+        <ZonaScroll className="px-3 py-3">
+          <ListaNavegacion grupos={grupos} activo={activo} modo={modo} alSenalar={senalar} />
+        </ZonaScroll>
+        <div className="shrink-0 border-t border-borde p-2.5">
           <button
             type="button"
             onClick={alternarSidebar}
-            aria-expanded={!colapsada}
+            aria-expanded={esXl ? !colapsada : menuAbierto}
+            aria-haspopup={esXl ? undefined : "dialog"}
+            onMouseEnter={(e) => senalar({ etiqueta: textoBoton, elemento: e.currentTarget })}
+            onMouseLeave={() => senalar(null)}
+            onFocus={(e) => senalar({ etiqueta: textoBoton, elemento: e.currentTarget })}
+            onBlur={() => senalar(null)}
             className={cn(
-              "flex min-h-11 w-full items-center gap-3 rounded-lg text-sm font-medium text-texto-suave hover:bg-superficie-2 hover:text-texto",
-              colapsada ? "justify-center" : "px-3",
+              "flex min-h-11 w-full items-center justify-center gap-3 rounded-lg text-sm font-medium text-texto-suave hover:bg-superficie-2 hover:text-texto",
+              !colapsada && "xl:justify-start xl:px-3",
             )}
           >
-            {colapsada ? <PanelLeftOpen className="size-5 text-texto-tenue" aria-hidden /> : <PanelLeftClose className="size-5 text-texto-tenue" aria-hidden />}
-            <span className={cn(colapsada && "sr-only")}>{colapsada ? "Expandir menú" : "Contraer menú"}</span>
+            {enRail ? <PanelLeftOpen className="size-5 text-texto-tenue" aria-hidden /> : <PanelLeftClose className="size-5 text-texto-tenue" aria-hidden />}
+            <span className={colapsada ? "sr-only" : "max-xl:sr-only"}>{textoBoton}</span>
           </button>
         </div>
+        {/* Pista con el nombre del ítem cuando el menú está en modo rail (mouse o teclado). */}
+        {pista && enRail ? (
+          <div
+            aria-hidden
+            style={{ top: pista.arriba }}
+            className="pointer-events-none fixed left-[5.25rem] z-40 -translate-y-1/2 rounded-lg bg-marca-950 px-2.5 py-1.5 text-sm font-medium whitespace-nowrap text-white shadow-flotante"
+          >
+            {pista.etiqueta}
+          </div>
+        ) : null}
       </aside>
 
-      <div className={cn("transition-[padding] duration-200", colapsada ? "lg:pl-[4.75rem]" : "lg:pl-[17rem]")}>
+      <div data-shell="contenido" className={cn("min-w-0 transition-[padding] duration-200 lg:pl-[4.75rem]", !colapsada && "xl:pl-[17rem]")}>
         {/* Barra superior */}
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-2 border-b border-borde bg-superficie/90 px-3 backdrop-blur-md sm:px-5 lg:px-8">
-          <Link href="/panel" aria-label="RedInsumos, ir al panel" className="mr-1 shrink-0 rounded-lg lg:hidden">
+        <header
+          data-shell="superior"
+          className="sticky top-0 z-20 flex h-16 items-center gap-2 border-b border-borde bg-superficie/90 px-3 backdrop-blur-md sm:px-5 lg:px-8"
+        >
+          <Link href="/panel" aria-label="RedInsumos, ir al panel" className="flex size-11 shrink-0 items-center justify-center rounded-lg lg:hidden">
             <Isotipo />
           </Link>
           <div className="min-w-0 flex-1">
@@ -335,13 +486,14 @@ export function AppShell({
           <MenuUsuario usuario={usuario} />
         </header>
 
-        <main id="contenido" tabIndex={-1} className="mx-auto w-full max-w-[84rem] px-4 pt-6 pb-28 outline-none sm:px-6 lg:px-8 lg:pb-12">
+        <main id="contenido" tabIndex={-1} className="mx-auto w-full max-w-[84rem] min-w-0 px-4 pt-6 pb-28 outline-none sm:px-6 lg:px-8 lg:pb-12">
           {children}
         </main>
       </div>
 
-      {/* Navegación inferior (móvil y tablet) */}
+      {/* Navegación inferior (móvil y tablet vertical) */}
       <nav
+        data-shell="inferior"
         aria-label="Accesos rápidos"
         className="fixed inset-x-0 bottom-0 z-30 border-t border-borde bg-superficie/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden"
       >
@@ -384,8 +536,14 @@ export function AppShell({
 
       <Sheet open={menuAbierto} onOpenChange={setMenuAbierto}>
         <SheetContent lado="izquierda" titulo="Menú de navegación" sinEncabezado>
-          <div className="flex h-16 shrink-0 items-center border-b border-borde px-5">
+          <div className="flex h-16 shrink-0 items-center justify-between border-b border-borde pr-2.5 pl-5">
             <Logo />
+            <SheetClose
+              className="flex size-11 shrink-0 items-center justify-center rounded-full text-texto-suave hover:bg-superficie-2 hover:text-texto"
+              aria-label="Cerrar menú"
+            >
+              <X className="size-5" aria-hidden />
+            </SheetClose>
           </div>
           <div className="flex-1 overflow-y-auto px-3 py-4">
             <ListaNavegacion grupos={grupos} activo={activo} alNavegar={() => setMenuAbierto(false)} />

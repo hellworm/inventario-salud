@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { MinusCircle, Plus, PlusCircle, SlidersHorizontal, Trash2 } from "lucide-react";
 import { registrarAjusteAccion, registrarMermaAccion, type StockActual } from "@/acciones/movimientos";
-import { Alert, Button, buttonClasses, Card, Field, Input, Select, Skeleton, Textarea, useAccion } from "@/components/ui";
+import { Alert, Button, buttonClasses, Card, ConfirmDialog, Field, Input, Select, Skeleton, Textarea, useAccion } from "@/components/ui";
 import {
   CampoCantidad,
   Grupo,
@@ -29,7 +29,7 @@ import {
   useExistenciasInsumo,
 } from "@/components/movimientos/formulario";
 import { calcularEstadoVencimiento, diasParaVencer, MOTIVOS_AJUSTE, MOTIVOS_MERMA } from "@/lib/estados";
-import type { DiaISO } from "@/lib/fechas";
+import { formatearDia, type DiaISO } from "@/lib/fechas";
 import { formatearNumero } from "@/lib/formato";
 import { nuevaClaveIdempotencia } from "@/lib/esquemas/base";
 import type { ErroresCampo } from "@/lib/resultado";
@@ -37,6 +37,7 @@ import { cantidadConUnidad } from "@/lib/unidades";
 import type { TipoAjuste } from "./tipos";
 
 const OTRO = "Otro";
+const MOTIVO_VENCIMIENTO = "Vencimiento";
 
 const OPCIONES_TIPO: readonly OpcionTarjeta<TipoAjuste>[] = [
   { valor: "SUMAR", titulo: "Sumar stock", descripcion: "Ajuste positivo: hay más de lo registrado", icono: PlusCircle },
@@ -68,7 +69,15 @@ export interface FormularioAjusteProps {
   mostrarCentro: boolean;
   hoy: DiaISO;
   puedeMerma: boolean;
-  inicial: { tipo: TipoAjuste | null; insumo: InsumoOpcion | null; ubicacionId: string | null; loteId: string | null };
+  inicial: {
+    tipo: TipoAjuste | null;
+    insumo: InsumoOpcion | null;
+    ubicacionId: string | null;
+    loteId: string | null;
+    /** Prellenado al llegar con un lote vencido: todo su saldo y motivo "Vencimiento". */
+    cantidad?: string | null;
+    motivo?: string | null;
+  };
 }
 
 export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, mostrarCentro, hoy, puedeMerma, inicial }: FormularioAjusteProps) {
@@ -77,8 +86,9 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
   const [insumo, setInsumo] = React.useState<InsumoOpcion | null>(inicial.insumo);
   const [ubicacionId, setUbicacionId] = React.useState(() => ubicacionPorDefecto(ubicaciones, inicial.ubicacionId));
   const [loteElegido, setLoteElegido] = React.useState(inicial.loteId ?? "");
-  const [cantidad, setCantidad] = React.useState("");
-  const [motivoOpcion, setMotivoOpcion] = React.useState("");
+  const [cantidad, setCantidad] = React.useState(inicial.cantidad ?? "");
+  const [motivoOpcion, setMotivoOpcion] = React.useState(inicial.motivo ?? "");
+  const [porConfirmar, setPorConfirmar] = React.useState(false);
   const [motivoOtro, setMotivoOtro] = React.useState("");
   const [nota, setNota] = React.useState("");
   const [intentado, setIntentado] = React.useState(false);
@@ -152,13 +162,28 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
     };
   }
 
-  const enviar = async (evento: React.FormEvent) => {
+  // Dar de baja por "Vencimiento" un lote que sigue vigente suele ser un error.
+  const venceDespues = tipo === "MERMA" && motivoOpcion === MOTIVO_VENCIMIENTO && lote !== null && lote.estadoVencimiento !== "VENCIDO";
+  const avisoVigente =
+    venceDespues && lote
+      ? lote.fechaVencimiento
+        ? `El lote ${lote.numeroLote} no está vencido: vence el ${formatearDia(lote.fechaVencimiento)}.`
+        : `El lote ${lote.numeroLote} no tiene fecha de vencimiento.`
+      : null;
+
+  // Ajustes y mermas no se pueden deshacer: se valida y luego se pide confirmar.
+  const enviar = (evento: React.FormEvent) => {
     evento.preventDefault();
     if (accion.pendiente || !insumo || !ubicacion || !lote || Object.keys(validar()).length > 0) {
       setIntentado(true);
       enfocarPrimerError(refFormulario.current);
       return;
     }
+    setPorConfirmar(true);
+  };
+
+  const registrar = async () => {
+    if (accion.pendiente || !insumo || !ubicacion || !lote) return;
     const comun = { ubicacionId, loteId, cantidad, motivo, nota, claveIdempotencia };
     const r =
       tipo === "MERMA"
@@ -196,7 +221,7 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
   };
 
   return (
-    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
+    <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
       {confirmado ? (
         <Confirmacion
           titulo={TEXTOS[confirmado.tipo].confirmado}
@@ -293,6 +318,15 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
                       }
                     : undefined
                 }
+                // Restar o dar de baja exige stock en la ubicación (igual que retiro y traslado).
+                deshabilitar={
+                  existencias.datos && tipo !== "SUMAR"
+                    ? (u) => {
+                        const s = stock.get(u.id);
+                        return (s ? s.disponible + s.vencido : 0) === 0;
+                      }
+                    : undefined
+                }
               />
             </Field>
 
@@ -373,6 +407,12 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
               ) : null}
             </div>
 
+            {avisoVigente ? (
+              <Alert tono="alerta" titulo="Revisa el motivo">
+                {avisoVigente} Si la baja es por otra causa (daño, pérdida, contaminación), elige ese motivo.
+              </Alert>
+            ) : null}
+
             <Field label="Nota" opcional error={errores.nota}>
               <Textarea name="nota" value={nota} onChange={(e) => alEditar(setNota)(e.target.value)} rows={2} maxLength={500} />
             </Field>
@@ -382,7 +422,8 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
               se corrige con otro ajuste.
             </Alert>
 
-            <div className="flex flex-col gap-3 border-t border-borde pt-5 sm:flex-row sm:items-center sm:justify-end">
+            <div className="flex flex-col gap-3 border-t border-borde pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-texto-suave">Los campos con * son obligatorios.</p>
               <Button
                 type="submit"
                 size="lg"
@@ -395,11 +436,37 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
               </Button>
             </div>
           </form>
+          <ConfirmDialog
+            open={porConfirmar}
+            onOpenChange={setPorConfirmar}
+            peligro={tipo === "MERMA"}
+            titulo={tipo === "MERMA" ? "¿Dar de baja este stock?" : "¿Registrar este ajuste?"}
+            textoConfirmar={TEXTOS[tipo].boton}
+            textoCancelar="Volver a revisar"
+            descripcion={
+              insumo && ubicacion && lote && saldoNuevo !== null ? (
+                <>
+                  Vas a {tipo === "MERMA" ? "dar de baja" : tipo === "SUMAR" ? "sumar" : "restar"}{" "}
+                  <strong className="text-texto">{cantidadConUnidad(pedido, unidad)}</strong> de{" "}
+                  <strong className="text-texto">{insumo.nombre}</strong>, lote <span className="cifras">{lote.numeroLote}</span>, en{" "}
+                  {ubicacion.nombre}
+                  {mostrarCentro ? ` (${ubicacion.centro})` : ""}. {saldoNuevo === 1 ? "Quedará" : "Quedarán"}{" "}
+                  <strong className="text-texto">{formatearNumero(saldoNuevo)}</strong> en ese lote. Motivo: {motivo}.
+                </>
+              ) : undefined
+            }
+            onConfirmar={() => {
+              void registrar();
+            }}
+          >
+            {avisoVigente ? <Alert tono="alerta">{avisoVigente} ¿Seguro que el motivo es “Vencimiento”?</Alert> : null}
+            <p>No se puede editar ni borrar después: un error se corrige con otro ajuste.</p>
+          </ConfirmDialog>
         </Card>
       )}
 
       <PanelExistencias
-        className="lg:sticky lg:top-20"
+        className="xl:sticky xl:top-20"
         insumo={confirmado?.insumo ?? insumo}
         estado={existencias}
         mostrarCentro={mostrarCentro}

@@ -18,7 +18,7 @@ export default async function PaginaCambiarPassword() {
       {!obligatorio ? (
         <Link
           href="/panel"
-          className="-ml-1 mb-3 inline-flex min-h-9 items-center gap-0.5 rounded-md pr-2 text-sm font-medium text-texto-suave hover:text-marca-700"
+          className="-ml-1 mb-2 flex min-h-11 w-fit items-center gap-0.5 rounded-md pr-3 text-sm font-medium text-texto-suave hover:text-marca-700"
         >
           <ChevronLeft className="size-4" aria-hidden />
           Volver al panel

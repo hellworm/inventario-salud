@@ -56,7 +56,8 @@ export function DataTable<T>({ columnas, filas, claveFila, titulo, vacio, hrefFi
   return (
     <div className={className}>
       {/* Escritorio / tablet */}
-      <div className="hidden overflow-x-auto md:block">
+      {/* `relative`: los textos `sr-only` (absolutos) no deben ensanchar la página si la tabla hace scroll. */}
+      <div className="relative hidden overflow-x-auto md:block">
         <table className="w-full border-collapse text-sm">
           <caption className="sr-only">{titulo}</caption>
           <thead>

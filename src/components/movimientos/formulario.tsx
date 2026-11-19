@@ -280,9 +280,19 @@ export function erroresDeEsquema(esquema: z.ZodType, valores: unknown): ErroresC
   return errores;
 }
 
-/** Une errores del servidor con los de la validación local (gana el local). */
+/** Puntuación uniforme de los mensajes de validación: siempre terminan en punto. */
+export function conPuntoFinal(mensaje: string): string {
+  const limpio = mensaje.trim();
+  return limpio === "" || /[.!?…:]$/.test(limpio) ? limpio : `${limpio}.`;
+}
+
+/** Une errores del servidor con los de la validación local (gana el local) y uniforma su puntuación. */
 export function unirErrores(servidor: ErroresCampo, locales: ErroresCampo): ErroresCampo {
-  return { ...servidor, ...locales };
+  const unidos: ErroresCampo = {};
+  for (const [campo, mensajes] of Object.entries({ ...servidor, ...locales })) {
+    unidos[campo] = mensajes.map(conPuntoFinal);
+  }
+  return unidos;
 }
 
 /** Región `aria-live` que anuncia cuántos campos hay que corregir. */
@@ -292,8 +302,8 @@ export function AnuncioErrores({ errores, visible }: { errores: ErroresCampo; vi
     <p className="sr-only" role="alert">
       {visible && cantidad > 0
         ? `Hay ${cantidad} ${cantidad === 1 ? "campo" : "campos"} por corregir: ${Object.values(errores)
-            .map((m) => m[0])
-            .join(". ")}`
+            .map((m) => conPuntoFinal(m[0] ?? ""))
+            .join(" ")}`
         : ""}
     </p>
   );

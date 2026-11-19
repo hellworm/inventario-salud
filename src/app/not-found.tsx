@@ -1,22 +1,15 @@
 import Link from "next/link";
-import { SearchX } from "lucide-react";
-import { buttonClasses } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
+import { Logo } from "@/components/shell/logo";
+import { NoEncontrado } from "@/components/shell/no-encontrado";
 
-export default function NoEncontrado() {
+/** 404 fuera del shell (rutas sin layout de la aplicación). */
+export default function PaginaNoEncontrada() {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-xl items-center px-4">
-      <EmptyState
-        className="w-full"
-        icono={SearchX}
-        titulo="No encontramos esta página"
-        descripcion="Puede que el enlace esté incompleto o que el registro ya no exista."
-        accion={
-          <Link href="/panel" className={buttonClasses()}>
-            Ir al panel
-          </Link>
-        }
-      />
+    <main className="mx-auto flex min-h-dvh max-w-xl flex-col items-center justify-center gap-8 px-4 py-10">
+      <Link href="/" aria-label="RedInsumos, ir al inicio" className="rounded-lg">
+        <Logo />
+      </Link>
+      <NoEncontrado />
     </main>
   );
 }

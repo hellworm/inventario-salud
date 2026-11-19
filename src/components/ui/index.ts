@@ -10,6 +10,7 @@ export * from "./dialog";
 export * from "./dropdown-menu";
 export * from "./empty-state";
 export * from "./field";
+export * from "./foco";
 export * from "./input";
 export * from "./page-header";
 export * from "./pagination";

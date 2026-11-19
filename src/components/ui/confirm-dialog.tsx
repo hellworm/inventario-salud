@@ -5,6 +5,7 @@ import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "./button";
+import { useDevolverFoco } from "./foco";
 
 export interface ConfirmDialogProps {
   /** Elemento que abre el diálogo (modo no controlado). */
@@ -19,11 +20,14 @@ export interface ConfirmDialogProps {
   peligro?: boolean;
   /** Se ejecuta al confirmar; el diálogo queda "cargando" hasta que la promesa termina. */
   onConfirmar: () => void | Promise<void>;
+  /** Contenido extra bajo la descripción (p. ej. una advertencia). */
+  children?: React.ReactNode;
 }
 
 /**
  * Confirmación modal para acciones delicadas (desactivar, mermar, etc.).
- * Usa AlertDialog de Radix: el foco inicial queda en "Cancelar".
+ * Usa AlertDialog de Radix: el foco inicial queda en "Cancelar". En modo
+ * controlado (`open`), al cerrar el foco vuelve al elemento que lo abrió.
  */
 export function ConfirmDialog({
   disparador,
@@ -35,7 +39,9 @@ export function ConfirmDialog({
   textoCancelar = "Cancelar",
   peligro = false,
   onConfirmar,
+  children,
 }: ConfirmDialogProps) {
+  const { captura, alCerrar } = useDevolverFoco();
   const [interno, setInterno] = React.useState(false);
   const [cargando, setCargando] = React.useState(false);
   const abierto = open ?? interno;
@@ -65,7 +71,9 @@ export function ConfirmDialog({
         <AlertDialog.Content
           {...(descripcion ? {} : { "aria-describedby": undefined })}
           className="fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-superficie p-5 shadow-flotante focus:outline-none data-[state=open]:animate-subir sm:p-6"
+          onCloseAutoFocus={alCerrar}
         >
+          {captura}
           <div className="flex gap-4">
             <span
               className={cn(
@@ -80,6 +88,7 @@ export function ConfirmDialog({
               {descripcion ? (
                 <AlertDialog.Description className="mt-1 text-sm text-texto-suave">{descripcion}</AlertDialog.Description>
               ) : null}
+              {children ? <div className="mt-3 space-y-3 text-sm text-texto-suave">{children}</div> : null}
             </div>
           </div>
           <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

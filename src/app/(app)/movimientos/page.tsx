@@ -17,7 +17,7 @@ import {
 } from "@/server/servicios";
 import { VistaMovimientos } from "./vista-movimientos";
 
-export const metadata: Metadata = { title: "Movimientos" };
+export const metadata: Metadata = { title: "Historial de movimientos" };
 
 export default async function PaginaMovimientos({ searchParams }: PageProps<"/movimientos">) {
   const { actor, centroId, centro } = await contextoPagina("movimientos:ver");
@@ -64,11 +64,11 @@ export default async function PaginaMovimientos({ searchParams }: PageProps<"/mo
   return (
     <>
       <PageHeader
-        titulo="Movimientos"
+        titulo="Historial de movimientos"
         descripcion={
           centro
-            ? `Historial de entradas y salidas de ${centro.nombre}. Cada registro es permanente.`
-            : "Historial de entradas y salidas de toda la red. Cada registro es permanente."
+            ? `Entradas, salidas, traslados y ajustes de ${centro.nombre}. Cada registro es permanente.`
+            : "Entradas, salidas, traslados y ajustes de toda la red. Cada registro es permanente."
         }
         acciones={
           puedeIngresar || puedeRetirar ? (
@@ -76,13 +76,13 @@ export default async function PaginaMovimientos({ searchParams }: PageProps<"/mo
               {puedeRetirar ? (
                 <Link href="/movimientos/retiro" className={buttonClasses({ variant: "secundario" })}>
                   <ArrowUpFromLine aria-hidden />
-                  Retirar
+                  Registrar retiro
                 </Link>
               ) : null}
               {puedeIngresar ? (
                 <Link href="/movimientos/ingreso" className={buttonClasses()}>
                   <ArrowDownToLine aria-hidden />
-                  Ingresar
+                  Registrar ingreso
                 </Link>
               ) : null}
             </>

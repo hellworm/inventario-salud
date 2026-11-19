@@ -4,6 +4,7 @@ import { EmptyState, PageHeader } from "@/components/ui";
 import { textoParam } from "@/lib/parametros";
 import { contextoPagina } from "@/server/auth/sesion";
 import { buscarInsumos, listarUbicaciones, obtenerOpcionInsumo } from "@/server/servicios";
+import { volverDeFormulario } from "../volver";
 import { FormularioTraslado } from "./formulario-traslado";
 
 export const metadata: Metadata = { title: "Registrar traslado" };
@@ -11,6 +12,7 @@ export const metadata: Metadata = { title: "Registrar traslado" };
 export default async function PaginaTraslado({ searchParams }: PageProps<"/movimientos/traslado">) {
   const { actor, centroId, centro } = await contextoPagina("movimientos:traslado");
   const sp = await searchParams;
+  const volver = await volverDeFormulario(sp.volver);
   const insumoParam = textoParam(sp.insumo);
   // El origen se limita al centro activo; el destino puede ser cualquier
   // ubicación activa de los centros a los que el usuario tiene acceso.
@@ -31,7 +33,7 @@ export default async function PaginaTraslado({ searchParams }: PageProps<"/movim
             ? `Mueve stock desde ${centro.nombre} a otra ubicación del mismo centro o de otro centro de la red.`
             : "Mueve stock entre ubicaciones, dentro de un centro o entre centros de la red."
         }
-        volver={{ href: "/inventario", label: "Inventario" }}
+        volver={volver}
       />
       {origenes.length === 0 || destinos.length < 2 ? (
         <EmptyState

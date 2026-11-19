@@ -69,13 +69,13 @@ export default async function PaginaInventario({ searchParams }: PageProps<"/inv
               {puedeRetirar ? (
                 <Link href="/movimientos/retiro" className={buttonClasses({ variant: "secundario" })}>
                   <ArrowUpFromLine aria-hidden />
-                  Retirar
+                  Registrar retiro
                 </Link>
               ) : null}
               {puedeIngresar ? (
                 <Link href="/movimientos/ingreso" className={buttonClasses()}>
                   <ArrowDownToLine aria-hidden />
-                  Ingresar
+                  Registrar ingreso
                 </Link>
               ) : null}
             </>

@@ -36,14 +36,15 @@ export interface ComboboxInsumoProps {
 
 /**
  * Buscador de insumos accesible (patrón combobox de WAI-ARIA): se escribe
- * nombre, código o se escanea el código de barras; flechas para recorrer,
+ * nombre, código o se escanea el código de barras (el placeholder es corto
+ * para que no se corte en celular); flechas para recorrer,
  * Enter para elegir, Esc para cerrar. Dentro de `<Field>` toma id y aria.
  */
 export function ComboboxInsumo({
   valor,
   onCambiar,
   iniciales,
-  placeholder = "Busca por nombre, código o código de barras",
+  placeholder = "Buscar nombre o código",
   autoFocus,
   disabled,
   compacto = false,

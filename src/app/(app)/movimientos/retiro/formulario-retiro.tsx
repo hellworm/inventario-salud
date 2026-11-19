@@ -4,7 +4,19 @@ import * as React from "react";
 import Link from "next/link";
 import { ArrowUpFromLine, ListOrdered, Plus, Wand2 } from "lucide-react";
 import { registrarRetiroAccion, type StockActual } from "@/acciones/movimientos";
-import { Alert, BadgeEstadoVencimiento, Button, buttonClasses, Card, Field, Input, Skeleton, Textarea, useAccion } from "@/components/ui";
+import {
+  Alert,
+  BadgeEstadoVencimiento,
+  Button,
+  buttonClasses,
+  Card,
+  ConfirmDialog,
+  Field,
+  Input,
+  Skeleton,
+  Textarea,
+  useAccion,
+} from "@/components/ui";
 import {
   CampoCantidad,
   Grupo,
@@ -82,6 +94,7 @@ export function FormularioRetiro({
   const [ronda, setRonda] = React.useState(0);
   // Clave de idempotencia: un doble envío o un reintento no duplica el movimiento.
   const [claveIdempotencia, setClaveIdempotencia] = React.useState(nuevaClaveIdempotencia);
+  const [porConfirmar, setPorConfirmar] = React.useState(false);
 
   const existencias = useExistenciasInsumo(insumo?.id ?? null, centroId);
   const retiro = useAccion(registrarRetiroAccion, { toastError: false });
@@ -144,13 +157,22 @@ export function FormularioRetiro({
     };
   }
 
-  const enviar = async (evento: React.FormEvent) => {
+  // Un retiro de más de la mitad de lo disponible en la ubicación pide confirmación.
+  const retiroGrande = pedido * 2 > plan.disponible;
+
+  const enviar = (evento: React.FormEvent) => {
     evento.preventDefault();
     if (retiro.pendiente || !insumo || !ubicacion || !listo || sinStock || Object.keys(validar()).length > 0) {
       setIntentado(true);
       enfocarPrimerError(refFormulario.current);
       return;
     }
+    if (retiroGrande) setPorConfirmar(true);
+    else void registrar();
+  };
+
+  const registrar = async () => {
+    if (retiro.pendiente || !insumo || !ubicacion) return;
     const r = await retiro.ejecutar({ ...valores, claveIdempotencia });
     existencias.recargar();
     if (!r.ok) {
@@ -182,7 +204,7 @@ export function FormularioRetiro({
   };
 
   return (
-    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
+    <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
       {confirmado ? (
         <Confirmacion
           titulo="Retiro registrado"
@@ -285,6 +307,8 @@ export function FormularioRetiro({
                       }
                     : undefined
                 }
+                // Sin stock vigente no hay nada que retirar ahí (igual que en traslado).
+                deshabilitar={existencias.datos ? (u) => (stock.get(u.id)?.disponible ?? 0) === 0 : undefined}
               />
             </Field>
 
@@ -430,11 +454,38 @@ export function FormularioRetiro({
               </Button>
             </div>
           </form>
+          <ConfirmDialog
+            open={porConfirmar}
+            onOpenChange={setPorConfirmar}
+            titulo="¿Retirar más de la mitad del stock?"
+            textoConfirmar="Registrar retiro"
+            textoCancelar="Volver a revisar"
+            descripcion={
+              insumo && ubicacion ? (
+                <>
+                  Vas a retirar <strong className="text-texto">{cantidadConUnidad(pedido, unidad)}</strong> de{" "}
+                  <strong className="text-texto">{insumo.nombre}</strong>
+                  {lote ? (
+                    <>
+                      , lote <span className="cifras">{lote.numeroLote}</span>,
+                    </>
+                  ) : null}{" "}
+                  desde {ubicacion.nombre}
+                  {mostrarCentro ? ` (${ubicacion.centro})` : ""}: es más de la mitad de {plan.disponible === 1 ? "lo disponible" : `los ${formatearNumero(plan.disponible)} disponibles`}{" "}
+                  ahí. {plan.disponible - pedido === 1 ? "Quedará" : "Quedarán"}{" "}
+                  <strong className="text-texto">{formatearNumero(plan.disponible - pedido)}</strong>.
+                </>
+              ) : undefined
+            }
+            onConfirmar={() => {
+              void registrar();
+            }}
+          />
         </Card>
       )}
 
       <PanelExistencias
-        className="lg:sticky lg:top-20"
+        className="xl:sticky xl:top-20"
         insumo={confirmado?.insumo ?? insumo}
         estado={existencias}
         mostrarCentro={mostrarCentro}

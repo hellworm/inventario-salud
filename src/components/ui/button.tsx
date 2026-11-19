@@ -7,7 +7,8 @@ export type ButtonVariant = "primario" | "secundario" | "fantasma" | "peligro" |
 export type ButtonSize = "sm" | "md" | "lg" | "icono";
 
 const BASE =
-  "inline-flex items-center justify-center gap-2 rounded-control font-medium whitespace-nowrap select-none " +
+  // `ri-boton`: marca estable para ocultar los botones al imprimir (globals.css).
+  "ri-boton inline-flex items-center justify-center gap-2 rounded-control font-medium whitespace-nowrap select-none " +
   "transition-colors duration-150 disabled:pointer-events-none disabled:opacity-55 aria-disabled:pointer-events-none aria-disabled:opacity-55 " +
   "[&_svg]:size-[1.15em] [&_svg]:shrink-0";
 
@@ -20,9 +21,10 @@ const VARIANTES: Record<ButtonVariant, string> = {
   enlace: "text-marca-700 underline-offset-4 hover:underline !h-auto !min-h-0 !px-0",
 };
 
-// Todos los tamaños respetan un objetivo táctil mínimo de 44 px.
+// Todos los tamaños respetan un objetivo táctil mínimo de 44 px. `sm` solo baja
+// a 40 px cuando el puntero principal es preciso (mouse), no en tablet o celular.
 const TAMANOS: Record<ButtonSize, string> = {
-  sm: "min-h-11 px-3.5 text-sm sm:min-h-10",
+  sm: "min-h-11 px-3.5 text-sm pointer-fine:min-h-10",
   md: "min-h-11 px-4 text-[0.9375rem]",
   lg: "min-h-12 px-5 text-base",
   icono: "size-11 shrink-0",

@@ -50,7 +50,7 @@ const ESTADOS: readonly { valor: FiltroEstadoInventario | ""; etiqueta: string }
   { valor: "SIN_STOCK", etiqueta: "Sin stock" },
   { valor: "BAJO_MINIMO", etiqueta: "Bajo mínimo" },
   { valor: "POR_VENCER", etiqueta: "Por vencer" },
-  { valor: "VENCIDO", etiqueta: "Con vencidos" },
+  { valor: "VENCIDO", etiqueta: "Vencidos" },
   { valor: "OK", etiqueta: "Stock suficiente" },
 ];
 
@@ -129,7 +129,7 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
           <SearchInput
             key={limpiezas}
             valorInicial={limpiezas > 0 ? "" : undefined}
-            placeholder="Buscar nombre, código o lote"
+            placeholder="Nombre, código o lote"
             label="Buscar en el inventario"
           />
           <Select
@@ -175,7 +175,7 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                 aria-pressed={activo}
                 onClick={() => filtrar({ estado: e.valor || null })}
                 className={cn(
-                  "inline-flex min-h-10 shrink-0 items-center rounded-full border px-4 text-sm font-medium whitespace-nowrap transition-colors",
+                  "inline-flex min-h-11 shrink-0 items-center rounded-full border px-4 text-sm font-medium whitespace-nowrap transition-colors pointer-fine:min-h-10",
                   activo
                     ? "border-marca-600 bg-marca-600 text-white"
                     : "border-borde-fuerte/70 bg-superficie text-texto-suave hover:border-borde-fuerte hover:text-texto",
@@ -240,7 +240,7 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
         ) : (
           <>
             {/* Escritorio / tablet */}
-            <div className="hidden overflow-x-auto md:block">
+            <div className="relative hidden overflow-x-auto md:block">
               <table className="w-full border-collapse text-sm">
                 <caption className="sr-only">Inventario por insumo. Elige un insumo para ver sus lotes y ubicaciones.</caption>
                 <thead>
@@ -441,7 +441,7 @@ function Cifra({ etiqueta, valor, nota, tono }: { etiqueta: string; valor: strin
 function PanelInsumo({ detalle, mostrarCentro, permisos }: { detalle: DetalleInsumo; mostrarCentro: boolean; permisos: PermisosVista }) {
   const { insumo } = detalle;
   const unidad = insumo.unidadMedida;
-  const claseAccion = buttonClasses({ variant: "fantasma", size: "sm" }) + " !min-h-10 !px-2.5";
+  const claseAccion = buttonClasses({ variant: "fantasma", size: "sm" }) + " !px-2.5";
   return (
     <>
       <div className="flex-1 space-y-5 p-5">

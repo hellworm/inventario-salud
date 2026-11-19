@@ -4,10 +4,14 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useDevolverFoco } from "./foco";
 
 /**
  * Diálogo modal accesible (Radix): atrapa el foco, cierra con Esc y devuelve
- * el foco al disparador. En móvil se presenta como hoja inferior.
+ * el foco al disparador. Si se usa controlado y sin `DialogTrigger`, al cerrar
+ * el foco vuelve al elemento que lo tenía al abrir (ver `useDevolverFoco`);
+ * para otro destino, pasa `onCloseAutoFocus` y llama `preventDefault()`.
+ * En móvil se presenta como hoja inferior.
  *
  * ```tsx
  * <Dialog open={abierto} onOpenChange={setAbierto}>
@@ -32,7 +36,16 @@ export interface DialogContentProps extends Omit<React.ComponentProps<typeof Dia
   ancho?: keyof typeof ANCHOS;
 }
 
-export function DialogContent({ titulo, descripcion, ancho = "md", className, children, ...props }: DialogContentProps) {
+export function DialogContent({
+  titulo,
+  descripcion,
+  ancho = "md",
+  className,
+  children,
+  onCloseAutoFocus,
+  ...props
+}: DialogContentProps) {
+  const { captura, alCerrar } = useDevolverFoco(onCloseAutoFocus);
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-marca-950/45 backdrop-blur-[2px] data-[state=open]:animate-aparecer" />
@@ -46,7 +59,9 @@ export function DialogContent({ titulo, descripcion, ancho = "md", className, ch
           className,
         )}
         {...props}
+        onCloseAutoFocus={alCerrar}
       >
+        {captura}
         <div className="flex items-start justify-between gap-4 border-b border-borde px-5 py-4">
           <div className="min-w-0">
             <DialogPrimitive.Title className="text-lg font-semibold tracking-tight text-texto">{titulo}</DialogPrimitive.Title>

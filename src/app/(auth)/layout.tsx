@@ -46,7 +46,10 @@ export default function LayoutAuth({ children }: LayoutProps<"/">) {
       </aside>
       <main className="flex flex-col items-center justify-center px-4 py-10 sm:px-8">
         <div className="w-full max-w-[26rem]">
-          <Logo className="mb-8 lg:hidden" />
+          {/* En bloque propio: el logo es `inline-flex` y, sin esto, el contenido siguiente queda pegado en la misma línea. */}
+          <div className="mb-8 lg:hidden">
+            <Logo />
+          </div>
           {children}
         </div>
       </main>

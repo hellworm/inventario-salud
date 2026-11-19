@@ -85,7 +85,7 @@ export function Toaster() {
               ) : null}
             </div>
             <ToastPrimitive.Close
-              className="-m-2 flex size-9 shrink-0 items-center justify-center rounded-full text-texto-tenue hover:bg-superficie-2 hover:text-texto"
+              className="-m-3 flex size-11 shrink-0 items-center justify-center rounded-full text-texto-tenue hover:bg-superficie-2 hover:text-texto"
               aria-label="Cerrar notificación"
             >
               <X className="size-4" aria-hidden />

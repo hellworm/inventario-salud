@@ -226,7 +226,7 @@ export function FormularioIngreso({
   }));
 
   return (
-    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
+    <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
       {confirmado ? (
         <Confirmacion
           titulo="Ingreso registrado"
@@ -352,17 +352,28 @@ export function FormularioIngreso({
                   opcional={insumo !== null && !insumo.controlaVencimiento}
                   error={errores.fechaVencimiento}
                   ayuda={
-                    loteNormalizado && insumo && existencias.datos ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        <PackagePlus className="size-4 text-texto-tenue" aria-hidden />
-                        Lote nuevo para este insumo.
-                      </span>
+                    fechaVencimiento || (loteNormalizado && insumo && existencias.datos) ? (
+                      <>
+                        {/* El selector nativo usa el formato del dispositivo: se repite la fecha como la muestra la app. */}
+                        {fechaVencimiento ? (
+                          <span className="block">
+                            Vence el <strong className="cifras font-semibold text-texto">{formatearDia(fechaVencimiento)}</strong> (día-mes-año)
+                          </span>
+                        ) : null}
+                        {loteNormalizado && insumo && existencias.datos ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <PackagePlus className="size-4 text-texto-tenue" aria-hidden />
+                            Lote nuevo para este insumo.
+                          </span>
+                        ) : null}
+                      </>
                     ) : undefined
                   }
                 >
                   <Input
                     name="fechaVencimiento"
                     type="date"
+                    lang="es-CL"
                     min={hoy}
                     value={fechaVencimiento}
                     onChange={(e) => alEditar(setFechaVencimiento)(e.target.value)}
@@ -454,7 +465,7 @@ export function FormularioIngreso({
         </Card>
       )}
 
-      <div className="space-y-4 lg:sticky lg:top-20">
+      <div className="space-y-4 xl:sticky xl:top-20">
         {lineas.length > 0 ? (
           <Card>
             <CardHeader
