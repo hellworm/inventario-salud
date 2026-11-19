@@ -40,6 +40,7 @@ import { formatearRut } from "@/lib/chile/rut";
 import { esquemaIngreso } from "@/lib/esquemas/movimientos";
 import { calcularEstadoVencimiento } from "@/lib/estados";
 import { describirVencimiento, diasEntre, formatearDia, type DiaISO } from "@/lib/fechas";
+import { nuevaClaveIdempotencia } from "@/lib/esquemas/base";
 import type { ErroresCampo } from "@/lib/resultado";
 import { cantidadConUnidad } from "@/lib/unidades";
 
@@ -104,6 +105,8 @@ export function FormularioIngreso({
   const [confirmado, setConfirmado] = React.useState<IngresoConfirmado | null>(null);
   const [lineas, setLineas] = React.useState<LineaRegistrada[]>([]);
   const [ronda, setRonda] = React.useState(0);
+  // Clave de idempotencia: un doble envío o un reintento no duplica el movimiento.
+  const [claveIdempotencia, setClaveIdempotencia] = React.useState(nuevaClaveIdempotencia);
 
   const existencias = useExistenciasInsumo(insumo?.id ?? null, centroId);
   const ingreso = useAccion(registrarIngresoAccion, { toastError: false });
@@ -165,12 +168,13 @@ export function FormularioIngreso({
       enfocarPrimerError(refFormulario.current);
       return;
     }
-    const r = await ingreso.ejecutar(valores);
+    const r = await ingreso.ejecutar({ ...valores, claveIdempotencia });
     if (!r.ok) {
       setIntentado(true);
       enfocarPrimerError(refFormulario.current);
       return;
     }
+    setClaveIdempotencia(nuevaClaveIdempotencia());
     const { movimiento, loteCreado, stock } = r.datos;
     setConfirmado({
       insumo,
@@ -190,6 +194,7 @@ export function FormularioIngreso({
 
   /** Deja el formulario listo para otra línea de la misma guía o factura. */
   const registrarOtro = () => {
+    setClaveIdempotencia(nuevaClaveIdempotencia());
     setInsumo(null);
     setNumeroLote("");
     setFechaVencimiento("");

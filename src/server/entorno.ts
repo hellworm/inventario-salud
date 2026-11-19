@@ -52,6 +52,19 @@ const esquemaEntorno = z.object({
     })
     .transform((valor) => valor ?? 12),
   PRISMA_LOG: z.enum(["", "query"], { error: 'solo admite el valor "query" (o dejarla sin definir).' }).optional(),
+  /**
+   * Cantidad de proxies inversos de confianza delante de la aplicación (0 = no
+   * confiar en `X-Forwarded-For`). Ver `src/server/auth/meta-solicitud.ts`.
+   */
+  TRUST_PROXY: z
+    .string()
+    .trim()
+    .optional()
+    .refine((valor) => valor === undefined || valor === "" || (/^\d{1,2}$/.test(valor) && Number(valor) <= 10), {
+      message:
+        "debe ser la cantidad de proxies inversos de confianza delante de la aplicación: un número entero de 0 a 10 (0 = ninguno). Detrás de Caddy o Nginx: 1.",
+    })
+    .transform((valor) => (valor === undefined || valor === "" ? 0 : Number(valor))),
 });
 
 export type Entorno = z.output<typeof esquemaEntorno>;
@@ -70,6 +83,7 @@ export function analizarEntorno(variables: Record<string, string | undefined>): 
     DATABASE_URL: variables.DATABASE_URL,
     SESION_HORAS: variables.SESION_HORAS,
     PRISMA_LOG: variables.PRISMA_LOG,
+    TRUST_PROXY: variables.TRUST_PROXY,
   });
   if (!resultado.success) {
     const errores = resultado.error.issues.map((problema) => `${problema.path.join(".")}: ${problema.message}`);

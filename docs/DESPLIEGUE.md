@@ -141,6 +141,40 @@ apunte al servidor y que los puertos 80 y 443 estén abiertos. Si prefieres otro
 Traefik, el balanceador de tu nube), apúntalo a `127.0.0.1:3000` y asegúrate de que reenvíe las
 cabeceras `Host` y `X-Forwarded-For`.
 
+#### La IP real de cada persona: `TRUST_PROXY`
+
+La aplicación nunca ve directamente a quien la visita: ve al proxy. El proxy le informa la IP real
+en la cabecera `X-Forwarded-For`, pero esa cabecera también la puede escribir cualquier visitante,
+así que la aplicación **solo la usa si se le dice cuántos proxies de confianza tiene delante**:
+
+| `TRUST_PROXY` | Cuándo | Efecto |
+|---|---|---|
+| `1` | Un proxy: Caddy (el de Compose), Nginx o el balanceador de la nube. **Es el valor que fija `docker-compose.yml`.** | Toma la última IP de la cabecera, que es la que agregó tu proxy. |
+| `2` (o más) | Proxies en cadena, por ejemplo un CDN delante de Caddy o Nginx. | Toma la penúltima (la que vio el primer proxy de tu cadena). |
+| `0` o sin definir | Sin proxy, o si no sabes qué hay delante. | No se registra ninguna IP. |
+
+Con la IP real la aplicación (a) la anota en la auditoría y en las sesiones y (b) limita los
+intentos de inicio de sesión **por IP**: 20 intentos cada 5 minutos por IP, y 5 fallos seguidos
+bloquean por 15 minutos solo esa combinación de IP + cuenta. Así, alguien que prueba claves desde
+otra red no deja fuera al titular de la cuenta.
+
+Sin IP confiable (`TRUST_PROXY=0`) la protección sigue activa pero **degrada**: 5 fallos bloquean la
+cuenta completa por 15 minutos (un tercero podría bloquear a propósito a una persona repitiendo
+claves erradas; un administrador la desbloquea desde **Administración → Usuarios**) y la auditoría
+queda sin IP.
+
+Dos cuidados:
+
+- **No pongas un número mayor que el real.** Con `TRUST_PROXY=2` y un solo proxy, la aplicación
+  tomaría una posición que el visitante puede escribir a su antojo.
+- **El proxy debe agregar la IP, no copiarla.** Caddy lo hace bien por defecto (descarta lo que
+  mande el visitante). En Nginx usa `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`
+  (agrega al final) o `$remote_addr` (reemplaza); ambas sirven con `TRUST_PROXY=1`. Si tienes un CDN
+  delante de Caddy, declara sus rangos en `trusted_proxies` del Caddyfile y usa `TRUST_PROXY=2`.
+
+Para comprobarlo: inicia sesión y mira **Administración → Auditoría**; el registro "Inicio de
+sesión" debe mostrar tu IP pública (no `172.x` ni `127.0.0.1`).
+
 ### 2.4 Comandos del día a día
 
 ```bash
@@ -208,6 +242,8 @@ muestra, por ejemplo:
 |---|:-:|---|---|
 | `DATABASE_URL` | Sí | Aplicación y scripts | Conexión a PostgreSQL. Con Docker Compose se arma sola a partir de `POSTGRES_*`. |
 | `SESION_HORAS` | No | Aplicación | Horas de inactividad antes de cerrar la sesión (1–168; por defecto 12). |
+| `TRUST_PROXY` | Recomendada | Aplicación | Cantidad de proxies inversos de confianza delante de la aplicación (0–10; por defecto 0; Compose la fija en 1). Ver [§2.3](#la-ip-real-de-cada-persona-trust_proxy). |
+| `APP_DB_USER`, `APP_DB_PASSWORD` | No | `docker-compose.yml` | Rol de base de datos con privilegios mínimos para la aplicación. Ver [§6.1](#61-endurecimiento-recomendado-de-la-base-de-datos). |
 | `POSTGRES_PASSWORD` | Sí (Compose) | `docker-compose.yml` | Clave de la base. Larga, aleatoria, solo letras y números. |
 | `POSTGRES_USER`, `POSTGRES_DB` | No | `docker-compose.yml` | Usuario y nombre de la base (por defecto `redinsumos`). |
 | `DOMINIO` | Para HTTPS | Caddy | Dominio público, sin `https://`. |
@@ -246,10 +282,12 @@ Resultado:
 
   Anótala ahora: no se volverá a mostrar ni se puede recuperar.
   Al iniciar sesión, el sistema pedirá cambiarla por una definitiva.
+  Vence en 72 horas: si no se usa a tiempo, repite el comando con --restablecer.
 ```
 
 - La contraseña temporal se muestra **una sola vez**; en la base solo queda cifrada (hash).
 - En el primer ingreso el sistema **obliga** a cambiarla.
+- **Vence a las 72 horas.** Si nadie la usó a tiempo, se genera otra con `--restablecer`.
 - Es seguro repetir el comando: si el email ya existe no cambia nada.
 - Si se prefiere definir la contraseña temporal: agrega `--password-stdin` y escríbela cuando la
   pida (nunca se acepta como argumento, para que no quede en el historial).
@@ -275,6 +313,78 @@ Desde ahí, el resto de los usuarios, centros e insumos se crean en la aplicaci�
 
 Con la opción A, el perfil `https` lo resuelve solo. Con la opción B lo resuelve la plataforma. No
 publiques el puerto 3000 directamente a internet.
+
+### 6.1 Endurecimiento recomendado de la base de datos
+
+El historial de movimientos y la auditoría son **inalterables**: la base de datos rechaza con
+triggers cualquier `UPDATE`, `DELETE` o `TRUNCATE` sobre las tablas `movimientos` y
+`registros_auditoria`, venga de la aplicación o de una consola SQL.
+
+Esa protección tiene un límite: el **dueño** de las tablas (el usuario `POSTGRES_USER`, con el que
+se crean) podría deshabilitar los triggers. Para cerrar esa puerta, haz que la aplicación se conecte
+con un usuario distinto, de privilegios mínimos, y deja al dueño solo para migrar y respaldar. Es
+opcional, pero recomendable en producción; toma cinco minutos.
+
+**1. Crear el rol de la aplicación** (una sola vez; elige una clave larga, solo letras y números):
+
+```bash
+docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
+```sql
+-- Rol con el que se conectará la aplicación. No es dueño de nada.
+CREATE ROLE redinsumos_app LOGIN PASSWORD 'CAMBIA_ESTA_CLAVE';
+
+GRANT CONNECT ON DATABASE redinsumos TO redinsumos_app;
+GRANT USAGE ON SCHEMA public TO redinsumos_app;
+
+-- Tablas normales: leer y escribir. Nunca TRUNCATE, ni crear o alterar tablas.
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO redinsumos_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO redinsumos_app;
+
+-- Libro mayor y auditoría: SOLO leer y agregar.
+REVOKE UPDATE, DELETE ON "movimientos", "registros_auditoria" FROM redinsumos_app;
+
+-- La aplicación no necesita la bitácora de migraciones.
+REVOKE ALL ON "_prisma_migrations" FROM redinsumos_app;
+
+-- Las tablas que creen las migraciones futuras heredan los mismos permisos.
+-- (Reemplaza "redinsumos" por tu POSTGRES_USER si lo cambiaste.)
+ALTER DEFAULT PRIVILEGES FOR ROLE redinsumos IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO redinsumos_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE redinsumos IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO redinsumos_app;
+```
+
+Si tu base o tu usuario no se llaman `redinsumos`, cambia esos nombres en los comandos.
+
+**2. Indicar a Compose que la aplicación use ese rol.** En `.env`:
+
+```bash
+APP_DB_USER=redinsumos_app
+APP_DB_PASSWORD=LA_CLAVE_QUE_ELEGISTE
+```
+
+y `docker compose up -d`. Los servicios `app` y `mantenimiento` pasan a conectarse con
+`redinsumos_app`; `migrar` y `respaldo` siguen usando al dueño. Sin Docker, es lo mismo: la
+`DATABASE_URL` del servidor web lleva el rol de la aplicación y la que se usa para
+`npm run db:deploy`, `respaldo` y `restaurar` lleva al dueño.
+
+**3. Comprobar** (debe fallar con "permission denied"):
+
+```bash
+docker compose exec db psql -U redinsumos_app -d redinsumos -c 'DELETE FROM "registros_auditoria"'
+```
+
+Notas:
+
+- Después de **restaurar un respaldo** hay que repetir el paso 1 desde `GRANT USAGE ON SCHEMA…`
+  (la restauración recrea las tablas y los permisos no viajan en el respaldo). El rol y su clave se
+  conservan.
+- Si una migración futura agregara otra tabla de solo-agregar, sus notas de versión indicarán el
+  `REVOKE` correspondiente.
+- `respaldo.sh` y `restaurar.sh` funcionan igual con los triggers: el respaldo solo lee y la
+  restauración recrea las tablas desde cero (no usa `UPDATE`, `DELETE` ni `TRUNCATE`).
 
 ---
 
@@ -434,6 +544,10 @@ PostgreSQL gestionado con recuperación a un punto en el tiempo.
       es solo de desarrollo).
 - [ ] `.env` tiene permisos restringidos (`chmod 600 .env`) y no está en el repositorio.
 - [ ] La aplicación arranca sin advertencias de configuración (`docker compose logs app`).
+- [ ] `TRUST_PROXY` corresponde a los proxies que realmente hay delante (1 con el Caddy incluido) y
+      la auditoría muestra la IP pública de quien inicia sesión.
+- [ ] (Recomendado) La aplicación se conecta con un rol de base de datos de privilegios mínimos
+      ([§6.1](#61-endurecimiento-recomendado-de-la-base-de-datos)).
 
 ### Datos
 
@@ -464,7 +578,7 @@ PostgreSQL gestionado con recuperación a un punto en el tiempo.
 
 - [ ] Un monitor externo consulta `/api/salud` y avisa a alguien.
 - [ ] La rotación de logs de Docker está configurada.
-- [ ] La limpieza de sesiones corre a diario (`docker compose logs mantenimiento`).
+- [ ] La limpieza de sesiones y de contadores de intentos corre a diario (`docker compose logs mantenimiento`).
 - [ ] Hay un responsable de revisar la auditoría periódicamente y de dar de baja a quienes dejan la
       institución.
 - [ ] Los usuarios recibieron el [manual](MANUAL-USUARIO.md) y saben a quién pedir ayuda.

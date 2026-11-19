@@ -19,6 +19,7 @@ proveedores:
 | Nombre y email de cada usuario; rol y centros asignados | Usuarios | Identificar a la persona y definir su acceso. |
 | Contraseña | Usuarios | Solo se guarda un resumen cifrado irreversible (hash argon2id), nunca la contraseña. |
 | Fecha del último acceso, intentos fallidos y bloqueos | Usuarios | Seguridad de la cuenta. |
+| Contadores de intentos de inicio de sesión por IP (sin emails: solo un código irreversible) | Intentos | Frenar ataques de fuerza bruta. Se borran solos al vencer (minutos). |
 | Dirección IP y navegador de cada sesión | Sesiones | Seguridad. Las sesiones vencidas se borran periódicamente. |
 | Quién hizo cada acción, cuándo y desde qué IP | Auditoría y movimientos | Trazabilidad del inventario y control interno. |
 | Razón social, RUT, nombre de contacto, teléfono y email | Proveedores | Identificar al proveedor en los ingresos. Normalmente son datos de empresas; el contacto puede ser una persona. |

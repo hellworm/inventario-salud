@@ -10,10 +10,12 @@ import {
 import type { Actor, Rol } from "@/lib/permisos";
 import type { Paginado } from "@/lib/resultado";
 import { registrarAuditoria } from "../auditoria";
+import { MAX_INTENTOS_FALLIDOS, VIGENCIA_PASSWORD_TEMPORAL_MS } from "../auth/constantes";
 import { hashearPassword, validarPoliticaPassword } from "../auth/password";
 import { verificarPermiso } from "../autorizacion";
 import { db, enTransaccion, type Tx } from "../db";
 import { ErrorDominio, noEncontrado } from "../errores";
+import { liberarSujeto, sujetoDeEmail, type TipoLimite } from "../limitador";
 import { validar } from "../validacion";
 import {
   armarPaginado,
@@ -21,6 +23,7 @@ import {
   condicionActivo,
   conUnicidad,
   normalizarPagina,
+  patronLike,
   type FiltroEstado,
   type OpcionesPagina,
 } from "./apoyo-admin";
@@ -76,9 +79,17 @@ export interface FilaUsuario {
   activo: boolean;
   debeCambiarPassword: boolean;
   ultimoAcceso: Date | null;
-  /** Bloqueada temporalmente por intentos fallidos. */
+  /**
+   * Con algún bloqueo vigente por intentos fallidos: el retardo global de la
+   * cuenta o el bloqueo de un par IP + email. «Desbloquear» quita ambos.
+   */
   bloqueado: boolean;
+  /** Fin del bloqueo vigente más largo. */
   bloqueadoHasta: Date | null;
+  /** Vencimiento de la contraseña temporal pendiente (`null` si no aplica o no vence). */
+  passwordTemporalExpira: Date | null;
+  /** La contraseña temporal venció sin usarse: hay que restablecerla. */
+  passwordTemporalVencida: boolean;
   centros: { id: string; nombre: string }[];
 }
 
@@ -89,7 +100,13 @@ export interface FiltrosUsuarios extends OpcionesPagina {
   centroId?: string | null;
 }
 
-/** Usuarios de la red con su rol, centros y estado. Permiso: `usuarios:gestionar`. */
+/** Contadores del limitador que representan un bloqueo de inicio de sesión de una cuenta. */
+const TIPOS_BLOQUEO_LOGIN: readonly TipoLimite[] = ["LOGIN_PAR", "LOGIN_CUENTA"];
+
+/**
+ * Usuarios de la red con su rol, centros y estado. La búsqueda por nombre no
+ * distingue tildes ni mayúsculas. Permiso: `usuarios:gestionar`.
+ */
 export async function listarUsuarios(actor: Actor, filtros: FiltrosUsuarios = {}): Promise<Paginado<FilaUsuario>> {
   verificarPermiso(actor, "usuarios:gestionar");
   const { pagina, porPagina, saltar } = normalizarPagina(filtros);
@@ -98,10 +115,16 @@ export async function listarUsuarios(actor: Actor, filtros: FiltrosUsuarios = {}
     ...condicionActivo(filtros.estado),
     ...(filtros.rol ? { rol: filtros.rol } : {}),
     ...(filtros.centroId ? { centros: { some: { centroId: filtros.centroId } } } : {}),
-    ...(texto
-      ? { OR: [{ nombre: { contains: texto, mode: "insensitive" } }, { email: { contains: texto, mode: "insensitive" } }] }
-      : {}),
   };
+  if (texto) {
+    // `unaccent` no existe en el cliente de Prisma: se resuelven los ids con SQL.
+    const patron = patronLike(texto);
+    const coincidencias = await db.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT "id" FROM "usuarios"
+      WHERE unaccent("nombre") ILIKE unaccent(${patron}) OR "email" ILIKE ${patron}
+    `);
+    where.id = { in: coincidencias.map((c) => c.id) };
+  }
   const ahora = new Date();
   const [total, filas] = await Promise.all([
     db.usuario.count({ where }),
@@ -109,7 +132,7 @@ export async function listarUsuarios(actor: Actor, filtros: FiltrosUsuarios = {}
       where,
       select: {
         id: true, nombre: true, email: true, rol: true, activo: true, debeCambiarPassword: true,
-        ultimoAcceso: true, bloqueadoHasta: true,
+        ultimoAcceso: true, bloqueadoHasta: true, passwordTemporalExpira: true,
         centros: { select: { centro: { select: { id: true, nombre: true } } }, orderBy: { centro: { nombre: "asc" } } },
       },
       orderBy: [{ activo: "desc" }, { nombre: "asc" }, { id: "asc" }],
@@ -117,10 +140,40 @@ export async function listarUsuarios(actor: Actor, filtros: FiltrosUsuarios = {}
       take: porPagina,
     }),
   ]);
+  // Bloqueos vigentes por par IP + email (o por cuenta, sin IP confiable).
+  const sujetos = new Map(filas.map((f) => [sujetoDeEmail(f.email), f.id]));
+  const bloqueosDePar = filas.length
+    ? await db.limiteIntentos.findMany({
+        where: {
+          sujeto: { in: [...sujetos.keys()] },
+          tipo: { in: [...TIPOS_BLOQUEO_LOGIN] },
+          cuenta: { gte: MAX_INTENTOS_FALLIDOS },
+          expiraEn: { gt: ahora },
+        },
+        select: { sujeto: true, expiraEn: true },
+      })
+    : [];
+  const bloqueoPorUsuario = new Map<string, Date>();
+  for (const b of bloqueosDePar) {
+    const id = sujetos.get(b.sujeto ?? "");
+    if (!id) continue;
+    const previo = bloqueoPorUsuario.get(id);
+    if (!previo || previo < b.expiraEn) bloqueoPorUsuario.set(id, b.expiraEn);
+  }
   return armarPaginado(
-    filas.map(({ centros, bloqueadoHasta, ...u }) => {
-      const bloqueado = bloqueadoHasta !== null && bloqueadoHasta > ahora;
-      return { ...u, bloqueado, bloqueadoHasta: bloqueado ? bloqueadoHasta : null, centros: centros.map((c) => c.centro) };
+    filas.map(({ centros, bloqueadoHasta, passwordTemporalExpira, ...u }) => {
+      const hasta = [bloqueadoHasta, bloqueoPorUsuario.get(u.id) ?? null]
+        .filter((d): d is Date => d !== null && d > ahora)
+        .sort((a, b) => b.getTime() - a.getTime())[0];
+      const expira = u.debeCambiarPassword ? passwordTemporalExpira : null;
+      return {
+        ...u,
+        bloqueado: hasta !== undefined,
+        bloqueadoHasta: hasta ?? null,
+        passwordTemporalExpira: expira,
+        passwordTemporalVencida: expira !== null && expira <= ahora,
+        centros: centros.map((c) => c.centro),
+      };
     }),
     total,
     pagina,
@@ -162,11 +215,19 @@ export interface UsuarioConPasswordTemporal {
   email: string;
   /** Se entrega UNA sola vez; en la base solo queda su hash. */
   passwordTemporal: string;
+  /** La contraseña temporal deja de servir en este instante (72 horas). */
+  passwordTemporalExpira: Date;
+}
+
+/** Quita los bloqueos de inicio de sesión y de cambio de clave asociados a un email. */
+function liberarBloqueosDeEmail(tx: Tx, email: string): Promise<number> {
+  return liberarSujeto(sujetoDeEmail(email), tx, [...TIPOS_BLOQUEO_LOGIN, "PASSWORD_ACTUAL"]);
 }
 
 /**
  * Crea un usuario con una contraseña temporal aleatoria que deberá cambiar en
- * su primer ingreso. Permiso: `usuarios:gestionar`.
+ * su primer ingreso. La contraseña temporal vence a las 72 horas: pasado ese
+ * plazo hay que restablecerla. Permiso: `usuarios:gestionar`.
  */
 export async function crearUsuario(actor: Actor, entrada: EntradaCrearUsuario): Promise<UsuarioConPasswordTemporal> {
   verificarPermiso(actor, "usuarios:gestionar");
@@ -174,6 +235,7 @@ export async function crearUsuario(actor: Actor, entrada: EntradaCrearUsuario): 
   const passwordTemporal = generarPasswordTemporal();
   validarPoliticaPassword(passwordTemporal);
   const passwordHash = await hashearPassword(passwordTemporal);
+  const passwordTemporalExpira = new Date(Date.now() + VIGENCIA_PASSWORD_TEMPORAL_MS);
 
   const usuario = await conUnicidad(
     () =>
@@ -187,6 +249,7 @@ export async function crearUsuario(actor: Actor, entrada: EntradaCrearUsuario): 
             rol: datos.rol,
             passwordHash,
             debeCambiarPassword: true,
+            passwordTemporalExpira,
             centros: { create: centros.map((c) => ({ centroId: c.id })) },
           },
           select: { id: true, nombre: true, email: true },
@@ -202,7 +265,7 @@ export async function crearUsuario(actor: Actor, entrada: EntradaCrearUsuario): 
     MENSAJE_EMAIL_DUPLICADO,
     "email",
   );
-  return { ...usuario, passwordTemporal };
+  return { ...usuario, passwordTemporal, passwordTemporalExpira };
 }
 
 /**
@@ -315,6 +378,7 @@ export async function establecerUsuarioActivo(
         where: { id: usuarioId },
         data: { activo, ...(activo ? { intentosFallidos: 0, bloqueadoHasta: null } : {}) },
       });
+      if (activo) await liberarBloqueosDeEmail(tx, usuario.email);
       await registrarAuditoria(tx, actor, {
         accion: activo ? "USUARIO_ACTIVADO" : "USUARIO_DESACTIVADO",
         entidad: "Usuario",
@@ -331,8 +395,9 @@ export async function establecerUsuarioActivo(
 
 /**
  * Genera una nueva contraseña temporal para otro usuario: cierra sus
- * sesiones, quita cualquier bloqueo y lo obliga a cambiarla al ingresar.
- * Permiso: `usuarios:gestionar`.
+ * sesiones, quita cualquier bloqueo y lo obliga a cambiarla al ingresar. La
+ * nueva contraseña temporal vence a las 72 horas (es también la forma de
+ * reemplazar una que venció sin usarse). Permiso: `usuarios:gestionar`.
  */
 export async function restablecerPasswordUsuario(actor: Actor, usuarioId: string): Promise<UsuarioConPasswordTemporal> {
   verificarPermiso(actor, "usuarios:gestionar");
@@ -345,6 +410,7 @@ export async function restablecerPasswordUsuario(actor: Actor, usuarioId: string
   const passwordTemporal = generarPasswordTemporal();
   validarPoliticaPassword(passwordTemporal);
   const passwordHash = await hashearPassword(passwordTemporal);
+  const passwordTemporalExpira = new Date(Date.now() + VIGENCIA_PASSWORD_TEMPORAL_MS);
 
   const usuario = await enTransaccion(async (tx) => {
     const actual = await tx.usuario.findUnique({
@@ -357,8 +423,9 @@ export async function restablecerPasswordUsuario(actor: Actor, usuarioId: string
     }
     await tx.usuario.update({
       where: { id: usuarioId },
-      data: { passwordHash, debeCambiarPassword: true, intentosFallidos: 0, bloqueadoHasta: null },
+      data: { passwordHash, debeCambiarPassword: true, passwordTemporalExpira, intentosFallidos: 0, bloqueadoHasta: null },
     });
+    await liberarBloqueosDeEmail(tx, actual.email);
     const { count } = await tx.sesion.deleteMany({ where: { usuarioId } });
     await registrarAuditoria(tx, actor, {
       accion: "USUARIO_PASSWORD_RESTABLECIDA",
@@ -368,11 +435,14 @@ export async function restablecerPasswordUsuario(actor: Actor, usuarioId: string
     });
     return { id: actual.id, nombre: actual.nombre, email: actual.email };
   });
-  return { ...usuario, passwordTemporal };
+  return { ...usuario, passwordTemporal, passwordTemporalExpira };
 }
 
 /**
- * Quita el bloqueo temporal por intentos fallidos (sin tocar la contraseña).
+ * Quita los bloqueos por intentos fallidos de una cuenta (sin tocar la
+ * contraseña): el retardo global (`bloqueadoHasta` / `intentosFallidos`), los
+ * bloqueos por par IP + email de TODAS las IP y el límite de intentos sobre la
+ * contraseña actual. No toca el límite por IP (no pertenece a la cuenta).
  * Permiso: `usuarios:gestionar`.
  */
 export async function desbloquearUsuario(actor: Actor, usuarioId: string): Promise<{ id: string }> {
@@ -383,7 +453,8 @@ export async function desbloquearUsuario(actor: Actor, usuarioId: string): Promi
       select: { id: true, nombre: true, email: true, bloqueadoHasta: true, intentosFallidos: true },
     });
     if (!usuario) throw noEncontrado("El usuario");
-    if (usuario.bloqueadoHasta !== null || usuario.intentosFallidos > 0) {
+    const contadores = await liberarBloqueosDeEmail(tx, usuario.email);
+    if (usuario.bloqueadoHasta !== null || usuario.intentosFallidos > 0 || contadores > 0) {
       await tx.usuario.update({ where: { id: usuarioId }, data: { intentosFallidos: 0, bloqueadoHasta: null } });
       await registrarAuditoria(tx, actor, {
         accion: "USUARIO_DESBLOQUEADO",

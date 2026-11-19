@@ -3,13 +3,14 @@ import type { NextConfig } from "next";
 const esDesarrollo = process.env.NODE_ENV !== "production";
 
 /**
- * CSP estática. Next inyecta scripts en línea para hidratar, por eso
- * `script-src` permite 'unsafe-inline' (ver "Deudas" en docs/ARQUITECTURA.md
- * para la migración a nonces). El resto de las directivas es estricto.
+ * CSP de respaldo, estática y sin scripts en línea. Las páginas y los
+ * manejadores de ruta reciben OTRA, con un nonce por solicitud, desde
+ * `src/proxy.ts` (que reemplaza a esta). Esta queda para lo que el proxy no
+ * atiende: archivos estáticos (p. ej. `/icon.svg`, `/_next/static/*`).
  */
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${esDesarrollo ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self'${esDesarrollo ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",

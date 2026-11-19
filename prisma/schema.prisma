@@ -92,6 +92,8 @@ model Usuario {
   ultimoAcceso        DateTime?
   intentosFallidos    Int       @default(0)
   bloqueadoHasta      DateTime?
+  /// Vencimiento de la contraseña temporal (solo si `debeCambiarPassword`). `null` = sin vencimiento.
+  passwordTemporalExpira DateTime?
   creadoEn            DateTime  @default(now())
   actualizadoEn       DateTime  @updatedAt
 
@@ -238,7 +240,7 @@ model Existencia {
   @@map("existencias")
 }
 
-/// Libro mayor INMUTABLE (un trigger SQL impide UPDATE/DELETE).
+/// Libro mayor INMUTABLE (triggers SQL impiden UPDATE/DELETE/TRUNCATE).
 model Movimiento {
   id              String         @id @default(cuid())
   tipo            TipoMovimiento
@@ -259,6 +261,10 @@ model Movimiento {
   usuarioId       String
   /// Enlaza TRASLADO_SALIDA con TRASLADO_ENTRADA.
   trasladoGrupoId String?
+  /// Clave de idempotencia de la operación (UUID del cliente) e índice del
+  /// movimiento dentro de ella (un retiro FEFO o un traslado generan varios).
+  claveIdempotencia  String?
+  indiceIdempotencia Int?
   creadoEn        DateTime       @default(now())
 
   insumo    Insumo     @relation(fields: [insumoId], references: [id], onDelete: Restrict)
@@ -276,9 +282,11 @@ model Movimiento {
   @@index([tipo, creadoEn(sort: Desc)])
   @@index([trasladoGrupoId])
   @@index([creadoEn(sort: Desc)])
+  @@unique([claveIdempotencia, indiceIdempotencia])
   @@map("movimientos")
 }
 
+/// Bitácora INMUTABLE (triggers SQL impiden UPDATE/DELETE/TRUNCATE).
 model RegistroAuditoria {
   id        String   @id @default(cuid())
   usuarioId String?
@@ -295,4 +303,26 @@ model RegistroAuditoria {
   @@index([usuarioId, creadoEn(sort: Desc)])
   @@index([entidad, entidadId])
   @@map("registros_auditoria")
+}
+
+/// Contadores de ventana fija para limitar intentos (login por IP y por
+/// IP+email, contraseña actual, exportaciones, auditoría de fallos). La clave
+/// es un hash: no se guardan emails ni contraseñas tecleadas por error.
+model LimiteIntentos {
+  /// SHA-256 de `tipo|identificador`.
+  clave          String   @id
+  /// LOGIN_IP, LOGIN_PAR, LOGIN_CUENTA, AUDITORIA_LOGIN, PASSWORD_ACTUAL, EXPORTACION…
+  tipo           String
+  /// Hash del email (para que un ADMIN pueda desbloquear) o id de usuario.
+  sujeto         String?
+  ip             String?
+  cuenta         Int
+  /// Cuenta de la ventana anterior (solo en la llamada que la reinicia).
+  cuentaAnterior Int      @default(0)
+  ventanaInicio  DateTime
+  expiraEn       DateTime
+
+  @@index([expiraEn])
+  @@index([sujeto])
+  @@map("intentos_login")
 }

@@ -70,7 +70,10 @@ export async function conUnicidad<T>(trabajo: () => Promise<T>, mensaje: string,
   }
 }
 
-/** Patrón `%texto%` para ILIKE, escapando comodines. */
+/** Largo máximo de un texto de búsqueda libre (lo que exceda se ignora). */
+export const LARGO_MAXIMO_BUSQUEDA = 120;
+
+/** Patrón `%texto%` para ILIKE, escapando comodines y acotando el largo. */
 export function patronLike(texto: string): string {
-  return `%${texto.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return `%${texto.slice(0, LARGO_MAXIMO_BUSQUEDA).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }

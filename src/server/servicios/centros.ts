@@ -219,7 +219,12 @@ export async function actualizarCentro(actor: Actor, entrada: EntradaActualizarC
 export async function establecerCentroActivo(actor: Actor, centroId: string, activo: boolean): Promise<{ id: string; activo: boolean }> {
   verificarPermiso(actor, "centros:gestionar");
   return enTransaccion(async (tx) => {
-    const centro = await tx.centro.findUnique({ where: { id: centroId }, select: { id: true, nombre: true, activo: true } });
+    // FOR UPDATE sobre el centro ANTES de contar existencias: los movimientos
+    // leen el centro con FOR SHARE, así que un ingreso simultáneo espera a que
+    // esto termine (y ve el centro inactivo) o termina antes (y aquí se cuenta).
+    const [centro] = await tx.$queryRaw<{ id: string; nombre: string; activo: boolean }[]>(Prisma.sql`
+      SELECT "id", "nombre", "activo" FROM "centros" WHERE "id" = ${centroId} FOR UPDATE
+    `);
     if (!centro) throw noEncontrado("El centro");
     if (centro.activo === activo) return { id: centroId, activo };
     if (!activo) {
@@ -343,6 +348,10 @@ export async function establecerUbicacionActiva(
 ): Promise<{ id: string; activo: boolean; centroId: string }> {
   verificarPermiso(actor, "centros:gestionar");
   return enTransaccion(async (tx) => {
+    // FOR UPDATE sobre la ubicación ANTES de contar existencias (ver
+    // `establecerCentroActivo`): serializa con los movimientos, que la leen
+    // con FOR SHARE.
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ubicaciones" WHERE "id" = ${ubicacionId} FOR UPDATE`);
     const ubicacion = await tx.ubicacion.findUnique({
       where: { id: ubicacionId },
       select: { id: true, nombre: true, activo: true, centroId: true, centro: { select: { nombre: true } } },

@@ -13,6 +13,7 @@ export async function register(): Promise<void> {
   registrarInfo("arranque", "Configuración válida; servidor iniciando.", {
     entorno: entorno.NODE_ENV,
     sesionHoras: entorno.SESION_HORAS,
+    proxiesDeConfianza: entorno.TRUST_PROXY,
   });
 }
 

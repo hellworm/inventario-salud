@@ -351,7 +351,7 @@ export async function exportarExistencias(
       categoriaId: filtros.categoriaId,
       texto: filtros.texto,
       orden: "UBICACION",
-      limite: MAXIMO_FILAS_EXPORTACION,
+      limite: MAXIMO_FILAS_EXPORTACION + 1,
       saltar: 0,
     },
     hoy,
@@ -365,6 +365,7 @@ export async function exportarExistencias(
   return {
     archivo: nombreArchivoCsv("existencias", formatearDia(hoy)),
     encabezados: ENCABEZADOS_EXISTENCIAS,
+    truncada: filas.length > MAXIMO_FILAS_EXPORTACION,
     filas: enLotes(filas, celdasExistencia),
   };
 }
@@ -425,7 +426,7 @@ export async function exportarVencimientos(
       texto: filtros.texto,
       venceHasta: sumarDias(hoy, horizonte),
       orden: "VENCIMIENTO",
-      limite: MAXIMO_FILAS_EXPORTACION,
+      limite: MAXIMO_FILAS_EXPORTACION + 1,
       saltar: 0,
     },
     hoy,
@@ -440,6 +441,7 @@ export async function exportarVencimientos(
   return {
     archivo: nombreArchivoCsv(`vencimientos-${horizonte}-dias`, formatearDia(hoy)),
     encabezados: [...ENCABEZADOS_EXISTENCIAS, "Estado"],
+    truncada: filas.length > MAXIMO_FILAS_EXPORTACION,
     filas: enLotes(filas, (f) => [
       ...celdasExistencia(f),
       f.diasParaVencer !== null && f.diasParaVencer < 0 ? "Vencido" : "Por vencer",
@@ -641,14 +643,16 @@ const LOTE_EXPORTACION = 1_000;
 
 /** Lee los movimientos por lotes con cursor (no usa OFFSET: escala a cientos de miles de filas). */
 async function* leerMovimientos(where: Prisma.MovimientoWhereInput): AsyncGenerator<CeldaCsv[]> {
+  // Una fila más que el tope: así `conAvisoDeTope` sabe que el archivo quedó incompleto.
+  const limite = MAXIMO_FILAS_EXPORTACION + 1;
   let cursor: string | undefined;
   let entregadas = 0;
-  while (entregadas < MAXIMO_FILAS_EXPORTACION) {
+  while (entregadas < limite) {
     const lote = await db.movimiento.findMany({
       where,
       select: SELECCION_MOVIMIENTO,
       orderBy: ORDEN_MOVIMIENTOS,
-      take: Math.min(LOTE_EXPORTACION, MAXIMO_FILAS_EXPORTACION - entregadas),
+      take: Math.min(LOTE_EXPORTACION, limite - entregadas),
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     for (const m of lote) yield celdasMovimiento(aFilaMovimiento(m));
@@ -667,6 +671,7 @@ export async function exportarMovimientos(
   const periodo = resolverPeriodo(filtros.desde, filtros.hasta, opciones.ahora);
   const where = condicionReporte(actor, filtros, periodo);
   const esMermas = filtros.tipo === "MERMA";
+  const total = await db.movimiento.count({ where });
   await auditarExportacion(actor, esMermas ? "mermas" : "movimientos", {
     centroId: filtros.centroId ?? null,
     tipo: filtros.tipo ?? null,
@@ -674,11 +679,12 @@ export async function exportarMovimientos(
     texto: filtros.texto?.trim() || null,
     desde: periodo.desde,
     hasta: periodo.hasta,
-    filas: await db.movimiento.count({ where }),
+    filas: total,
   });
   return {
     archivo: nombreArchivoCsv(esMermas ? "mermas" : "movimientos", sufijoPeriodo(periodo)),
     encabezados: ENCABEZADOS_MOVIMIENTOS,
+    truncada: total > MAXIMO_FILAS_EXPORTACION,
     filas: leerMovimientos(where),
   };
 }
@@ -918,7 +924,7 @@ export async function exportarConsumo(
     filtros,
     periodo,
     hoyEnSantiago(opciones.ahora),
-    MAXIMO_FILAS_EXPORTACION,
+    MAXIMO_FILAS_EXPORTACION + 1,
     0,
   );
   await auditarExportacion(actor, "consumo", {
@@ -945,6 +951,7 @@ export async function exportarConsumo(
       "Disponible hoy",
       "Días de cobertura estimados",
     ],
+    truncada: filas.length > MAXIMO_FILAS_EXPORTACION,
     filas: enLotes(filas, (sql) => {
       const f = aFilaConsumo(sql, periodo);
       return [

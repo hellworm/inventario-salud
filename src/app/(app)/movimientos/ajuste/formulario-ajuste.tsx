@@ -31,6 +31,7 @@ import {
 import { calcularEstadoVencimiento, diasParaVencer, MOTIVOS_AJUSTE, MOTIVOS_MERMA } from "@/lib/estados";
 import type { DiaISO } from "@/lib/fechas";
 import { formatearNumero } from "@/lib/formato";
+import { nuevaClaveIdempotencia } from "@/lib/esquemas/base";
 import type { ErroresCampo } from "@/lib/resultado";
 import { cantidadConUnidad } from "@/lib/unidades";
 import type { TipoAjuste } from "./tipos";
@@ -83,6 +84,8 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
   const [intentado, setIntentado] = React.useState(false);
   const [confirmado, setConfirmado] = React.useState<AjusteConfirmado | null>(null);
   const [ronda, setRonda] = React.useState(0);
+  // Clave de idempotencia: un doble envío o un reintento no duplica el movimiento.
+  const [claveIdempotencia, setClaveIdempotencia] = React.useState(nuevaClaveIdempotencia);
 
   const existencias = useExistenciasInsumo(insumo?.id ?? null, centroId);
   const ajuste = useAccion(registrarAjusteAccion, { toastError: false });
@@ -156,7 +159,7 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
       enfocarPrimerError(refFormulario.current);
       return;
     }
-    const comun = { ubicacionId, loteId, cantidad, motivo, nota };
+    const comun = { ubicacionId, loteId, cantidad, motivo, nota, claveIdempotencia };
     const r =
       tipo === "MERMA"
         ? await merma.ejecutar(comun)
@@ -167,6 +170,7 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
       enfocarPrimerError(refFormulario.current);
       return;
     }
+    setClaveIdempotencia(nuevaClaveIdempotencia());
     setConfirmado({
       tipo,
       insumo,
@@ -180,6 +184,7 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
   };
 
   const registrarOtro = () => {
+    setClaveIdempotencia(nuevaClaveIdempotencia());
     setLoteElegido("");
     setCantidad("");
     setNota("");

@@ -1,11 +1,12 @@
 import "server-only";
-import type { TipoUbicacion } from "@prisma/client";
+import { Prisma, type TipoUbicacion } from "@prisma/client";
 import { calcularEstadoVencimiento, diasParaVencer, type EstadoVencimiento } from "@/lib/estados";
 import { dateADia, hoyEnSantiago, type DiaISO } from "@/lib/fechas";
 import type { Actor } from "@/lib/permisos";
 import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { db } from "../db";
 import { noEncontrado } from "../errores";
+import { patronLike } from "./apoyo-admin";
 
 /**
  * Consultas livianas para poblar formularios (selects, buscadores).
@@ -59,45 +60,78 @@ export async function listarCategorias(actor: Actor): Promise<OpcionCategoria[]>
   return db.categoria.findMany({ select: { id: true, nombre: true }, orderBy: { nombre: "asc" } });
 }
 
+/** Días hacia atrás que se miran para priorizar los insumos más retirados. */
+export const DIAS_PRIORIDAD_RETIROS = 30;
+
+export interface FiltrosBuscarInsumos {
+  /** Nombre, código o código de barras. No distingue tildes ni mayúsculas. */
+  texto?: string | null;
+  categoriaId?: string | null;
+  /** Por defecto `true`. */
+  soloActivos?: boolean;
+  /** Por defecto 50 (máximo 500). */
+  limite?: number;
+  /**
+   * Centro cuyos retiros recientes definen el orden cuando NO hay texto de
+   * búsqueda: primero los insumos más retirados (unidades) en ese centro en los
+   * últimos `DIAS_PRIORIDAD_RETIROS` días y luego el resto por nombre. Con
+   * texto se ignora (orden alfabético). El actor debe tener acceso al centro
+   * (`SIN_ACCESO_AL_CENTRO` si no).
+   */
+  priorizarRetirosDeCentroId?: string | null;
+}
+
 /**
- * Busca insumos del catálogo por nombre, código o código de barras.
- * Permiso: `catalogo:ver`.
+ * Busca insumos del catálogo por nombre, código o código de barras, sin
+ * distinguir tildes ni mayúsculas ("jeringa" encuentra "Jeringá", "dialisis"
+ * encuentra "Diálisis"). Permiso: `catalogo:ver`.
  */
 export async function buscarInsumos(
   actor: Actor,
-  filtros: { texto?: string | null; categoriaId?: string | null; soloActivos?: boolean; limite?: number } = {},
+  filtros: FiltrosBuscarInsumos = {},
+  opciones: { ahora?: Date } = {},
 ): Promise<OpcionInsumo[]> {
   verificarPermiso(actor, "catalogo:ver");
   const texto = filtros.texto?.trim();
-  const filas = await db.insumo.findMany({
-    where: {
-      ...(filtros.soloActivos === false ? {} : { activo: true }),
-      ...(filtros.categoriaId ? { categoriaId: filtros.categoriaId } : {}),
-      ...(texto
-        ? {
-            OR: [
-              { nombre: { contains: texto, mode: "insensitive" } },
-              { codigo: { contains: texto, mode: "insensitive" } },
-              { codigoBarras: { equals: texto } },
-            ],
-          }
-        : {}),
-    },
-    select: {
-      id: true,
-      codigo: true,
-      nombre: true,
-      presentacion: true,
-      unidadMedida: true,
-      controlaVencimiento: true,
-      requiereCadenaFrio: true,
-      codigoBarras: true,
-      categoria: { select: { nombre: true } },
-    },
-    orderBy: { nombre: "asc" },
-    take: Math.min(Math.max(filtros.limite ?? 50, 1), 500),
-  });
-  return filas.map(({ categoria, ...resto }) => ({ ...resto, categoria: categoria.nombre }));
+  const limite = Math.min(Math.max(Math.trunc(filtros.limite ?? 50) || 50, 1), 500);
+
+  const condiciones: Prisma.Sql[] = [Prisma.sql`TRUE`];
+  if (filtros.soloActivos !== false) condiciones.push(Prisma.sql`i."activo"`);
+  if (filtros.categoriaId) condiciones.push(Prisma.sql`i."categoriaId" = ${filtros.categoriaId}`);
+  if (texto) {
+    const patron = patronLike(texto);
+    condiciones.push(Prisma.sql`(
+      unaccent(i."nombre") ILIKE unaccent(${patron})
+      OR unaccent(i."codigo") ILIKE unaccent(${patron})
+      OR i."codigoBarras" = ${texto}
+    )`);
+  }
+
+  let unionRetiros = Prisma.empty;
+  let orden = Prisma.sql`i."nombre" ASC, i."id" ASC`;
+  if (!texto && filtros.priorizarRetirosDeCentroId) {
+    const [centroId] = alcanceDeCentros(actor, filtros.priorizarRetirosDeCentroId)!;
+    const desde = new Date((opciones.ahora ?? new Date()).getTime() - DIAS_PRIORIDAD_RETIROS * 86_400_000);
+    unionRetiros = Prisma.sql`
+      LEFT JOIN (
+        SELECT m."insumoId", SUM(m."cantidad") AS "retirado"
+        FROM "movimientos" m
+        WHERE m."tipo" = 'RETIRO'::"TipoMovimiento" AND m."centroId" = ${centroId} AND m."creadoEn" >= ${desde}
+        GROUP BY m."insumoId"
+      ) r ON r."insumoId" = i."id"`;
+    orden = Prisma.sql`COALESCE(r."retirado", 0) DESC, i."nombre" ASC, i."id" ASC`;
+  }
+
+  return db.$queryRaw<OpcionInsumo[]>(Prisma.sql`
+    SELECT i."id", i."codigo", i."nombre", i."presentacion", i."unidadMedida", c."nombre" AS "categoria",
+           i."controlaVencimiento", i."requiereCadenaFrio", i."codigoBarras"
+    FROM "insumos" i
+    JOIN "categorias" c ON c."id" = i."categoriaId"
+    ${unionRetiros}
+    WHERE ${Prisma.join(condiciones, " AND ")}
+    ORDER BY ${orden}
+    LIMIT ${limite}
+  `);
 }
 
 /**
@@ -189,7 +223,12 @@ export async function lotesDisponibles(
 
 /**
  * Lotes ya registrados de un insumo (para autocompletar al ingresar y evitar
- * duplicar un lote con otra fecha). Permiso: `catalogo:ver`.
+ * duplicar un lote con otra fecha), más recientes primero.
+ *
+ * Respeta el alcance del actor: quien no ve toda la red solo recibe los lotes
+ * que tienen (o tuvieron) existencias o movimientos en SUS centros; los lotes
+ * que solo han pasado por otros centros no se revelan.
+ * Permiso: `catalogo:ver`.
  */
 export async function lotesDeInsumo(
   actor: Actor,
@@ -197,11 +236,23 @@ export async function lotesDeInsumo(
   limite = 30,
 ): Promise<{ loteId: string; numeroLote: string; fechaVencimiento: DiaISO | null }[]> {
   verificarPermiso(actor, "catalogo:ver");
+  const centros = alcanceDeCentros(actor);
+  if (centros !== null && centros.length === 0) return [];
   const filas = await db.lote.findMany({
-    where: { insumoId },
+    where: {
+      insumoId,
+      ...(centros === null
+        ? {}
+        : {
+            OR: [
+              { existencias: { some: { ubicacion: { centroId: { in: centros } } } } },
+              { movimientos: { some: { centroId: { in: centros } } } },
+            ],
+          }),
+    },
     select: { id: true, numeroLote: true, fechaVencimiento: true },
-    orderBy: { creadoEn: "desc" },
-    take: Math.min(Math.max(limite, 1), 200),
+    orderBy: [{ creadoEn: "desc" }, { id: "desc" }],
+    take: Math.min(Math.max(Math.trunc(limite) || 30, 1), 200),
   });
   return filas.map((l) => ({
     loteId: l.id,

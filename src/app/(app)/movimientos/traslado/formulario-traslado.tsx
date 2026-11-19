@@ -26,6 +26,7 @@ import {
   useExistenciasInsumo,
 } from "@/components/movimientos/formulario";
 import { esquemaTraslado } from "@/lib/esquemas/movimientos";
+import { nuevaClaveIdempotencia } from "@/lib/esquemas/base";
 import type { ErroresCampo } from "@/lib/resultado";
 import { cantidadConUnidad } from "@/lib/unidades";
 
@@ -64,6 +65,8 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
   const [intentado, setIntentado] = React.useState(false);
   const [confirmado, setConfirmado] = React.useState<TrasladoConfirmado | null>(null);
   const [ronda, setRonda] = React.useState(0);
+  // Clave de idempotencia: un doble envío o un reintento no duplica el movimiento.
+  const [claveIdempotencia, setClaveIdempotencia] = React.useState(nuevaClaveIdempotencia);
 
   const existencias = useExistenciasInsumo(insumo?.id ?? null, centroId);
   const traslado = useAccion(registrarTrasladoAccion, { toastError: false });
@@ -132,13 +135,14 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
       enfocarPrimerError(refFormulario.current);
       return;
     }
-    const r = await traslado.ejecutar(valores);
+    const r = await traslado.ejecutar({ ...valores, claveIdempotencia });
     existencias.recargar();
     if (!r.ok) {
       setIntentado(true);
       enfocarPrimerError(refFormulario.current);
       return;
     }
+    setClaveIdempotencia(nuevaClaveIdempotencia());
     setConfirmado({
       insumo,
       origen,
@@ -151,6 +155,7 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
   };
 
   const registrarOtro = () => {
+    setClaveIdempotencia(nuevaClaveIdempotencia());
     setInsumo(null);
     setOrigenElegido("");
     setLoteElegido("");

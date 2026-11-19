@@ -8,9 +8,9 @@ import {
   cerrarSesionPorToken,
   iniciarSesion,
   validarTokenSesion,
-  type MetaSolicitud,
   type UsuarioSesion,
 } from "./autenticacion";
+import { metaDeCabeceras, type MetaSolicitud } from "./meta-solicitud";
 import { CENTRO_TODOS, COOKIE_CENTRO, COOKIE_SESION, opcionesCookieSesion } from "./constantes";
 
 /** Sesión del usuario autenticado, lista para usar en páginas y acciones. */
@@ -21,11 +21,12 @@ export interface Sesion {
   actor: Actor;
 }
 
-/** IP y user-agent de la solicitud actual. */
+/**
+ * IP y user-agent de la solicitud actual. La IP solo existe si `TRUST_PROXY`
+ * declara proxies de confianza (ver `meta-solicitud.ts`); si no, es `null`.
+ */
 export async function obtenerMetaSolicitud(): Promise<MetaSolicitud> {
-  const h = await headers();
-  const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || null;
-  return { ip, userAgent: h.get("user-agent") };
+  return metaDeCabeceras(await headers());
 }
 
 /**
@@ -87,6 +88,22 @@ export async function iniciarSesionConCookie(email: string, password: string): P
   const almacen = await cookies();
   almacen.set(COOKIE_SESION, token, opcionesCookieSesion());
   return usuario;
+}
+
+/**
+ * Borra la cookie de sesión si la solicitud trae una que ya no vale (token
+ * desconocido, vencido o de un usuario desactivado). Solo tiene efecto donde
+ * Next permite escribir cookies (Server Actions y Route Handlers); durante el
+ * render de una página no hace nada. Nunca borra la cookie de una sesión válida.
+ */
+export async function descartarCookieSesionInvalida(): Promise<void> {
+  if (await obtenerSesion()) return;
+  try {
+    const almacen = await cookies();
+    if (almacen.has(COOKIE_SESION)) almacen.delete(COOKIE_SESION);
+  } catch {
+    // Contexto de solo lectura (render): la cookie caduca sola, no se renueva.
+  }
 }
 
 /** Cierra la sesión actual y borra la cookie. */
