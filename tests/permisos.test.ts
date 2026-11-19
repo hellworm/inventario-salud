@@ -22,6 +22,8 @@ import {
   listarInventario,
   listarMovimientos,
   listarProveedoresActivos,
+  listarProveedoresAdmin,
+  crearProveedor,
   listarUbicaciones,
   lotesDisponibles,
   obtenerAlertas,
@@ -116,8 +118,8 @@ describe("matriz de permisos", () => {
     expect([...PERMISOS_POR_ROL.BODEGUERO].sort()).toEqual([...esperados].sort());
   });
 
-  it("VISITANTE: solo lectura de inventario y alertas", () => {
-    const esperados: Permiso[] = ["panel:ver", "inventario:ver", "alertas:ver", "catalogo:ver"];
+  it("VISITANTE: solo lectura de inventario, alertas y directorio de proveedores", () => {
+    const esperados: Permiso[] = ["panel:ver", "inventario:ver", "alertas:ver", "catalogo:ver", "proveedores:ver"];
     expect([...PERMISOS_POR_ROL.VISITANTE].sort()).toEqual([...esperados].sort());
     for (const p of PERMISOS.filter((x) => x.startsWith("movimientos:") || x.endsWith(":gestionar"))) {
       expect(puede("VISITANTE", p)).toBe(false);
@@ -255,9 +257,15 @@ describe("autorización en los servicios (rol + centro)", () => {
     void loteB;
   });
 
-  it("VISITANTE no ve movimientos ni proveedores; BODEGUERO solo los de su centro", async () => {
+  it("VISITANTE no ve movimientos y de los proveedores solo lee; BODEGUERO solo ve movimientos de su centro", async () => {
     await esperarError(listarMovimientos(e.visitante), "SIN_PERMISO");
-    await esperarError(listarProveedoresActivos(e.visitante), "SIN_PERMISO");
+    // Lectura del directorio: sí. Gestionar proveedores: no.
+    expect((await listarProveedoresActivos(e.visitante)).map((p) => p.razonSocial)).toEqual(["Proveedor Uno SpA"]);
+    await esperarError(listarProveedoresAdmin(e.visitante), "SIN_PERMISO");
+    await esperarError(
+      crearProveedor(e.visitante, { rut: "77.058.612-7", razonSocial: "No debería crearse" }),
+      "SIN_PERMISO",
+    );
     expect((await buscarInsumos(e.visitante)).length).toBeGreaterThan(0);
 
     const movs = await listarMovimientos(e.bodeguero);

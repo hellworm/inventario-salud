@@ -25,6 +25,19 @@ export type EntradaCategoria = z.input<typeof esquemaCategoria>;
 export const esquemaActualizarCategoria = esquemaCategoria.extend({ id: zId });
 export type EntradaActualizarCategoria = z.input<typeof esquemaActualizarCategoria>;
 
+/** Caracteres admitidos en `Insumo.codigoBarras`. */
+export const RE_CODIGO_BARRAS = /^[0-9A-Za-z-]+$/;
+
+/** Asociar un código escaneado a un insumo existente (desde el flujo de escaneo). */
+export const esquemaAsociarCodigoBarras = z.object({
+  insumoId: zId,
+  codigoBarras: zTexto(64, "Falta el código de barras.").refine(
+    (v) => RE_CODIGO_BARRAS.test(v),
+    "El código de barras solo admite letras, números y guiones.",
+  ),
+});
+export type EntradaAsociarCodigoBarras = z.input<typeof esquemaAsociarCodigoBarras>;
+
 export const esquemaInsumo = z.object({
   codigo: zTexto(30, "Ingresa el código del insumo.")
     .transform((v) => v.toUpperCase())
@@ -40,7 +53,7 @@ export const esquemaInsumo = z.object({
   fabricante: zTextoOpcional(120),
   registroSanitario: zTextoOpcional(40),
   codigoBarras: zTextoOpcional(64).refine(
-    (v) => v === undefined || /^[0-9A-Za-z-]+$/.test(v),
+    (v) => v === undefined || RE_CODIGO_BARRAS.test(v),
     "El código de barras solo admite letras, números y guiones.",
   ),
   requiereCadenaFrio: z.boolean().default(false),

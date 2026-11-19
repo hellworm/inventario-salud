@@ -5,6 +5,8 @@ import { expect, test } from "./soporte/fixtures";
 const TAREAS = {
   buscar: "Buscar un insumo y ver dónde está",
   alertas: "Ver qué falta o está por vencer",
+  escanear: "Ingresar un producto escaneando su código",
+  proveedores: "Ver los proveedores y dónde comprar",
   ingreso: "Registrar un ingreso (llegan insumos)",
   retiro: "Registrar un retiro (salen insumos para su uso)",
   historial: "Revisar lo registrado",
@@ -13,11 +15,12 @@ const TAREAS = {
   vencimiento: "Corregir el vencimiento de un lote",
 } as const;
 
-const POR_ROL: Record<Exclude<Rol, "valpo" | "cerro">, { etiqueta: string; ve: (keyof typeof TAREAS)[] }> = {
-  visita: { etiqueta: "Visitante", ve: ["buscar", "alertas"] },
-  bodega: { etiqueta: "Bodeguero", ve: ["buscar", "alertas", "ingreso", "retiro", "historial"] },
-  andes: { etiqueta: "Administrador de institución", ve: ["buscar", "alertas", "ingreso", "retiro", "historial", "traslado", "ajuste", "vencimiento"] },
-  admin: { etiqueta: "Administrador de la red", ve: ["buscar", "alertas", "ingreso", "retiro", "historial", "traslado", "ajuste", "vencimiento"] },
+const TODO_ADMIN = ["buscar", "alertas", "escanear", "proveedores", "ingreso", "retiro", "historial", "traslado", "ajuste", "vencimiento"] as const;
+const POR_ROL: Record<Exclude<Rol, "valpo" | "cerro">, { etiqueta: string; ve: readonly (keyof typeof TAREAS)[] }> = {
+  visita: { etiqueta: "Visitante", ve: ["buscar", "alertas", "proveedores"] },
+  bodega: { etiqueta: "Bodeguero", ve: ["buscar", "alertas", "escanear", "proveedores", "ingreso", "retiro", "historial"] },
+  andes: { etiqueta: "Administrador de institución", ve: TODO_ADMIN },
+  admin: { etiqueta: "Administrador de la red", ve: TODO_ADMIN },
 };
 
 test.describe("Ayuda por rol", () => {
@@ -45,6 +48,13 @@ test.describe("Ayuda por rol", () => {
         expect(respuesta.status(), `${href} debe abrir para ${esperado.etiqueta}`).toBe(200);
       }
 
+      // Leyenda del semáforo de vencimiento, para todos los roles.
+      const semaforo = principal.locator("#semaforo");
+      await expect(semaforo).toContainText("Vence en menos de 3 meses");
+      await expect(semaforo).toContainText("Vence en 3 a 6 meses");
+      await expect(semaforo).toContainText("Vence en 6 meses o más");
+      await expect(semaforo).toContainText("Ya venció");
+
       // Preguntas frecuentes que valen para todos, al día con la aplicación.
       await expect(principal).toContainText("72 horas");
       await expect(principal).toContainText("Tu sesión venció");
@@ -68,6 +78,9 @@ test.describe("Ayuda por rol", () => {
     await expect(await abrir(TAREAS.alertas)).toContainText("Dar de baja");
     await expect(await abrir(TAREAS.ingreso)).toContainText("usa coma para los decimales");
     await expect(await abrir(TAREAS.vencimiento)).toContainText("Corregir vencimiento");
+    await expect(await abrir(TAREAS.escanear)).toContainText("Escribir el código");
+    await expect(await abrir(TAREAS.escanear)).toContainText("No reconocemos este código");
+    await expect(await abrir(TAREAS.proveedores)).toContainText("Ir a comprar");
 
     // El bodeguero no ve nada sobre corregir vencimientos ni ajustes.
     const bodeguero = await abrirComo("bodega");

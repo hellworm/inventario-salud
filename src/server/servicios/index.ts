@@ -3,6 +3,7 @@ export * from "./movimientos";
 export * from "./inventario";
 export * from "./consultas-movimientos";
 export * from "./alertas";
+export * from "./semaforo";
 export * from "./panel";
 export * from "./catalogo";
 export * from "./usuarios";

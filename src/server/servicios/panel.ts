@@ -7,6 +7,7 @@ import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { db } from "../db";
 import { obtenerAlertas, type AlertaStock, type AlertaVencimiento, type ResumenAlertas } from "./alertas";
 import { listarMovimientos, type FilaMovimiento } from "./consultas-movimientos";
+import { lotesPorColor, resumenSemaforo, type LoteSemaforo, type ResumenSemaforo } from "./semaforo";
 
 export interface ActividadDia {
   dia: DiaISO;
@@ -27,7 +28,10 @@ export interface ResumenCentro {
   sinStock: number;
   bajoMinimo: number;
   vencidos: number;
-  porVencer: number;
+  /** Lotes con stock en rojo (vencen en menos de 3 meses). */
+  rojo: number;
+  /** Lotes con stock en amarillo (vencen en 3 a 6 meses). */
+  amarillo: number;
 }
 
 /** Un grupo de la lista "Qué requiere atención hoy": los primeros ítems y el total real. */
@@ -47,12 +51,8 @@ export interface AtencionHoy {
   total: number;
 }
 
-/** Lotes y unidades por tramo de vencimiento (para el gráfico del panel). */
-export interface TramoVencimientoPanel {
-  clave: "VENCIDO" | "30" | "60" | "90";
-  lotes: number;
-  unidades: number;
-}
+/** Cuántos "productos en rojo" lista el panel. */
+export const LOTES_EN_ROJO_PANEL = 6;
 
 /** "Vence esta semana" = hoy + 7 días. */
 export const DIAS_VENCE_ESTA_SEMANA = 7;
@@ -66,8 +66,10 @@ export interface ResumenPanel {
   unidadesTotales: number;
   alertas: ResumenAlertas;
   atencion: AtencionHoy;
-  /** Siempre los 4 tramos, en orden: vencido, ≤30, 31–60, 61–90. */
-  vencimientos: TramoVencimientoPanel[];
+  /** Semáforo de vencimientos: insumos, lotes y unidades por color (agregado en SQL). */
+  semaforo: ResumenSemaforo;
+  /** Los primeros lotes en rojo, del que vence antes al que vence después. */
+  enRojo: LoteSemaforo[];
   /** Desglose de alertas por centro del alcance. */
   porCentro: ResumenCentro[];
   /** `false` si el rol no puede ver movimientos (los campos siguientes van vacíos). */
@@ -101,7 +103,7 @@ export async function resumenPanel(
 
   const desde = inicioDelDia(sumarDias(hoy, -(dias - 1)));
 
-  const [totales, alertas, actividadSql, ultimos] = await Promise.all([
+  const [totales, alertas, semaforo, enRojo, actividadSql, ultimos] = await Promise.all([
     db.$queryRaw<{ insumos: number; lotes: number; unidades: number }[]>(Prisma.sql`
       SELECT
         COUNT(DISTINCT l."insumoId")::int AS insumos,
@@ -114,6 +116,8 @@ export async function resumenPanel(
       WHERE e."cantidad" > 0 ${filtroCentroSql(Prisma.sql`u."centroId"`)}
     `),
     obtenerAlertas(actor, { centroId: filtros.centroId }, opciones),
+    resumenSemaforo(actor, { centroId: filtros.centroId }, opciones),
+    lotesPorColor(actor, { centroId: filtros.centroId, color: "ROJO", limite: LOTES_EN_ROJO_PANEL }, opciones),
     puedeVerMovimientos
       ? db.$queryRaw<{ dia: string; tipo: TipoMovimiento; movimientos: number }[]>(Prisma.sql`
           SELECT
@@ -147,7 +151,7 @@ export async function resumenPanel(
   const delCentro = (centroId: string, centro: string): ResumenCentro => {
     let r = centrosMapa.get(centroId);
     if (!r) {
-      r = { centroId, centro, sinStock: 0, bajoMinimo: 0, vencidos: 0, porVencer: 0 };
+      r = { centroId, centro, sinStock: 0, bajoMinimo: 0, vencidos: 0, rojo: 0, amarillo: 0 };
       centrosMapa.set(centroId, r);
     }
     return r;
@@ -160,14 +164,15 @@ export async function resumenPanel(
   for (const a of alertas.vencimientos) {
     const r = delCentro(a.centroId, a.centro);
     if (a.tipo === "VENCIDO") r.vencidos++;
-    else r.porVencer++;
+    else if (a.tipo === "ROJO") r.rojo++;
+    else r.amarillo++;
   }
 
   const porGrupo = Math.min(Math.max(filtros.porGrupoAtencion ?? 4, 1), 20);
   const grupo = <T>(todos: T[]): GrupoAtencion<T> => ({ items: todos.slice(0, porGrupo), total: todos.length });
   const sinStock = alertas.stock.filter((a) => a.tipo === "SIN_STOCK");
   const vencidos = alertas.vencimientos.filter((a) => a.tipo === "VENCIDO");
-  const estaSemana = alertas.vencimientos.filter((a) => a.tipo === "POR_VENCER" && a.dias <= DIAS_VENCE_ESTA_SEMANA);
+  const estaSemana = alertas.vencimientos.filter((a) => a.tipo === "ROJO" && a.dias <= DIAS_VENCE_ESTA_SEMANA);
   const atencion: AtencionHoy = {
     sinStock: grupo(sinStock),
     vencidos: grupo(vencidos),
@@ -175,16 +180,10 @@ export async function resumenPanel(
     total: sinStock.length + vencidos.length + estaSemana.length,
   };
 
-  const vencimientos: TramoVencimientoPanel[] = (["VENCIDO", "30", "60", "90"] as const).map((clave) => {
-    const delTramo = alertas.vencimientos.filter((a) =>
-      clave === "VENCIDO" ? a.tipo === "VENCIDO" : String(a.tramo) === clave,
-    );
-    return { clave, lotes: delTramo.length, unidades: delTramo.reduce((s, a) => s + a.cantidad, 0) };
-  });
-
   return {
     atencion,
-    vencimientos,
+    semaforo,
+    enRojo,
     insumosConStock: totales[0]?.insumos ?? 0,
     lotesConStock: totales[0]?.lotes ?? 0,
     unidadesTotales: totales[0]?.unidades ?? 0,

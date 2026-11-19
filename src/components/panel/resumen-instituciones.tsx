@@ -1,25 +1,42 @@
 import Link from "next/link";
 import { Building2, ChevronRight, CircleCheck, Landmark, X } from "lucide-react";
-import { Card, CardHeader } from "@/components/ui";
+import { Card, CardHeader, SEMAFORO_UI } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { formatearNumero, pluralizar } from "@/lib/formato";
-import type { ResumenInstitucion } from "@/server/servicios";
+import type { ResumenCentro, ResumenInstitucion } from "@/server/servicios";
 
 /**
  * "La red por institución": el resumen del administrador de la red en la vista
- * "Toda la red". Una tarjeta por institución con sus centros y sus alertas;
- * al elegir una (`/panel?institucion=<id>`) se despliega el detalle de sus
- * centros, y cada conteo lleva a Alertas ya filtrado por centro y tipo.
+ * "Toda la red". Una tarjeta por institución con sus centros, lo que falta
+ * (sin stock, bajo mínimo) y su semáforo de vencimientos (lotes vencidos, en
+ * rojo y en amarillo); al elegir una (`/panel?institucion=<id>`) se despliega
+ * el detalle de sus centros, y cada conteo lleva a Alertas ya filtrado por
+ * centro y tipo.
  *
  * Solo recibe datos ya autorizados (`resumenPorInstitucion`, solo ADMIN_RED).
  */
 
 const INDICADORES = [
-  { clave: "sinStock", etiqueta: "Sin stock", tab: "sin-stock", tono: "peligro", frase: "sin stock" },
-  { clave: "bajoMinimo", etiqueta: "Bajo mínimo", tab: "bajo-minimo", tono: "alerta", frase: "bajo el mínimo" },
-  { clave: "vencidos", etiqueta: "Vencidos", tab: "vencidos", tono: "peligro", frase: "lotes vencidos" },
-  { clave: "porVencer", etiqueta: "Por vencer", tab: "por-vencer", tono: "alerta", frase: "lotes por vencer" },
+  { clave: "sinStock", etiqueta: "Sin stock", tab: "sin-stock", tono: "peligro", frase: "sin stock", color: null },
+  { clave: "bajoMinimo", etiqueta: "Bajo mínimo", tab: "bajo-minimo", tono: "alerta", frase: "bajo el mínimo", color: null },
+  // Semáforo de vencimientos: lotes con stock (mismas pestañas que /alertas).
+  { clave: "vencidos", etiqueta: "Vencidos", tab: "vencidos", tono: "peligro", frase: "lotes vencidos", color: "VENCIDO" },
+  { clave: "rojo", etiqueta: "Rojo", tab: "rojo", tono: "peligro", frase: "lotes en rojo", color: "ROJO" },
+  { clave: "amarillo", etiqueta: "Amarillo", tab: "amarillo", tono: "alerta", frase: "lotes en amarillo", color: "AMARILLO" },
 ] as const;
+
+type Indicador = (typeof INDICADORES)[number];
+
+/** Etiqueta del indicador; los del semáforo llevan su forma (octágono, triángulo…), no solo el color. */
+function EtiquetaIndicador({ ind }: { ind: Indicador }) {
+  const ui = ind.color ? SEMAFORO_UI[ind.color] : null;
+  return (
+    <span className="inline-flex items-center justify-center gap-1 text-xs leading-tight text-texto-suave">
+      {ui ? <ui.icono className={cn("size-3 shrink-0", ui.texto)} aria-hidden /> : null}
+      {ind.etiqueta}
+    </span>
+  );
+}
 
 type Tono = (typeof INDICADORES)[number]["tono"];
 
@@ -31,8 +48,8 @@ const CLASE_TONO: Record<Tono, string> = {
 /** Ancla de la sección: al elegir una institución la página vuelve aquí. */
 const ANCLA = "red-por-institucion";
 
-function totalAlertas(i: Pick<ResumenInstitucion, "sinStock" | "bajoMinimo" | "vencidos" | "porVencer">): number {
-  return i.sinStock + i.bajoMinimo + i.vencidos + i.porVencer;
+function totalAlertas(i: Pick<ResumenCentro, "sinStock" | "bajoMinimo" | "vencidos" | "rojo" | "amarillo">): number {
+  return i.sinStock + i.bajoMinimo + i.vencidos + i.rojo + i.amarillo;
 }
 
 function Cifra({ valor, tono }: { valor: number; tono: Tono }) {
@@ -66,7 +83,7 @@ export function ResumenInstituciones({
     <Card id={ANCLA} className={cn("scroll-mt-20", className)} data-resumen-instituciones>
       <CardHeader
         titulo="La red por institución"
-        descripcion={`${pluralizar(instituciones.length, "institución", "instituciones")} · ${pluralizar(centros, "centro activo", "centros activos")}. Elige una para ver sus centros.`}
+        descripcion={`${pluralizar(instituciones.length, "institución", "instituciones")} · ${pluralizar(centros, "centro activo", "centros activos")}. Qué falta y el semáforo de vencimientos (lotes) de cada una. Elige una para ver sus centros.`}
       />
       <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Instituciones de la red">
         {instituciones.map((i) => {
@@ -102,11 +119,11 @@ export function ResumenInstituciones({
                     aria-hidden
                   />
                 </span>
-                <span className="mt-3 grid grid-cols-4 gap-1 border-t border-borde pt-3">
+                <span className="mt-3 grid grid-cols-5 gap-1 border-t border-borde pt-3">
                   {INDICADORES.map((ind) => (
                     <span key={ind.clave} className="flex min-w-0 flex-col items-center gap-1 text-center">
                       <Cifra valor={i[ind.clave]} tono={ind.tono} />
-                      <span className="text-xs leading-tight text-texto-suave">{ind.etiqueta}</span>
+                      <EtiquetaIndicador ind={ind} />
                     </span>
                   ))}
                 </span>
@@ -159,13 +176,13 @@ export function ResumenInstituciones({
                         Sin alertas
                       </span>
                     ) : (
-                      <span className="grid grid-cols-4 gap-1 md:w-[22rem] md:shrink-0">
+                      <span className="grid grid-cols-5 gap-1 md:w-[27rem] md:shrink-0">
                         {INDICADORES.map((ind) => {
                           const valor = c[ind.clave];
                           const contenido = (
                             <>
                               <Cifra valor={valor} tono={ind.tono} />
-                              <span className="text-xs leading-tight text-texto-suave">{ind.etiqueta}</span>
+                              <EtiquetaIndicador ind={ind} />
                             </>
                           );
                           const clase = "flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-md text-center";

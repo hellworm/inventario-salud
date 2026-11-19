@@ -23,7 +23,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/reportes/exp
   switch (reporte) {
     case "existencias":
       return responderCsv((actor) =>
-        exportarExistencias(actor, { centroId, categoriaId: f.categoriaId, texto: f.texto }),
+        exportarExistencias(actor, { centroId, categoriaId: f.categoriaId, texto: f.texto, semaforo: f.semaforo }),
       );
     case "movimientos":
     case "mermas":
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/reportes/exp
       );
     case "vencimientos":
       return responderCsv((actor) =>
-        exportarVencimientos(actor, { centroId, categoriaId: f.categoriaId, texto: f.texto, dias: f.dias }),
+        exportarVencimientos(actor, { centroId, categoriaId: f.categoriaId, texto: f.texto, semaforo: f.semaforo }),
       );
     default:
       return new Response("Reporte no encontrado.", {

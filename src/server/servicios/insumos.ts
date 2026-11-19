@@ -2,13 +2,16 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import {
   esquemaActualizarInsumo,
+  esquemaAsociarCodigoBarras,
   esquemaInsumo,
   esquemaParametrosStock,
   type DatosInsumo,
   type EntradaActualizarInsumo,
+  type EntradaAsociarCodigoBarras,
   type EntradaInsumo,
   type EntradaParametrosStock,
 } from "@/lib/esquemas/catalogo";
+import { variantesGtin } from "@/lib/gs1";
 import type { Actor } from "@/lib/permisos";
 import type { Paginado } from "@/lib/resultado";
 import { registrarAuditoria } from "../auditoria";
@@ -334,6 +337,51 @@ export async function actualizarInsumo(
     "Ya existe un insumo con ese código.",
     "codigo",
   );
+}
+
+/**
+ * Asocia un código de barras a un insumo existente (flujo de escaneo: "no
+ * reconocemos este código"). Si el insumo ya tenía otro, lo reemplaza; queda
+ * en la auditoría con el valor anterior. El mismo producto no puede quedar en
+ * dos insumos, aunque el código esté escrito de otra forma (EAN-13 / GTIN-14).
+ * Permiso: `catalogo:gestionar`.
+ */
+export async function asociarCodigoBarras(
+  actor: Actor,
+  entrada: EntradaAsociarCodigoBarras,
+): Promise<{ id: string; codigo: string; nombre: string; codigoBarras: string; anterior: string | null }> {
+  verificarPermiso(actor, "catalogo:gestionar");
+  const { insumoId, codigoBarras } = validar(esquemaAsociarCodigoBarras, entrada);
+  return enTransaccion(async (tx) => {
+    const actual = await tx.insumo.findUnique({
+      where: { id: insumoId },
+      select: { id: true, codigo: true, nombre: true, codigoBarras: true },
+    });
+    if (!actual) throw noEncontrado("El insumo");
+    const equivalentes = [...new Set([codigoBarras, ...variantesGtin(codigoBarras)])];
+    const otro = await tx.insumo.findFirst({
+      where: { codigoBarras: { in: equivalentes }, id: { not: insumoId } },
+      select: { nombre: true },
+    });
+    if (otro) {
+      throw new ErrorDominio("DUPLICADO", `Ese código de barras ya lo usa "${otro.nombre}".`, { campo: "codigoBarras" });
+    }
+    if (actual.codigoBarras !== codigoBarras) {
+      await tx.insumo.update({ where: { id: insumoId }, data: { codigoBarras } });
+      await registrarAuditoria(tx, actor, {
+        accion: "INSUMO_ACTUALIZADO",
+        entidad: "Insumo",
+        entidadId: insumoId,
+        detalle: comoJson({
+          codigo: actual.codigo,
+          nombre: actual.nombre,
+          cambios: { codigoBarras: { antes: actual.codigoBarras, despues: codigoBarras } },
+          origen: "escaner",
+        }),
+      });
+    }
+    return { id: actual.id, codigo: actual.codigo, nombre: actual.nombre, codigoBarras, anterior: actual.codigoBarras };
+  });
 }
 
 /**

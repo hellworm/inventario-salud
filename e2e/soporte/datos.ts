@@ -18,6 +18,8 @@ export interface OpcionesInsumo {
   controlaVencimiento?: boolean;
   categoria?: string;
   nombre?: string;
+  /** Código de barras (p. ej. un EAN-13), para los flujos de escaneo. */
+  codigoBarras?: string;
 }
 
 /** Crea un insumo en el catálogo (requiere una página con sesión ADMIN). Unidad: caja. */
@@ -33,6 +35,7 @@ export async function crearInsumo(pagina: Page, opciones: OpcionesInsumo = {}): 
   if (opciones.controlaVencimiento === false) {
     await pagina.getByRole("checkbox", { name: /Controla fecha de vencimiento/ }).uncheck();
   }
+  if (opciones.codigoBarras) await pagina.getByLabel("Código de barras").fill(opciones.codigoBarras);
   await pagina.getByRole("button", { name: "Crear insumo" }).click();
   await pagina.waitForURL(/\/admin\/insumos\/(?!nuevo)[^/]+$/);
   const id = new URL(pagina.url()).pathname.split("/").pop() as string;

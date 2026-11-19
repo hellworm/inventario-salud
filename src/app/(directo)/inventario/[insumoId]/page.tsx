@@ -7,7 +7,6 @@ import {
   ArrowLeftRight,
   ArrowUpFromLine,
   Boxes,
-  CalendarClock,
   CalendarX2,
   Gauge,
   History,
@@ -26,13 +25,25 @@ import {
   Card,
   CardHeader,
   DataTable,
+  DesgloseSemaforo,
+  describirDesglose,
   EmptyState,
+  LeyendaSemaforo,
   PageHeader,
+  SEMAFORO_UI,
   StatCard,
   type Columna,
+  type StatTono,
 } from "@/components/ui";
-import { ETIQUETA_TIPO_UBICACION, SIGNO_MOVIMIENTO, type TipoUbicacion } from "@/lib/estados";
-import { describirVencimiento, formatearDia, formatearFechaHora } from "@/lib/fechas";
+import {
+  calcularEstadoVencimiento,
+  ETIQUETA_ESTADO_VENCIMIENTO,
+  ETIQUETA_TIPO_UBICACION,
+  SIGNO_MOVIMIENTO,
+  type EstadoVencimiento,
+  type TipoUbicacion,
+} from "@/lib/estados";
+import { describirVencimiento, formatearDia, formatearFechaHora, hoyEnSantiago } from "@/lib/fechas";
 import { formatearNumero } from "@/lib/formato";
 import { esAdministrador, puede, veTodaLaRed } from "@/lib/permisos";
 import { cantidadConUnidad, unidadSegun } from "@/lib/unidades";
@@ -127,6 +138,15 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
   };
   const lotesConStock = new Set(detalle.existencias.map((e) => e.loteId)).size;
   const diasProximo = detalle.existencias.find((e) => e.fechaVencimiento === detalle.proximoVencimiento && e.estadoVencimiento !== "VENCIDO")?.diasParaVencer ?? null;
+  // Semáforo del próximo vencimiento (el lote vigente que vence antes).
+  const colorProximo: EstadoVencimiento = calcularEstadoVencimiento(detalle.proximoVencimiento, hoyEnSantiago());
+  const TONO_SEMAFORO: Record<EstadoVencimiento, StatTono> = {
+    VENCIDO: "peligro",
+    ROJO: "peligro",
+    AMARILLO: "alerta",
+    VERDE: "exito",
+    SIN_VENCIMIENTO: "neutro",
+  };
   const claseAccionFila = buttonClasses({ variant: "secundario", size: "sm" });
 
   const columnasExistencias: Columna<ExistenciaDetalle>[] = [
@@ -324,13 +344,13 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
           valor={detalle.proximoVencimiento ? formatearDia(detalle.proximoVencimiento) : "—"}
           detalle={
             detalle.proximoVencimiento
-              ? `${describirVencimiento(diasProximo)}${detalle.porVencer > 0 ? ` · ${formatearNumero(detalle.porVencer)} por vencer` : ""}`
+              ? `${ETIQUETA_ESTADO_VENCIMIENTO[colorProximo]} · ${describirVencimiento(diasProximo).toLowerCase()}`
               : insumo.controlaVencimiento
                 ? "Sin lotes vigentes con fecha"
                 : "No controla vencimiento"
           }
-          icono={CalendarClock}
-          tono={detalle.porVencer > 0 ? "alerta" : "exito"}
+          icono={SEMAFORO_UI[colorProximo].icono}
+          tono={TONO_SEMAFORO[colorProximo]}
         />
         <StatCard
           etiqueta="Vencido"
@@ -371,6 +391,15 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
                 ) : undefined
               }
             />
+            {detalle.existencias.some((e) => e.fechaVencimiento) ? (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-borde bg-superficie-2 px-4 py-2.5 sm:px-5">
+                <span className="inline-flex items-center gap-2 text-xs font-medium text-texto-suave" title={describirDesglose(detalle.semaforo)}>
+                  Semáforo de este insumo
+                  <DesgloseSemaforo conteo={detalle.semaforo} />
+                </span>
+                <LeyendaSemaforo className="sm:ml-auto" conVencido={false} />
+              </div>
+            ) : null}
             <DataTable
               titulo="Existencias por lote y ubicación"
               columnas={columnasExistencias}

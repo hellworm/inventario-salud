@@ -880,11 +880,11 @@ describe("instituciones (administrador de la red)", () => {
     expect(resumen.map((r) => r.institucion)).toEqual(["Institución Dos", "Institución Uno", "Institución Vacía"]);
     const [dos, uno, vacia] = resumen;
     // A: guantes bajo el mínimo (50 < 500) y un lote por vencer en 20 días.
-    expect(uno).toMatchObject({ centros: 2, sinStock: 0, bajoMinimo: 1, vencidos: 0, porVencer: 1 });
+    expect(uno).toMatchObject({ centros: 2, sinStock: 0, bajoMinimo: 1, vencidos: 0, rojo: 1, amarillo: 0 });
     expect(uno!.detalle.map((d) => d.centro)).toEqual(["Centro A", "Centro B"]);
-    expect(uno!.detalle[1]).toMatchObject({ sinStock: 0, bajoMinimo: 0, vencidos: 0, porVencer: 0 });
+    expect(uno!.detalle[1]).toMatchObject({ sinStock: 0, bajoMinimo: 0, vencidos: 0, rojo: 0, amarillo: 0 });
     // B: guantes bajo el mínimo (63 < 900), dializador sin stock (mínimo 10) y un lote por vencer.
-    expect(dos).toMatchObject({ centros: 1, sinStock: 1, bajoMinimo: 1, vencidos: 0, porVencer: 1 });
+    expect(dos).toMatchObject({ centros: 1, sinStock: 1, bajoMinimo: 1, vencidos: 0, rojo: 1, amarillo: 0 });
     expect(vacia).toMatchObject({ centros: 0, sinStock: 0, bajoMinimo: 0, detalle: [] });
     // La suma por institución coincide con el total de la red.
     const suma = (clave: "sinStock" | "bajoMinimo") => resumen.reduce((s, r) => s + r[clave], 0);

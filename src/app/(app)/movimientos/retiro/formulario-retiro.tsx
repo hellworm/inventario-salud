@@ -28,6 +28,7 @@ import {
   ubicacionPorDefecto,
   type UbicacionOpcion,
 } from "@/components/movimientos/campos";
+import { BotonEscanearInsumo } from "@/components/escaner/boton-escanear-insumo";
 import { ComboboxInsumo, type InsumoOpcion } from "@/components/movimientos/combobox-insumo";
 import {
   AnuncioErrores,
@@ -220,6 +221,14 @@ export function FormularioRetiro({
     setRonda((n) => n + 1);
   };
 
+  const alCambiarInsumo = alEditar((nuevo: InsumoOpcion | null) => {
+    setInsumo(nuevo);
+    setUbicacionElegida("");
+    setLoteElegido("");
+    setModo("FEFO");
+    setCantidad("");
+  });
+
   return (
     <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
       {confirmado ? (
@@ -294,22 +303,20 @@ export function FormularioRetiro({
             {errorGeneral ? <Alert tono="peligro">{errorGeneral}</Alert> : null}
             <ResumenErrores errores={retiro.erroresCampo} camposVisibles={camposVisibles} />
 
-            <Field label="Insumo" requerido error={errores.insumoId}>
-              <ComboboxInsumo
-                key={ronda}
-                valor={insumo}
-                onCambiar={alEditar((nuevo: InsumoOpcion | null) => {
-                  setInsumo(nuevo);
-                  setUbicacionElegida("");
-                  setLoteElegido("");
-                  setModo("FEFO");
-                  setCantidad("");
-                })}
-                iniciales={insumosIniciales}
-                priorizarRetirosDeCentroId={centroId}
-                autoFocus={ronda > 0}
-              />
-            </Field>
+            <div className="flex items-start gap-2">
+              <Field label="Insumo" requerido error={errores.insumoId} className="min-w-0 flex-1">
+                <ComboboxInsumo
+                  key={ronda}
+                  valor={insumo}
+                  onCambiar={alCambiarInsumo}
+                  iniciales={insumosIniciales}
+                  priorizarRetirosDeCentroId={centroId}
+                  autoFocus={ronda > 0}
+                />
+              </Field>
+              {/* Alineado con el control (bajo la etiqueta del campo). */}
+              <BotonEscanearInsumo alEncontrar={alCambiarInsumo} className="mt-[1.625rem]" />
+            </div>
 
             <Field label="Desde la ubicación" requerido error={errores.ubicacionId}>
               <SelectUbicacion
@@ -418,8 +425,8 @@ export function FormularioRetiro({
                             <span className="cifras block truncate font-medium text-texto">Lote {l.lote.numeroLote}</span>
                             <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-suave">
                               {l.lote.fechaVencimiento ? <span className="cifras">Vence {formatearDia(l.lote.fechaVencimiento)}</span> : <span>Sin vencimiento</span>}
-                              {l.lote.estadoVencimiento === "POR_VENCER" ? (
-                                <BadgeEstadoVencimiento estado="POR_VENCER" dias={l.lote.diasParaVencer} />
+                              {l.lote.estadoVencimiento !== "SIN_VENCIMIENTO" ? (
+                                <BadgeEstadoVencimiento estado={l.lote.estadoVencimiento} dias={l.lote.diasParaVencer} />
                               ) : null}
                             </span>
                           </span>

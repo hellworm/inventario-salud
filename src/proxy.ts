@@ -37,10 +37,15 @@ const esDesarrollo = process.env.NODE_ENV !== "production";
 export function construirCsp(nonce: string): string {
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${esDesarrollo ? " 'unsafe-eval'" : ""}`,
+    // 'wasm-unsafe-eval': SOLO permite compilar WebAssembly (el lector de códigos de barras
+    // del escáner, servido desde este mismo sitio); no habilita eval() ni new Function().
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'${esDesarrollo ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
+    // La vista de la cámara es un MediaStream local (no carga medios de ningún origen).
+    "media-src 'self' blob:",
+    "worker-src 'self'",
     `connect-src 'self'${esDesarrollo ? " ws: wss:" : ""}`,
     "object-src 'none'",
     "base-uri 'self'",

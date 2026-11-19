@@ -4,6 +4,7 @@
 import {
   esquemaActualizarCategoria,
   esquemaActualizarInsumo,
+  esquemaAsociarCodigoBarras,
   esquemaCambiarActivo,
   esquemaCategoria,
   esquemaInsumo,
@@ -14,6 +15,7 @@ import { accionSegura } from "@/server/accion-segura";
 import {
   actualizarCategoria,
   actualizarInsumo,
+  asociarCodigoBarras,
   crearCategoria,
   crearInsumo,
   eliminarCategoria,
@@ -30,6 +32,12 @@ export const crearInsumoAccion = accionSegura(
 export const actualizarInsumoAccion = accionSegura(
   { esquema: esquemaActualizarInsumo, permiso: "catalogo:gestionar" },
   ({ actor, datos }) => actualizarInsumo(actor, datos),
+);
+
+/** Asociar un código escaneado a un insumo existente ("no reconocemos este código"). */
+export const asociarCodigoBarrasAccion = accionSegura(
+  { esquema: esquemaAsociarCodigoBarras, permiso: "catalogo:gestionar" },
+  ({ actor, datos }) => asociarCodigoBarras(actor, datos),
 );
 
 export const establecerInsumoActivoAccion = accionSegura(

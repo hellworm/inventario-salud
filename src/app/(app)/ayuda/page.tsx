@@ -11,10 +11,13 @@ import {
   ChevronDown,
   History,
   LifeBuoy,
+  ScanBarcode,
   SlidersHorizontal,
+  Truck,
   type LucideIcon,
 } from "lucide-react";
-import { BadgeRol, Card, CardHeader, PageHeader } from "@/components/ui";
+import { BadgeEstadoVencimiento, BadgeRol, Card, CardHeader, PageHeader } from "@/components/ui";
+import { DESCRIPCION_SEMAFORO, type EstadoVencimiento } from "@/lib/estados";
 import { NOMBRE_ROL, puede, type Permiso, type Rol } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 
@@ -27,13 +30,14 @@ const QUE_PUEDE: Record<Rol, { resumen: string; puntos: string[] }> = {
       "Ver el resumen del día en el Panel.",
       "Buscar insumos y revisar sus lotes, ubicaciones y vencimientos en Inventario.",
       "Revisar qué falta o está por vencer en Alertas, e imprimir la lista de reposición.",
+      "Ver los proveedores, con su teléfono, su correo y su sitio web para comprar.",
     ],
   },
   BODEGUERO: {
     resumen: "Además de consultar, registras lo que entra y lo que sale en tus centros y ves el historial.",
     puntos: [
       "Todo lo de un visitante: Panel, Inventario y Alertas.",
-      "Registrar ingresos (llegan insumos) y retiros (salen para su uso).",
+      "Registrar ingresos (llegan insumos) y retiros (salen para su uso), también escaneando el código del envase con la cámara.",
       "Revisar el historial de movimientos de tus centros.",
       "Los traslados, ajustes y mermas los hace un administrador.",
     ],
@@ -80,9 +84,10 @@ const TAREAS: Tarea[] = [
     enlace: { href: "/inventario", texto: "Ir a Inventario" },
     pasos: [
       <>Entra a <strong>Inventario</strong> y escribe el nombre, el código o el número de lote.</>,
-      <>Si quieres, filtra por categoría o ubicación, o usa los botones <strong>Sin stock</strong>, <strong>Bajo mínimo</strong>, <strong>Por vencer</strong> o <strong>Vencidos</strong>.</>,
-      <>Toca un insumo: verás cuánto hay, en qué ubicación está cada lote y cuándo vence. <strong>Ver ficha completa</strong> muestra todo el detalle.</>,
+      <>Si quieres, filtra por categoría o ubicación, o usa los botones <strong>Sin stock</strong>, <strong>Bajo mínimo</strong> y los del semáforo de vencimiento: <strong>Rojo</strong>, <strong>Amarillo</strong>, <strong>Verde</strong> o <strong>Vencidos</strong>.</>,
+      <>Toca un insumo: verás cuánto hay, en qué ubicación está cada lote, cuándo vence y de qué color es. <strong>Ver ficha completa</strong> muestra todo el detalle.</>,
     ],
+    notas: ["El color de un insumo es el de su lote con stock que vence antes; al lado se ve cuántos lotes tiene de cada color."],
   },
   {
     id: "alertas",
@@ -91,11 +96,46 @@ const TAREAS: Tarea[] = [
     permiso: "alertas:ver",
     enlace: { href: "/alertas", texto: "Ir a Alertas" },
     pasos: [
-      <>En <strong>Alertas</strong> hay cuatro pestañas: <strong>Sin stock</strong>, <strong>Bajo mínimo</strong>, <strong>Vencidos</strong> y <strong>Por vencer</strong>.</>,
-      <>Cada fila trae la acción que tu rol puede hacer: <strong>Ingresar</strong> lo que falta, <strong>Retirar</strong> primero el lote que está por vencer o <strong>Dar de baja</strong> un lote vencido. Abren el formulario con el insumo, la ubicación y el lote ya elegidos.</>,
+      <>En <strong>Alertas</strong> hay cinco pestañas: <strong>Sin stock</strong>, <strong>Bajo mínimo</strong>, <strong>Vencidos</strong>, <strong>Rojo</strong> (vence en menos de 3 meses) y <strong>Amarillo</strong> (vence en 3 a 6 meses).</>,
+      <>Cada fila trae la acción que tu rol puede hacer: <strong>Ingresar</strong> lo que falta, <strong>Retirar</strong> primero el lote en rojo o amarillo o <strong>Dar de baja</strong> un lote vencido. Abren el formulario con el insumo, la ubicación y el lote ya elegidos.</>,
       <>El botón <strong>Lista de reposición</strong> arma el listado de lo que conviene pedir. Puedes imprimirlo o descargarlo para Excel.</>,
     ],
-    notas: ["El Panel muestra un resumen de lo mismo, en orden de prioridad, con las mismas acciones."],
+    notas: [
+      "El Panel muestra el semáforo de vencimientos (toca un color para ver sus insumos) y la lista de productos en rojo.",
+      "Lo que está en verde no es una alerta: lo ves en Inventario con el filtro Verde.",
+    ],
+  },
+  {
+    id: "escanear",
+    titulo: "Ingresar un producto escaneando su código",
+    icono: ScanBarcode,
+    permiso: "movimientos:ingreso",
+    enlace: { href: "/movimientos/escanear", texto: "Escanear para ingresar" },
+    pasos: [
+      <>En el celular, toca <strong>Escanear</strong> en el Panel o en la barra de abajo. La primera vez el navegador pedirá permiso para usar la cámara: acéptalo.</>,
+      <>Apunta al <strong>código de barras</strong> o al <strong>cuadrado pequeño (DataMatrix)</strong> del envase. Si hay poca luz, enciende la <strong>linterna</strong>.</>,
+      <>Si el sistema reconoce el código, abre el ingreso con el insumo ya elegido. Cuando el código trae el <strong>lote</strong> y el <strong>vencimiento</strong>, también quedan completos: revísalos contra el envase.</>,
+      <>Escribe la <strong>cantidad</strong> y presiona <strong>Registrar ingreso</strong>.</>,
+    ],
+    notas: [
+      "¿La cámara no lee? Usa «Escribir el código» y copia los números que aparecen bajo las barras. También sirve un lector de códigos conectado al computador.",
+      "Si aparece «No reconocemos este código», busca el insumo por su nombre y continúa: no se pierde el lote ni el vencimiento leídos. Un administrador puede asociar el código al insumo para que la próxima vez se reconozca.",
+      "Si negaste el permiso de la cámara, actívalo desde el candado junto a la dirección del sitio (en iPhone, «aA») y vuelve a intentarlo.",
+      "Dentro de los formularios de ingreso y de retiro también hay un botón Escanear junto al buscador de insumos.",
+    ],
+  },
+  {
+    id: "proveedores",
+    titulo: "Ver los proveedores y dónde comprar",
+    icono: Truck,
+    permiso: "proveedores:ver",
+    enlace: { href: "/proveedores", texto: "Ver proveedores" },
+    pasos: [
+      <>En el <strong>Panel</strong>, la sección <strong>Proveedores</strong> muestra primero los que más has usado al registrar ingresos.</>,
+      <><strong>Ir a comprar</strong> abre el sitio web del proveedor en otra pestaña (verás su dirección bajo el nombre).</>,
+      <>Toca el nombre de un proveedor para desplegar su <strong>teléfono</strong>, su <strong>correo</strong>, la persona de contacto y el RUT. Desde el celular, tocar el teléfono inicia la llamada.</>,
+    ],
+    notas: ["Un administrador mantiene los proveedores (incluido el sitio web) en Administración › Proveedores."],
   },
   {
     id: "ingreso",
@@ -105,7 +145,7 @@ const TAREAS: Tarea[] = [
     enlace: { href: "/movimientos/ingreso", texto: "Registrar ingreso" },
     pasos: [
       <>Menú <strong>Registrar → Ingreso</strong>.</>,
-      <>Busca el <strong>insumo</strong> por nombre o código y elige la <strong>ubicación de destino</strong>.</>,
+      <>Busca el <strong>insumo</strong> por nombre o código (o toca <strong>Escanear</strong> y lee el código del envase) y elige la <strong>ubicación de destino</strong>.</>,
       <>Copia el <strong>número de lote</strong> y el <strong>vencimiento</strong> tal como vienen en el envase. Si el lote ya existe, tócalo en las sugerencias.</>,
       <>Escribe la <strong>cantidad</strong>. Recomendado: indica el proveedor y la guía o factura.</>,
       <>Si anotas el <strong>costo unitario</strong>, usa coma para los decimales (1250,5); el punto separa miles (1.250). Bajo el campo verás el monto tal como se guardará.</>,
@@ -227,6 +267,16 @@ const PREGUNTAS: { pregunta: string; respuesta: string }[] = [
   },
 ];
 
+const COLORES_LEYENDA: readonly EstadoVencimiento[] = ["ROJO", "AMARILLO", "VERDE", "VENCIDO", "SIN_VENCIMIENTO"];
+
+const QUE_HACER: Readonly<Record<EstadoVencimiento, string>> = {
+  ROJO: "Úsalo primero para que no se pierda.",
+  AMARILLO: "Tenlo presente al planificar el consumo y las compras.",
+  VERDE: "Sin urgencia.",
+  VENCIDO: "No se puede usar ni retirar: sepáralo; un administrador lo da de baja.",
+  SIN_VENCIMIENTO: "El insumo no lleva fecha de vencimiento.",
+};
+
 export default async function PaginaAyuda() {
   const { actor } = await contextoPagina("panel:ver");
   const rol = actor.rol;
@@ -247,6 +297,31 @@ export default async function PaginaAyuda() {
         <p className="mt-4 border-t border-borde pt-3 text-sm text-texto-suave">
           Tu rol ({NOMBRE_ROL[rol]}) aparece bajo tu nombre, arriba a la derecha. Ahí mismo puedes cambiar tu contraseña y salir. Con el
           selector de centro, arriba a la izquierda, eliges qué centro estás viendo.
+        </p>
+      </Card>
+
+      <Card className="mb-4" id="semaforo">
+        <CardHeader
+          titulo="Semáforo de vencimiento"
+          descripcion="Cada lote tiene un color según cuánto falta para que venza. Se usa en toda la aplicación."
+        />
+        <dl className="divide-y divide-borde">
+          {COLORES_LEYENDA.map((estado) => (
+            <div key={estado} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5">
+              <dt className="w-36 shrink-0">
+                <BadgeEstadoVencimiento estado={estado} />
+              </dt>
+              <dd className="min-w-0 flex-1 text-[0.9375rem] text-texto">
+                <strong className="font-semibold">{DESCRIPCION_SEMAFORO[estado]}.</strong>{" "}
+                <span className="text-texto-suave">{QUE_HACER[estado]}</span>
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-3 border-t border-borde pt-3 text-sm text-texto-suave">
+          Los meses se cuentan por calendario desde hoy: si hoy es 19 de noviembre, es rojo lo que vence antes del 19 de febrero y verde
+          lo que vence desde el 19 de mayo. El día del vencimiento el lote todavía se puede usar. Cada color lleva además una forma
+          distinta y su nombre escrito, para distinguirlo sin depender del color.
         </p>
       </Card>
 

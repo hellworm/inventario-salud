@@ -183,7 +183,7 @@ export function PanelExistencias({
                         <p className="cifras truncate font-medium text-texto">Lote {e.numeroLote}</p>
                         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-texto-suave">
                           {e.fechaVencimiento ? <span className="cifras">Vence {formatearDia(e.fechaVencimiento)}</span> : <span>Sin vencimiento</span>}
-                          {e.estadoVencimiento === "VENCIDO" || e.estadoVencimiento === "POR_VENCER" ? (
+                          {e.estadoVencimiento !== "SIN_VENCIMIENTO" ? (
                             <BadgeEstadoVencimiento estado={e.estadoVencimiento} dias={e.diasParaVencer} />
                           ) : null}
                         </p>

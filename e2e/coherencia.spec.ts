@@ -27,13 +27,25 @@ test.describe("Coherencia entre panel, alertas, inventario y reposición", () =>
     await page.goto("/panel");
     await expect(page.getByRole("main")).toContainText(CENTROS.valpo);
     const indicadores = await page.getByRole("region", { name: "Indicadores" }).innerText();
+    // Semáforo del panel: n.º de insumos y de lotes por color (y vencidos, aparte).
+    const tarjeta = async (color: "VENCIDO" | "ROJO" | "AMARILLO" | "VERDE") => {
+      const enlace = page.getByRole("main").locator(`a[data-semaforo="${color}"]`);
+      const numeroDe = async (que: "insumos" | "lotes") => Number((await enlace.locator(`[data-conteo="${que}"]`).innerText()).replace(/[^\d]/g, ""));
+      return { insumos: await numeroDe("insumos"), lotes: await numeroDe("lotes"), href: await enlace.getAttribute("href") };
+    };
     const panel = {
       sinStock: await numero(page, /Sin stock (\d[\d.]*)/, indicadores),
       bajoMinimo: await numero(page, /Bajo el mínimo (\d[\d.]*)/, indicadores),
-      vencidos: await numero(page, /Lotes vencidos (\d[\d.]*)/, indicadores),
-      vencen30: await numero(page, /Vencen en 30 días (\d[\d.]*)/, indicadores),
-      vencen31a90: await numero(page, /(\d[\d.]*) más entre 31 y 90 días/, indicadores),
+      vencido: await tarjeta("VENCIDO"),
+      rojo: await tarjeta("ROJO"),
+      amarillo: await tarjeta("AMARILLO"),
+      verde: await tarjeta("VERDE"),
     };
+    // El seed deja lotes de todos los colores en Valparaíso: la comparación no es trivial.
+    for (const color of ["vencido", "rojo", "amarillo", "verde"] as const) expect(panel[color].lotes, color).toBeGreaterThan(0);
+    // La lista "Productos en rojo" del panel muestra esos lotes (hasta 6), lo que vence antes primero.
+    const filasEnRojo = page.getByRole("region", { name: "Productos en rojo" }).locator("tbody tr");
+    await expect(filasEnRojo).toHaveCount(Math.min(panel.rojo.lotes, 6));
 
     await page.goto("/alertas");
     const pestanas = await page.getByRole("navigation", { name: "Tipos de alerta" }).innerText();
@@ -41,17 +53,20 @@ test.describe("Coherencia entre panel, alertas, inventario y reposición", () =>
       sinStock: await numero(page, /Sin stock (\d[\d.]*)/, pestanas),
       bajoMinimo: await numero(page, /Bajo mínimo (\d[\d.]*)/, pestanas),
       vencidos: await numero(page, /Vencidos (\d[\d.]*)/, pestanas),
-      porVencer: await numero(page, /Por vencer (\d[\d.]*)/, pestanas),
+      rojo: await numero(page, /Rojo (\d[\d.]*)/, pestanas),
+      amarillo: await numero(page, /Amarillo (\d[\d.]*)/, pestanas),
     };
     expect(alertas.sinStock).toBe(panel.sinStock);
     expect(alertas.bajoMinimo).toBe(panel.bajoMinimo);
-    expect(alertas.vencidos).toBe(panel.vencidos);
-    expect(alertas.porVencer).toBe(panel.vencen30 + panel.vencen31a90);
+    // Semáforo: los lotes del panel son los de las pestañas de alertas.
+    expect(alertas.vencidos).toBe(panel.vencido.lotes);
+    expect(alertas.rojo).toBe(panel.rojo.lotes);
+    expect(alertas.amarillo).toBe(panel.amarillo.lotes);
 
     // El subtítulo suma todas las alertas activas.
     const subtitulo = await page.getByRole("main").locator("p").first().innerText();
     expect(await numero(page, /(\d[\d.]*) alertas? activas?/, subtitulo)).toBe(
-      alertas.sinStock + alertas.bajoMinimo + alertas.vencidos + alertas.porVencer,
+      alertas.sinStock + alertas.bajoMinimo + alertas.vencidos + alertas.rojo + alertas.amarillo,
     );
 
     // Cada pestaña lista exactamente esa cantidad de filas (caben en una página).
@@ -59,31 +74,35 @@ test.describe("Coherencia entre panel, alertas, inventario y reposición", () =>
       ["sin-stock", alertas.sinStock],
       ["bajo-minimo", alertas.bajoMinimo],
       ["vencidos", alertas.vencidos],
-      ["por-vencer", alertas.porVencer],
+      ["rojo", alertas.rojo],
+      ["amarillo", alertas.amarillo],
     ] as const) {
       await page.goto(`/alertas?tab=${tab}`);
       await expect(page.getByRole("main").locator("tbody tr")).toHaveCount(esperado);
     }
-    // Tramos excluyentes de vencimiento: 30 + 60 + 90 = total por vencer.
-    let porTramos = 0;
-    for (const tramo of ["30", "60", "90"]) {
-      await page.goto(`/alertas?tab=por-vencer&tramo=${tramo}`);
-      await expect(page.getByRole("heading", { level: 1, name: "Alertas" })).toBeVisible();
-      const filas = await page.getByRole("main").locator("tbody tr").count();
-      if (tramo === "30") expect(filas).toBe(panel.vencen30);
-      porTramos += filas;
-    }
-    expect(porTramos).toBe(alertas.porVencer);
 
     // Inventario de un solo centro: los filtros de estado dan los mismos conteos que las alertas.
     expect(await contadorDeInventario(page, "SIN_STOCK")).toBe(alertas.sinStock);
     expect(await contadorDeInventario(page, "BAJO_MINIMO")).toBe(alertas.bajoMinimo);
+    // Cada tarjeta del semáforo lleva al inventario filtrado por su color, con el mismo n.º de insumos.
+    for (const color of ["vencido", "rojo", "amarillo"] as const) {
+      expect(panel[color].href).toBe(`/inventario?semaforo=${color}`);
+      await page.goto(panel[color].href as string);
+      const texto = await page.getByRole("main").getByRole("status").filter({ hasText: /insumos?/ }).locator("strong").innerText();
+      expect(Number(texto.replace(/\./g, "")), `insumos con lotes en ${color}`).toBe(panel[color].insumos);
+    }
     // (Otros tests pueden agregar insumos a este centro mientras se cuenta: se reintenta.)
     await expect(async () => {
       const total = await contadorDeInventario(page, "");
       const suficientes = await contadorDeInventario(page, "OK");
       expect(alertas.sinStock + alertas.bajoMinimo + suficientes).toBe(total);
     }).toPass({ timeout: 30_000 });
+
+    // Enlaces antiguos del inventario: se redirigen al filtro de semáforo equivalente.
+    await page.goto("/inventario?estado=POR_VENCER");
+    await expect(page).toHaveURL(/\/inventario\?semaforo=rojo(%2C|,)amarillo$/);
+    await page.goto("/inventario?estado=VENCIDO&q=x");
+    await expect(page).toHaveURL(/\/inventario\?q=x&semaforo=vencido$/);
 
     // Lista de reposición = sin stock + bajo mínimo.
     await page.goto("/alertas/reposicion");
@@ -121,7 +140,7 @@ test.describe("Coherencia entre panel, alertas, inventario y reposición", () =>
     const pluralFaltante = new RegExp(`(?<![\\d.,])(?!1\\s)(\\d[\\d.]*)\\s+(${singulares})(?![\\p{L}])`, "giu");
     const singularFaltante = new RegExp(`(?<![\\d.,])1\\s+(${plurales})(?![\\p{L}])`, "giu");
     let cantidadesVistas = 0;
-    for (const ruta of ["/alertas?tab=sin-stock", "/alertas?tab=bajo-minimo", "/alertas?tab=vencidos", "/alertas?tab=por-vencer", "/panel", "/alertas/reposicion", "/inventario"]) {
+    for (const ruta of ["/alertas?tab=sin-stock", "/alertas?tab=bajo-minimo", "/alertas?tab=vencidos", "/alertas?tab=rojo", "/alertas?tab=amarillo", "/panel", "/alertas/reposicion", "/inventario"]) {
       await page.goto(ruta);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
       const texto = (await page.getByRole("main").innerText()).replace(/\s+/g, " ");

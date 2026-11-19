@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { redirect } from "next/navigation";
 import { buttonClasses, PageHeader } from "@/components/ui";
+import { escribirSemaforo, ESTADOS_STOCK, leerSemaforo } from "@/lib/estados";
+import { construirHref } from "@/lib/parametros-url";
 import { enumParam, paginaParam, textoParam } from "@/lib/parametros";
 import { fraseAlcanceTotal, puede } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { esErrorDominio } from "@/server/errores";
 import {
   detalleInsumo,
-  FILTROS_ESTADO_INVENTARIO,
   listarCategorias,
   listarInventario,
   listarUbicaciones,
@@ -26,12 +28,21 @@ export default async function PaginaInventario({ searchParams }: PageProps<"/inv
   const sp = await searchParams;
   const verId = textoParam(sp.ver);
 
+  // Enlaces antiguos: `?estado=POR_VENCER|VENCIDO` ahora es el filtro de semáforo.
+  const estadoPedido = textoParam(sp.estado);
+  if (estadoPedido === "POR_VENCER" || estadoPedido === "VENCIDO") {
+    const resto: Record<string, string | undefined> = {};
+    for (const clave of ["q", "categoria", "ubicacion", "orden", "ver"] as const) resto[clave] = textoParam(sp[clave]) ?? undefined;
+    redirect(construirHref("/inventario", { ...resto, semaforo: estadoPedido === "VENCIDO" ? "vencido" : "rojo,amarillo" }));
+  }
+
   const [categorias, ubicaciones] = await Promise.all([listarCategorias(actor), listarUbicaciones(actor, { centroId })]);
   const filtros = {
     q: textoParam(sp.q) ?? "",
     categoria: categorias.find((c) => c.id === textoParam(sp.categoria))?.id ?? "",
     ubicacion: ubicaciones.find((u) => u.id === textoParam(sp.ubicacion))?.id ?? "",
-    estado: enumParam(sp.estado, FILTROS_ESTADO_INVENTARIO) ?? "",
+    estado: enumParam(sp.estado, ESTADOS_STOCK) ?? "",
+    semaforo: escribirSemaforo(leerSemaforo(textoParam(sp.semaforo))) ?? "",
     orden: enumParam(sp.orden, ORDENES_INVENTARIO) ?? "",
   } as const;
 
@@ -42,6 +53,7 @@ export default async function PaginaInventario({ searchParams }: PageProps<"/inv
       categoriaId: filtros.categoria,
       ubicacionId: filtros.ubicacion,
       estado: filtros.estado || null,
+      semaforo: leerSemaforo(filtros.semaforo),
       orden: filtros.orden || null,
       pagina: paginaParam(sp.pagina),
     }),

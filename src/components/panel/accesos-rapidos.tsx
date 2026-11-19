@@ -9,9 +9,11 @@ import {
   ChevronRight,
   ClipboardList,
   History,
+  ScanBarcode,
   SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
+import { BotonEscanear } from "@/components/escaner/boton-escanear";
 import { cn } from "@/lib/cn";
 import { puede, type Permiso, type Rol } from "@/lib/permisos";
 
@@ -29,6 +31,15 @@ const REGISTRAR: Acceso[] = [
   { href: "/movimientos/retiro", titulo: "Registrar retiro", detalle: "Sacar insumos para su uso", icono: ArrowUpFromLine, permiso: "movimientos:retiro" },
 ];
 
+/** Escanear con la cámara (o un lector) para registrar un ingreso. */
+const ESCANEAR: Acceso = {
+  href: "/movimientos/escanear",
+  titulo: "Escanear para ingresar",
+  detalle: "Leer el código del envase",
+  icono: ScanBarcode,
+  permiso: "movimientos:ingreso",
+};
+
 const OTROS: Acceso[] = [
   { href: "/movimientos/traslado", titulo: "Traslado", detalle: "Mover stock entre ubicaciones", icono: ArrowLeftRight, permiso: "movimientos:traslado" },
   { href: "/movimientos/ajuste", titulo: "Ajuste o merma", detalle: "Corregir stock o dar de baja", icono: SlidersHorizontal, permiso: "movimientos:ajuste" },
@@ -38,6 +49,34 @@ const OTROS: Acceso[] = [
   { href: "/movimientos", titulo: "Historial", detalle: "Todos los movimientos", icono: History, permiso: "movimientos:ver" },
   { href: "/reportes", titulo: "Reportes", detalle: "Consumo, cobertura y exportaciones", icono: ChartColumn, permiso: "reportes:ver" },
 ];
+
+/**
+ * Botón grande "Escanear" de la pantalla principal en celular y tablet: abre la
+ * cámara ahí mismo y, al leer el código, lleva al ingreso con el insumo, el lote
+ * y el vencimiento ya puestos. En escritorio (sin cámara a mano) el acceso está
+ * en "Accesos rápidos". Solo para quien puede registrar ingresos.
+ */
+export function BotonEscanearPanel({ rol, className }: { rol: Rol; className?: string }) {
+  if (!puede(rol, ESCANEAR.permiso)) return null;
+  return (
+    <BotonEscanear
+      data-accion="escanear"
+      className={cn(
+        "group flex min-h-[4.5rem] w-full items-center gap-4 rounded-tarjeta border border-marca-700 bg-marca-700 px-4 py-3 text-left text-white shadow-tarjeta transition-colors hover:bg-marca-800 active:bg-marca-900 xl:hidden",
+        className,
+      )}
+    >
+      <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-white/15">
+        <ScanBarcode className="size-7" aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-lg leading-tight font-semibold">Escanear</span>
+        <span className="block text-sm text-white/90">Ingresar un producto con la cámara</span>
+      </span>
+      <ChevronRight className="size-5 shrink-0 text-white/80" aria-hidden />
+    </BotonEscanear>
+  );
+}
 
 /**
  * Botones grandes de Ingreso y Retiro (lo que más hace un bodeguero). No se
@@ -82,7 +121,7 @@ export function AccionesPrincipales({ rol, className }: { rol: Rol; className?: 
 
 /** Lista de accesos según los permisos del rol (el visitante solo ve consultas). */
 export function AccesosRapidos({ rol, incluirRegistro = false }: { rol: Rol; incluirRegistro?: boolean }) {
-  const accesos = [...(incluirRegistro ? REGISTRAR : []), ...OTROS].filter((a) => puede(rol, a.permiso));
+  const accesos = [...(incluirRegistro ? REGISTRAR : []), ESCANEAR, ...OTROS].filter((a) => puede(rol, a.permiso));
   return (
     <nav aria-label="Accesos rápidos del panel">
       <ul className="-mx-2">

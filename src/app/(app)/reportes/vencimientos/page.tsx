@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { CalendarCheck2, CalendarX2, Trash2 } from "lucide-react";
+import { CalendarCheck2, Trash2 } from "lucide-react";
 import { BarraFiltros, FiltroBusqueda, FiltroCentro, FiltroPeriodo, FiltroSelect } from "@/components/admin/filtros-url";
 import {
   AccionesReporte,
@@ -12,17 +12,18 @@ import {
   VistaReporte,
 } from "@/components/reportes/piezas";
 import {
-  Badge,
   BadgeEstadoVencimiento,
   Card,
   CardHeader,
   DataTable,
   EmptyState,
+  LeyendaSemaforo,
   PageHeader,
   Pagination,
   type Columna,
 } from "@/components/ui";
-import { describirVencimiento, formatearDia, formatearFechaHora } from "@/lib/fechas";
+import { escribirSemaforo, ETIQUETA_ESTADO_VENCIMIENTO, OPCIONES_FILTRO_SEMAFORO } from "@/lib/estados";
+import { formatearDia, formatearFechaHora } from "@/lib/fechas";
 import { leerFiltros } from "@/lib/filtros-reportes";
 import { formatearCLP, formatearNumero, pluralizar } from "@/lib/formato";
 import { construirHref, leerPagina, resolverCentro } from "@/lib/parametros-url";
@@ -52,13 +53,7 @@ function columnasVencimientos(mostrarCentro: boolean): Columna<FilaExistencia>[]
       movil: "destacado",
       celda: (f) => (
         <span className="inline-flex flex-col items-end gap-1 md:items-start">
-          {f.diasParaVencer !== null && f.diasParaVencer < 0 ? (
-            <Badge tono="peligro" icono={CalendarX2}>
-              {describirVencimiento(f.diasParaVencer)}
-            </Badge>
-          ) : (
-            <BadgeEstadoVencimiento estado="POR_VENCER" dias={f.diasParaVencer} />
-          )}
+          <BadgeEstadoVencimiento estado={f.estadoVencimiento} dias={f.diasParaVencer} />
           <span className="cifras text-xs whitespace-nowrap text-texto-suave">{formatearDia(f.fechaVencimiento)}</span>
         </span>
       ),
@@ -131,7 +126,7 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
   const f = leerFiltros(sp);
   const centroId = resolverCentro(centroActivoId, centros, f.centro);
   const [vencimientos, mermas] = await Promise.all([
-    reporteVencimientos(actor, { centroId, texto: f.texto, dias: f.dias, pagina: f.pagina, porPagina: 15 }),
+    reporteVencimientos(actor, { centroId, texto: f.texto, semaforo: f.semaforo, pagina: f.pagina, porPagina: 15 }),
     reporteMermas(actor, {
       centroId,
       texto: f.texto,
@@ -147,10 +142,12 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
   // Los insumos se cuentan en unidades de medida distintas: los motivos se comparan por número de bajas.
   const motivos = [...mermas.porMotivo].sort((a, b) => b.movimientos - a.movimientos || a.motivo.localeCompare(b.motivo, "es"));
   const principalMotivo = motivos[0];
+  const colores = vencimientos.semaforo.map((c) => (c === "VENCIDO" ? "vencidos" : ETIQUETA_ESTADO_VENCIMIENTO[c].toLowerCase()));
+  const listaColores = colores.length > 1 ? `${colores.slice(0, -1).join(", ")} y ${colores.at(-1)}` : (colores[0] ?? "");
 
   return (
     <VistaReporte
-      contexto={`${alcance} · Vencimientos a ${vencimientos.horizonte} días y mermas del ${formatearDia(periodo.desde)} al ${formatearDia(periodo.hasta)}`}
+      contexto={`${alcance} · Vencimientos (${listaColores}) y mermas del ${formatearDia(periodo.desde)} al ${formatearDia(periodo.hasta)}`}
       generadoPor={sesion.usuario.nombre}
       generadoEl={formatearFechaHora(new Date())}
     >
@@ -163,17 +160,14 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
       />
       <NavReportes activo="vencimientos" />
 
-      <BarraFiltros parametros={["q", "centro", "dias", "desde", "hasta"]}>
+      <BarraFiltros parametros={["q", "centro", "semaforo", "desde", "hasta"]}>
         <FiltroBusqueda placeholder="Insumo, código o lote…" />
         <FiltroCentro centroActivoId={centroActivoId} centros={centros} />
         <FiltroSelect
-          parametro="dias"
-          etiqueta="Vencimientos hasta"
-          opciones={[
-            { value: "90", label: "Próximos 90 días" },
-            { value: "60", label: "Próximos 60 días" },
-            { value: "30", label: "Próximos 30 días" },
-          ]}
+          parametro="semaforo"
+          etiqueta="Semáforo"
+          todos="Vencidos, rojo y amarillo"
+          opciones={[...OPCIONES_FILTRO_SEMAFORO]}
         />
         <FiltroPeriodo de="Mermas" desde={periodo.desde} hasta={periodo.hasta} />
       </BarraFiltros>
@@ -182,19 +176,20 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
         <Card relleno={false} className="overflow-hidden">
           <CardHeader
             className="mb-0 p-4 sm:p-5"
-            titulo={<span id="titulo-vencimientos">Vencimientos próximos</span>}
-            descripcion={`Lotes con stock vencidos o que vencen en ${vencimientos.horizonte} días o menos`}
+            titulo={<span id="titulo-vencimientos">Vencimientos por semáforo</span>}
+            descripcion={`Lotes con stock: ${listaColores} · del que vence antes al que vence después`}
             acciones={
               <span className="print:hidden">
                 <BotonExportar
                   variante="secundario"
                   de="vencimientos"
-                  href={construirHref("/reportes/exportar/vencimientos", { centro: centroId, q: f.texto, dias: vencimientos.horizonte })}
+                  href={construirHref("/reportes/exportar/vencimientos", { centro: centroId, q: f.texto, semaforo: escribirSemaforo(f.semaforo) })}
                 />
               </span>
             }
           />
           <div className="px-4 sm:px-5">
+            <LeyendaSemaforo className="mb-3 print:hidden" />
             <Cifras
               cifras={[
                 { etiqueta: "Lotes por ubicación", valor: formatearNumero(vencimientos.totales.filas) },
@@ -205,7 +200,7 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
           </div>
           <DataTable
             className="border-t border-borde"
-            titulo="Lotes vencidos o por vencer"
+            titulo="Lotes por semáforo de vencimiento"
             columnas={columnasVencimientos(mostrarCentro)}
             filas={vencimientos.items}
             claveFila={(x) => x.existenciaId}
@@ -214,8 +209,8 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
               <EmptyState
                 compacto
                 icono={CalendarCheck2}
-                titulo="Nada vencido ni por vencer"
-                descripcion="Ningún lote con stock vence dentro del horizonte elegido."
+                titulo="Ningún lote con ese semáforo"
+                descripcion="No hay lotes con stock que coincidan con el semáforo y los filtros elegidos."
               />
             }
           />

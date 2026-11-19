@@ -3,13 +3,15 @@ import { Prisma } from "@prisma/client";
 import { calcularCobertura, DIAS_COBERTURA_BAJA, DIAS_COBERTURA_CRITICA } from "@/lib/abastecimiento";
 import { nombreArchivoCsv, type CeldaCsv } from "@/lib/csv";
 import {
-  DIAS_POR_VENCER,
+  calcularEstadoVencimiento,
+  ETIQUETA_ESTADO_VENCIMIENTO,
   ETIQUETA_TIPO_MOVIMIENTO,
+  limitesSemaforo,
   SIGNO_MOVIMIENTO,
   TIPOS_MOVIMIENTO,
-  TRAMOS_VENCIMIENTO,
+  type ColorSemaforo,
+  type EstadoVencimiento,
   type TipoMovimiento,
-  type TramoVencimiento,
 } from "@/lib/estados";
 import {
   dateADia,
@@ -36,6 +38,7 @@ import {
   type FiltrosMovimientos,
 } from "./consultas-movimientos";
 import { auditarExportacion, MAXIMO_FILAS_EXPORTACION, type ExportacionCsv } from "./exportaciones";
+import { sqlEsAlgunColor } from "./semaforo";
 
 /**
  * Reportes (permiso `reportes:ver`, más acceso al centro si se indica).
@@ -114,6 +117,8 @@ export interface FiltrosExistencias extends Paginacion {
   categoriaId?: string | null;
   /** Busca en nombre y código del insumo y en el número de lote (sin tildes). */
   texto?: string | null;
+  /** Solo lotes de estos colores del semáforo (vacío = todos, también los sin vencimiento). */
+  semaforo?: readonly ColorSemaforo[] | null;
 }
 
 export interface FilaExistencia {
@@ -132,6 +137,8 @@ export interface FilaExistencia {
   fechaVencimiento: DiaISO | null;
   /** Días para vencer (negativo si ya venció); `null` sin fecha. */
   diasParaVencer: number | null;
+  /** Color del semáforo del lote. */
+  estadoVencimiento: EstadoVencimiento;
   cantidad: number;
   /** Costo promedio ponderado de los ingresos del lote; `null` si no se registró costo. */
   costoUnitario: number | null;
@@ -174,14 +181,14 @@ interface ConsultaExistencias {
   centros: string[] | null;
   categoriaId?: string | null;
   texto?: string | null;
-  /** Solo lotes con vencimiento ≤ este día (reporte de vencimientos). */
-  venceHasta?: DiaISO | null;
+  /** Solo lotes de estos colores del semáforo (vacío o ausente = todos). */
+  semaforo?: readonly ColorSemaforo[] | null;
   orden: "UBICACION" | "VENCIMIENTO";
   limite: number;
   saltar: number;
 }
 
-function sqlBaseExistencias(c: ConsultaExistencias): Prisma.Sql {
+function sqlBaseExistencias(c: ConsultaExistencias, hoy: DiaISO): Prisma.Sql {
   const patron = patronDe(c.texto);
   return Prisma.sql`
     SELECT
@@ -199,7 +206,7 @@ function sqlBaseExistencias(c: ConsultaExistencias): Prisma.Sql {
     WHERE e."cantidad" > 0
       ${filtroCentros(Prisma.sql`u."centroId"`, c.centros)}
       ${c.categoriaId ? Prisma.sql`AND i."categoriaId" = ${c.categoriaId}` : Prisma.empty}
-      ${c.venceHasta ? Prisma.sql`AND l."fechaVencimiento" <= ${c.venceHasta}::date` : Prisma.empty}
+      AND ${sqlEsAlgunColor(Prisma.sql`l."fechaVencimiento"`, c.semaforo, limitesSemaforo(hoy))}
       ${
         patron
           ? Prisma.sql`AND (
@@ -216,7 +223,7 @@ async function consultarExistencias(
   c: ConsultaExistencias,
   hoy: DiaISO,
 ): Promise<{ filas: FilaExistencia[]; totales: TotalesExistencias }> {
-  const base = sqlBaseExistencias(c);
+  const base = sqlBaseExistencias(c, hoy);
   const orden =
     c.orden === "VENCIMIENTO"
       ? Prisma.sql`"fechaVencimiento" ASC NULLS LAST, "nombre" ASC, centro ASC, ubicacion ASC, "existenciaId" ASC`
@@ -272,6 +279,7 @@ async function consultarExistencias(
       numeroLote: f.numeroLote,
       fechaVencimiento: fecha,
       diasParaVencer: fecha ? diasEntre(hoy, fecha) : null,
+      estadoVencimiento: calcularEstadoVencimiento(fecha, hoy),
       cantidad: f.cantidad,
       costoUnitario: costo,
       valor: f.costo === null ? null : Math.round(f.cantidad * f.costo),
@@ -299,7 +307,15 @@ export async function reporteExistencias(
   const centros = alcanceDeCentros(actor, filtros.centroId);
   const { pagina, porPagina, saltar } = normalizarPaginacion(filtros);
   const { filas, totales } = await consultarExistencias(
-    { centros, categoriaId: filtros.categoriaId, texto: filtros.texto, orden: "UBICACION", limite: porPagina, saltar },
+    {
+      centros,
+      categoriaId: filtros.categoriaId,
+      texto: filtros.texto,
+      semaforo: filtros.semaforo,
+      orden: "UBICACION",
+      limite: porPagina,
+      saltar,
+    },
     hoyEnSantiago(opciones.ahora),
   );
   return { ...paginar(filas, totales.filas, pagina, porPagina), totales };
@@ -315,6 +331,7 @@ const ENCABEZADOS_EXISTENCIAS = [
   "Lote",
   "Vencimiento",
   "Días para vencer",
+  "Semáforo",
   "Cantidad",
   "Costo unitario (CLP)",
   "Valor (CLP)",
@@ -331,6 +348,7 @@ function celdasExistencia(f: FilaExistencia): CeldaCsv[] {
     f.numeroLote,
     f.fechaVencimiento ? formatearDia(f.fechaVencimiento) : "",
     f.diasParaVencer,
+    ETIQUETA_ESTADO_VENCIMIENTO[f.estadoVencimiento],
     f.cantidad,
     f.costoUnitario,
     f.valor,
@@ -351,6 +369,7 @@ export async function exportarExistencias(
       centros,
       categoriaId: filtros.categoriaId,
       texto: filtros.texto,
+      semaforo: filtros.semaforo,
       orden: "UBICACION",
       limite: MAXIMO_FILAS_EXPORTACION + 1,
       saltar: 0,
@@ -361,6 +380,7 @@ export async function exportarExistencias(
     centroId: filtros.centroId ?? null,
     categoriaId: filtros.categoriaId ?? null,
     texto: textoDeBusqueda(filtros.texto),
+    semaforo: filtros.semaforo?.length ? [...filtros.semaforo] : null,
     filas: filas.length,
   });
   return {
@@ -371,21 +391,26 @@ export async function exportarExistencias(
   };
 }
 
-export interface FiltrosVencimientos extends FiltrosExistencias {
-  /** Horizonte en días: 30, 60 o 90 (por defecto 90). Siempre incluye lo ya vencido. */
-  dias?: number | null;
-}
+/**
+ * Filtros del reporte de vencimientos. Sin `semaforo` muestra lo que requiere
+ * atención: vencidos, rojo y amarillo (`SEMAFORO_VENCIMIENTOS_DEFECTO`).
+ */
+export type FiltrosVencimientos = FiltrosExistencias;
+
+/** Colores que lista el reporte de vencimientos si no se pide otra cosa. */
+export const SEMAFORO_VENCIMIENTOS_DEFECTO: readonly ColorSemaforo[] = ["VENCIDO", "ROJO", "AMARILLO"];
 
 export interface ReporteVencimientos extends Paginado<FilaExistencia> {
   totales: TotalesExistencias;
-  horizonte: TramoVencimiento;
+  /** Colores efectivamente listados. */
+  semaforo: readonly ColorSemaforo[];
 }
 
-function horizonteValido(dias?: number | null): TramoVencimiento {
-  return TRAMOS_VENCIMIENTO.find((t) => t === dias) ?? DIAS_POR_VENCER;
+function semaforoVencimientos(colores?: readonly ColorSemaforo[] | null): readonly ColorSemaforo[] {
+  return colores && colores.length > 0 ? colores : SEMAFORO_VENCIMIENTOS_DEFECTO;
 }
 
-/** (d) Lotes con stock vencidos o que vencen dentro del horizonte, del más urgente al menos. */
+/** (d) Lotes con stock por color del semáforo, del que vence antes al que vence después. */
 export async function reporteVencimientos(
   actor: Actor,
   filtros: FiltrosVencimientos = {},
@@ -394,21 +419,21 @@ export async function reporteVencimientos(
   verificarPermiso(actor, "reportes:ver");
   const centros = alcanceDeCentros(actor, filtros.centroId);
   const hoy = hoyEnSantiago(opciones.ahora);
-  const horizonte = horizonteValido(filtros.dias);
+  const semaforo = semaforoVencimientos(filtros.semaforo);
   const { pagina, porPagina, saltar } = normalizarPaginacion(filtros);
   const { filas, totales } = await consultarExistencias(
     {
       centros,
       categoriaId: filtros.categoriaId,
       texto: filtros.texto,
-      venceHasta: sumarDias(hoy, horizonte),
+      semaforo,
       orden: "VENCIMIENTO",
       limite: porPagina,
       saltar,
     },
     hoy,
   );
-  return { ...paginar(filas, totales.filas, pagina, porPagina), totales, horizonte };
+  return { ...paginar(filas, totales.filas, pagina, porPagina), totales, semaforo };
 }
 
 export async function exportarVencimientos(
@@ -419,13 +444,13 @@ export async function exportarVencimientos(
   verificarPermiso(actor, "reportes:ver");
   const centros = alcanceDeCentros(actor, filtros.centroId);
   const hoy = hoyEnSantiago(opciones.ahora);
-  const horizonte = horizonteValido(filtros.dias);
+  const semaforo = semaforoVencimientos(filtros.semaforo);
   const { filas } = await consultarExistencias(
     {
       centros,
       categoriaId: filtros.categoriaId,
       texto: filtros.texto,
-      venceHasta: sumarDias(hoy, horizonte),
+      semaforo,
       orden: "VENCIMIENTO",
       limite: MAXIMO_FILAS_EXPORTACION + 1,
       saltar: 0,
@@ -436,17 +461,15 @@ export async function exportarVencimientos(
     centroId: filtros.centroId ?? null,
     categoriaId: filtros.categoriaId ?? null,
     texto: textoDeBusqueda(filtros.texto),
-    dias: horizonte,
+    semaforo: [...semaforo],
     filas: filas.length,
   });
   return {
-    archivo: nombreArchivoCsv(`vencimientos-${horizonte}-dias`, formatearDia(hoy)),
-    encabezados: [...ENCABEZADOS_EXISTENCIAS, "Estado"],
+    archivo: nombreArchivoCsv("vencimientos", formatearDia(hoy)),
+    // La columna "Semáforo" (Vencido / Rojo / Amarillo / Verde) ya viene en las existencias.
+    encabezados: ENCABEZADOS_EXISTENCIAS,
     truncada: filas.length > MAXIMO_FILAS_EXPORTACION,
-    filas: enLotes(filas, (f) => [
-      ...celdasExistencia(f),
-      f.diasParaVencer !== null && f.diasParaVencer < 0 ? "Vencido" : "Por vencer",
-    ]),
+    filas: enLotes(filas, celdasExistencia),
   };
 }
 

@@ -277,14 +277,18 @@ export interface ResumenInstitucion {
   sinStock: number;
   bajoMinimo: number;
   vencidos: number;
-  porVencer: number;
+  /** Lotes con stock en rojo (vencen en menos de 3 meses). */
+  rojo: number;
+  /** Lotes con stock en amarillo (vencen en 3 a 6 meses). */
+  amarillo: number;
   /** Desglose por centro activo (también los que no tienen alertas). */
   detalle: ResumenCentroInstitucion[];
 }
 
 /**
  * "El complejo total": una fila por institución activa con sus centros y sus
- * alertas (sin stock, bajo mínimo, lotes vencidos y por vencer), más el
+ * alertas (sin stock, bajo mínimo y el semáforo: lotes vencidos, en rojo y en
+ * amarillo), más el
  * desglose por centro. Recibe el desglose de alertas por centro que ya calculó
  * `resumenPanel` para toda la red (`ResumenPanel.porCentro`), así no se
  * recalculan las alertas. Solo para quien ve toda la red (ADMIN_RED).
@@ -317,10 +321,11 @@ export async function resumenPorInstitucion(
         sinStock: a?.sinStock ?? 0,
         bajoMinimo: a?.bajoMinimo ?? 0,
         vencidos: a?.vencidos ?? 0,
-        porVencer: a?.porVencer ?? 0,
+        rojo: a?.rojo ?? 0,
+        amarillo: a?.amarillo ?? 0,
       };
     });
-    const total = (clave: "sinStock" | "bajoMinimo" | "vencidos" | "porVencer") => detalle.reduce((s, d) => s + d[clave], 0);
+    const total = (clave: "sinStock" | "bajoMinimo" | "vencidos" | "rojo" | "amarillo") => detalle.reduce((s, d) => s + d[clave], 0);
     return {
       institucionId: i.id,
       institucion: i.nombre,
@@ -328,7 +333,8 @@ export async function resumenPorInstitucion(
       sinStock: total("sinStock"),
       bajoMinimo: total("bajoMinimo"),
       vencidos: total("vencidos"),
-      porVencer: total("porVencer"),
+      rojo: total("rojo"),
+      amarillo: total("amarillo"),
       detalle,
     };
   });

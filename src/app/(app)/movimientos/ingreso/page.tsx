@@ -3,7 +3,8 @@ import Link from "next/link";
 import { MapPinOff } from "lucide-react";
 import { buttonClasses, EmptyState, PageHeader } from "@/components/ui";
 import { hoyEnSantiago } from "@/lib/fechas";
-import { textoParam } from "@/lib/parametros";
+import { normalizarNumeroLote } from "@/lib/esquemas/movimientos";
+import { diaParam, textoParam } from "@/lib/parametros";
 import { fraseAlcanceTotal, puede } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { buscarInsumos, listarProveedoresActivos, listarUbicaciones, obtenerOpcionInsumo } from "@/server/servicios";
@@ -28,6 +29,10 @@ export default async function PaginaIngreso({ searchParams }: PageProps<"/movimi
     insumoParam ? obtenerOpcionInsumo(actor, insumoParam) : null,
   ]);
   const ubicacionParam = textoParam(sp.ubicacion);
+  // Datos leídos de un código GS1 (escáner): se validan aquí; el formulario los muestra para revisar.
+  const loteParam = textoParam(sp.lote);
+  const hoy = hoyEnSantiago();
+  const venceParam = diaParam(sp.vence);
 
   return (
     <>
@@ -61,12 +66,15 @@ export default async function PaginaIngreso({ searchParams }: PageProps<"/movimi
           insumosIniciales={insumosIniciales}
           centroId={centroId}
           mostrarCentro={centro === null}
-          hoy={hoyEnSantiago()}
+          hoy={hoy}
           puedeVerMovimientos={puede(actor.rol, "movimientos:ver")}
           inicial={{
             insumo: insumoInicial?.activo ? insumoInicial : null,
             ubicacionId: ubicaciones.some((u) => u.id === ubicacionParam) ? ubicacionParam : null,
-            numeroLote: textoParam(sp.lote),
+            numeroLote: loteParam ? normalizarNumeroLote(loteParam).slice(0, 60) || null : null,
+            fechaVencimiento: venceParam,
+            fechaFabricacion: diaParam(sp.fab),
+            escaneado: textoParam(sp.escaneado) === "1",
           }}
         />
       )}
