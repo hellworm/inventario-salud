@@ -35,15 +35,38 @@ export const FILTROS_ESTADO_INVENTARIO = [
 ] as const;
 export type FiltroEstadoInventario = (typeof FILTROS_ESTADO_INVENTARIO)[number];
 
+/** Criterios de orden de la grilla de inventario. */
+export const ORDENES_INVENTARIO = [
+  "NOMBRE",
+  "CODIGO",
+  "DISPONIBLE_ASC",
+  "DISPONIBLE_DESC",
+  "VENCIMIENTO",
+] as const;
+export type OrdenInventario = (typeof ORDENES_INVENTARIO)[number];
+
+const ORDEN_SQL: Readonly<Record<OrdenInventario, Prisma.Sql>> = {
+  NOMBRE: Prisma.sql`b."nombre" ASC`,
+  CODIGO: Prisma.sql`b."codigo" ASC`,
+  DISPONIBLE_ASC: Prisma.sql`(b.total - b.vencido) ASC, b."nombre" ASC`,
+  DISPONIBLE_DESC: Prisma.sql`(b.total - b.vencido) DESC, b."nombre" ASC`,
+  VENCIMIENTO: Prisma.sql`b.proximo ASC NULLS LAST, b."nombre" ASC`,
+};
+
 export interface FiltrosInventario {
   /** Centro a consultar. `null`/omitido = todos los centros visibles del actor. */
   centroId?: string | null;
   /** Limita a insumos con stock (> 0) en esa ubicación. */
   ubicacionId?: string | null;
   categoriaId?: string | null;
-  /** Busca en nombre, código, código de barras y fabricante (sin tildes). */
+  /**
+   * Busca en nombre, código, código de barras y fabricante (sin tildes), y en
+   * el número de los lotes con stock dentro del alcance.
+   */
   texto?: string | null;
   estado?: FiltroEstadoInventario | null;
+  /** Orden del listado (por defecto, por nombre). */
+  orden?: OrdenInventario | null;
   pagina?: number;
   porPagina?: number;
 }
@@ -139,8 +162,18 @@ export async function listarInventario(
       OR b."codigo" ILIKE ${patron}
       OR b."codigoBarras" ILIKE ${patron}
       OR unaccent(COALESCE(b."fabricante", '')) ILIKE unaccent(${patron})
+      OR EXISTS (
+        SELECT 1
+        FROM "lotes" lb
+        JOIN "existencias" eb ON eb."loteId" = lb."id" AND eb."cantidad" > 0
+        JOIN "ubicaciones" ub ON ub."id" = eb."ubicacionId"
+        JOIN "centros" cb ON cb."id" = ub."centroId" AND cb."activo"
+        WHERE lb."insumoId" = b."id" AND lb."numeroLote" ILIKE ${patron}
+          ${filtroCentros(Prisma.sql`ub."centroId"`, centros)}
+      )
     )`);
   }
+  const orden = (filtros.orden && ORDEN_SQL[filtros.orden]) || ORDEN_SQL.NOMBRE;
   switch (filtros.estado) {
     case "SIN_STOCK":
     case "BAJO_MINIMO":
@@ -216,7 +249,7 @@ export async function listarInventario(
     SELECT b.*, (COUNT(*) OVER ())::int AS total_filas
     FROM b
     WHERE ${Prisma.join(condiciones, " AND ")}
-    ORDER BY b."nombre" ASC, b."id" ASC
+    ORDER BY ${orden}, b."id" ASC
     LIMIT ${porPagina} OFFSET ${saltar}
   `);
 

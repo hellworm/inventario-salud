@@ -209,3 +209,32 @@ export async function lotesDeInsumo(
     fechaVencimiento: l.fechaVencimiento ? dateADia(l.fechaVencimiento) : null,
   }));
 }
+
+/**
+ * Un insumo del catálogo como opción de formulario (para pre-rellenar desde un
+ * enlace). Devuelve `null` si no existe. Permiso: `catalogo:ver`.
+ */
+export async function obtenerOpcionInsumo(
+  actor: Actor,
+  insumoId: string,
+): Promise<(OpcionInsumo & { activo: boolean }) | null> {
+  verificarPermiso(actor, "catalogo:ver");
+  const fila = await db.insumo.findUnique({
+    where: { id: insumoId },
+    select: {
+      id: true,
+      codigo: true,
+      nombre: true,
+      presentacion: true,
+      unidadMedida: true,
+      controlaVencimiento: true,
+      requiereCadenaFrio: true,
+      codigoBarras: true,
+      activo: true,
+      categoria: { select: { nombre: true } },
+    },
+  });
+  if (!fila) return null;
+  const { categoria, ...resto } = fila;
+  return { ...resto, categoria: categoria.nombre };
+}

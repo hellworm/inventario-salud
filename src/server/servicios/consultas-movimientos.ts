@@ -190,3 +190,39 @@ export async function obtenerTraslado(actor: Actor, trasladoGrupoId: string): Pr
   });
   return filas.map(aFila);
 }
+
+/**
+ * Un movimiento por id, con todos sus campos (detalle del historial).
+ * Devuelve `null` si no existe o pertenece a un centro fuera del alcance.
+ */
+export async function obtenerMovimiento(actor: Actor, movimientoId: string): Promise<FilaMovimiento | null> {
+  verificarPermiso(actor, "movimientos:ver");
+  const centros = alcanceDeCentros(actor);
+  const fila = await db.movimiento.findFirst({
+    where: { id: movimientoId, ...(centros === null ? {} : { centroId: { in: centros } }) },
+    select: SELECCION,
+  });
+  return fila ? aFila(fila) : null;
+}
+
+export interface OpcionUsuarioMovimientos {
+  id: string;
+  nombre: string;
+}
+
+/**
+ * Usuarios que registraron movimientos dentro del alcance (para el filtro
+ * "Usuario" del historial). Permiso: `movimientos:ver`.
+ */
+export async function usuariosConMovimientos(
+  actor: Actor,
+  filtros: { centroId?: string | null } = {},
+): Promise<OpcionUsuarioMovimientos[]> {
+  verificarPermiso(actor, "movimientos:ver");
+  const centros = alcanceDeCentros(actor, filtros.centroId);
+  return db.usuario.findMany({
+    where: { movimientos: { some: centros === null ? {} : { centroId: { in: centros } } } },
+    select: { id: true, nombre: true },
+    orderBy: { nombre: "asc" },
+  });
+}
