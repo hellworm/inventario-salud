@@ -1,0 +1,138 @@
+# RedInsumos en un servidor con Docker Compose.
+#
+#   cp .env.example .env       # y completa POSTGRES_PASSWORD (y DOMINIO si usas HTTPS)
+#   docker compose up -d       # construye, migra la base y levanta todo
+#
+# Con HTTPS automático (recomendado en producción; requiere DOMINIO en .env):
+#   docker compose --profile https up -d
+#
+# Guía completa: docs/DESPLIEGUE.md
+
+name: redinsumos
+
+x-database-url: &database-url "postgresql://${POSTGRES_USER:-redinsumos}:${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en el archivo .env}@db:5432/${POSTGRES_DB:-redinsumos}?schema=public"
+
+services:
+  # Base de datos. No publica puertos: solo la ven los demás servicios.
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-redinsumos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Falta POSTGRES_PASSWORD en el archivo .env}
+      POSTGRES_DB: ${POSTGRES_DB:-redinsumos}
+      TZ: America/Santiago
+    volumes:
+      - datos_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # Aplica las migraciones pendientes y termina. La app espera a que finalice bien.
+  migrar:
+    build: &build-herramientas
+      context: .
+      target: herramientas
+    image: redinsumos-herramientas
+    restart: "no"
+    command: ["npx", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: *database-url
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Aplicación web.
+  app:
+    build:
+      context: .
+      target: app
+    image: redinsumos-app
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: *database-url
+      SESION_HORAS: ${SESION_HORAS:-12}
+    # Solo accesible desde el propio servidor: hacia internet se publica por
+    # HTTPS mediante el proxy (perfil "https") u otro proxy inverso.
+    ports:
+      - "127.0.0.1:${PUERTO_APP:-3000}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrar:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/salud').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Mantenimiento: borra las sesiones vencidas una vez al día.
+  # También sirve para tareas puntuales, por ejemplo crear el primer administrador:
+  #   docker compose run --rm mantenimiento npm run admin:crear -- --email ana@miclinica.cl
+  mantenimiento:
+    build: *build-herramientas
+    image: redinsumos-herramientas
+    restart: unless-stopped
+    command: ["sh", "-c", "while true; do npm run --silent sesiones:limpiar || echo 'sesiones:limpiar falló; se reintenta en el próximo ciclo'; sleep 86400; done"]
+    environment:
+      DATABASE_URL: *database-url
+    depends_on:
+      db:
+        condition: service_healthy
+      migrar:
+        condition: service_completed_successfully
+
+  # Respaldo diario de la base en ./respaldos (con rotación).
+  # Restaurar: docker compose run --rm respaldo bash /scripts/restaurar.sh /respaldos/<archivo>.dump
+  respaldo:
+    image: postgres:16
+    restart: unless-stopped
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        while true; do
+          bash /scripts/respaldo.sh || echo "$$(date -u +%FT%TZ) EL RESPALDO FALLO: revisa el mensaje anterior"
+          sleep "$${RESPALDO_INTERVALO_SEGUNDOS}"
+        done
+    environment:
+      DATABASE_URL: *database-url
+      RESPALDO_DIR: /respaldos
+      RESPALDO_RETENCION_DIAS: ${RESPALDO_RETENCION_DIAS:-14}
+      RESPALDO_INTERVALO_SEGUNDOS: ${RESPALDO_INTERVALO_SEGUNDOS:-86400}
+      TZ: America/Santiago
+    volumes:
+      - ./scripts:/scripts:ro
+      - ${RESPALDO_DIR_ANFITRION:-./respaldos}:/respaldos
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Proxy inverso con HTTPS automático (Let's Encrypt). Opcional: perfil "https".
+  # Requisitos: DOMINIO en .env apuntando (DNS) a este servidor y puertos 80/443 abiertos.
+  caddy:
+    image: caddy:2
+    profiles: ["https"]
+    restart: unless-stopped
+    environment:
+      DOMINIO: ${DOMINIO:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_datos:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  datos_postgres:
+  caddy_datos:
+  caddy_config:

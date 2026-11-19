@@ -16,6 +16,10 @@
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force",
     "db:studio": "prisma studio",
+    "admin:crear": "tsx --conditions=react-server scripts/crear-admin.ts",
+    "sesiones:limpiar": "tsx --conditions=react-server scripts/limpiar-sesiones.ts",
+    "respaldo": "bash scripts/respaldo.sh",
+    "restaurar": "bash scripts/restaurar.sh",
     "postinstall": "prisma generate"
   },
   "dependencies": {

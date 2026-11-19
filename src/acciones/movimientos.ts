@@ -18,6 +18,7 @@ import {
 } from "@/lib/esquemas/movimientos";
 import type { Actor } from "@/lib/permisos";
 import { accionSegura } from "@/server/accion-segura";
+import { registrarError } from "@/server/registro";
 import {
   detalleInsumo,
   registrarAjuste,
@@ -53,7 +54,7 @@ async function stockActual(
         .reduce((s, e) => s + e.cantidad, 0),
     };
   } catch (error) {
-    console.error("[accion] no se pudo leer el stock posterior al movimiento:", error);
+    registrarError("accion", "No se pudo leer el stock posterior al movimiento.", error);
     return null;
   }
 }

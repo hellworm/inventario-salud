@@ -6,6 +6,7 @@ import { puede, type Actor, type Permiso } from "@/lib/permisos";
 import type { ErroresCampo, ResultadoAccion, ResultadoError } from "@/lib/resultado";
 import { obtenerSesion, type Sesion } from "./auth/sesion";
 import { ErrorDominio } from "./errores";
+import { registrarError } from "./registro";
 import { erroresDeZod } from "./validacion";
 
 export interface ContextoAccion<D> {
@@ -40,7 +41,7 @@ export function aResultadoError(error: unknown): ResultadoError {
     return { ok: false, error: error.message, codigo: error.codigo, ...(erroresCampo ? { erroresCampo } : {}) };
   }
   // Error inesperado: se registra en el servidor y NO se filtra al cliente.
-  console.error("[accion] error inesperado:", error);
+  registrarError("accion", "Error inesperado en una acción.", error);
   return { ok: false, error: "Ocurrió un error inesperado. Intenta nuevamente.", codigo: "ERROR_INTERNO" };
 }
 

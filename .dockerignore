@@ -1,0 +1,33 @@
+# Lo que NO entra al contexto de construcción de la imagen.
+.git
+.github
+.claude
+node_modules
+.next
+out
+build
+coverage
+test-results
+
+# Secretos y configuración local: nunca dentro de la imagen.
+.env
+.env.*
+!.env.example
+
+# Datos y respaldos
+respaldos
+*.dump
+
+# No se necesitan para construir ni operar
+docs
+tests
+vitest.config.mts
+*.md
+Dockerfile
+.dockerignore
+docker-compose*.yml
+Caddyfile
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+npm-debug.log*

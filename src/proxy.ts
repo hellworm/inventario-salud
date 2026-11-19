@@ -11,7 +11,7 @@ import { COOKIE_SESION, opcionesCookieSesion } from "@/server/auth/constantes";
  * layouts, páginas, acciones y servicios.
  */
 
-const RUTAS_PUBLICAS = ["/login"];
+const RUTAS_PUBLICAS = ["/login", "/api/salud"];
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

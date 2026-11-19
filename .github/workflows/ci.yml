@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    name: Tipos, lint, pruebas y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: medired
+          POSTGRES_PASSWORD: medired_ci
+          POSTGRES_DB: medired
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U medired -d medired"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # Credenciales desechables del contenedor de CI (no son secretos reales).
+      DATABASE_URL: postgresql://medired:medired_ci@localhost:5432/medired?schema=public
+      DATABASE_URL_TEST: postgresql://medired:medired_ci@localhost:5432/medired_test?schema=public
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Crear la base de pruebas
+        run: psql "postgresql://medired:medired_ci@localhost:5432/medired" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE medired_test'
+
+      - name: Aplicar migraciones
+        run: npx prisma migrate deploy
+
+      - name: Verificar tipos
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Pruebas
+        run: npm test
+
+      - name: Build de producción
+        run: npm run build
+
+  imagen:
+    name: Imagen Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Construir imagen de la aplicación
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: app
+          push: false
+          load: true
+          tags: redinsumos-app:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Construir imagen de herramientas
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: herramientas
+          push: false
+          tags: redinsumos-herramientas:ci
+          cache-from: type=gha
+
+      - name: Validar docker-compose.yml
+        run: POSTGRES_PASSWORD=clave_de_ci docker compose config --quiet
