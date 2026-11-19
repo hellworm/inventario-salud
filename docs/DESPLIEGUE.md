@@ -262,7 +262,9 @@ al repositorio ni lo envíes por correo o chat.
 
 ## 5. Primer administrador
 
-Una instalación nueva no tiene usuarios. El primero se crea desde la línea de comandos:
+Una instalación nueva no tiene usuarios ni instituciones. El primero es el **administrador de la
+red** (rol `ADMIN_RED`: el operador de la plataforma, que ve y gestiona todas las instituciones) y
+se crea desde la línea de comandos:
 
 ```bash
 # Con Docker Compose
@@ -275,7 +277,7 @@ npm run admin:crear -- --email ana@miclinica.cl --nombre "Ana Pérez"
 Resultado:
 
 ```
-✔ Administrador creado.
+✔ Administrador de la red creado. Desde Administración → Instituciones podrá crear las instituciones y a sus administradores.
 
     Correo electrónico:   ana@miclinica.cl
     Contraseña temporal:  Abcd-Efgh-2345-Jkmn
@@ -294,8 +296,18 @@ Resultado:
 - **Recuperar el acceso** de un administrador (olvidó la clave o quedó bloqueado y no hay otro):
   el mismo comando con `--restablecer`.
 
-Desde ahí, el resto de los usuarios, centros e insumos se crean en la aplicación (menú
-**Administración**). Ver [`OPERACION.md`](OPERACION.md).
+Desde ahí todo se crea en la aplicación (menú **Administración**), en este orden:
+
+1. **Instituciones → Nueva institución**, una por cada organización que usará la red, cada una con
+   su **primer administrador** (rol *Administrador de institución*; su contraseña temporal se
+   muestra una sola vez).
+2. Cada administrador de institución crea **sus centros, ubicaciones y usuarios**, y define los
+   mínimos de stock de sus centros. También puede hacerlo el administrador de la red, eligiendo la
+   institución.
+3. El **catálogo de insumos y categorías** es compartido por toda la red: lo mantiene el
+   administrador de la red (los administradores de institución pueden agregar insumos nuevos).
+
+Ver [`OPERACION.md`](OPERACION.md).
 
 > **No cargues los datos de demostración en producción.** `npm run db:seed` crea cuentas con
 > contraseñas públicas. Por eso se niega a ejecutarse cuando `NODE_ENV=production` (así corre dentro
@@ -465,6 +477,25 @@ actualiza fuera del horario de atención.
 
 En la opción B el flujo es el mismo en concepto: respaldo → migraciones → publicar la imagen nueva.
 
+### Actualizar desde una versión anterior al nivel Institución
+
+La migración `instituciones` convierte una instalación de una sola organización sin perder datos:
+
+- crea la institución **"Institución principal"** y le asigna todos los centros y todos los
+  usuarios que no eran administradores (renómbrala en **Administración → Instituciones**);
+- los **administradores existentes pasan a ser administradores de la red** (siguen viendo y
+  gestionando todo, como antes);
+- la auditoría histórica de centros, movimientos y usuarios queda atribuida a esa institución.
+
+La migración debe ejecutarla el **dueño de las tablas** (lo normal: el servicio `migrar` de
+Compose o `prisma migrate deploy` con el usuario dueño), porque deshabilita por un instante el
+trigger de inmutabilidad de `registros_auditoria` para completar la columna nueva y lo vuelve a
+habilitar en la misma transacción; el rol restringido de la aplicación de
+[§6.1](#61-endurecimiento-recomendado-de-la-base-de-datos) no puede hacerlo ni necesita permisos
+nuevos (la tabla `instituciones` es una tabla normal: `SELECT`, `INSERT`, `UPDATE`). Si después
+quieres separar los datos en más instituciones, crea las instituciones nuevas y sus centros desde
+la aplicación: un centro o un usuario existente no se mueve de institución.
+
 ---
 
 ## 9. Restauración ante desastre
@@ -553,8 +584,10 @@ PostgreSQL gestionado con recuperación a un punto en el tiempo.
 
 - [ ] **No** se cargó el seed de demostración. Comprobación: no existen usuarios `@redinsumos.cl`
       en **Administración → Usuarios**.
-- [ ] El primer administrador se creó con `admin:crear` y ya cambió su contraseña temporal.
-- [ ] Existen **al menos dos** administradores (si uno pierde el acceso, el otro lo restablece).
+- [ ] El primer administrador de la red se creó con `admin:crear` y ya cambió su contraseña temporal.
+- [ ] Existen **al menos dos** administradores de la red (si uno pierde el acceso, el otro lo
+      restablece) y cada institución tiene al menos un administrador propio.
+- [ ] Cada centro quedó en la institución correcta (no se puede cambiar después).
 - [ ] Centros, ubicaciones, categorías, insumos y mínimos de stock están cargados y revisados.
 - [ ] Cada persona tiene su propia cuenta, con el rol mínimo que necesita. No hay cuentas compartidas.
 

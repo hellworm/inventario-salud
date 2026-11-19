@@ -6,11 +6,16 @@ tu rol.
 - [Para todos](#para-todos)
 - [Visitante](#visitante) — solo consulta
 - [Bodeguero](#bodeguero) — recibe y entrega insumos
-- [Administrador](#administrador) — gestiona toda la red
+- [Administrador de institución](#administrador-de-institución) — gestiona su institución
+- [Administrador de la red](#administrador-de-la-red) — gestiona todas las instituciones
 - [Preguntas frecuentes](#preguntas-frecuentes)
 
 > Tu rol aparece bajo tu nombre, arriba a la derecha. Si necesitas hacer algo que tu rol no permite,
-> pídelo a un administrador de tu red.
+> pídelo a un administrador de tu institución.
+
+**Instituciones y centros.** La red reúne a varias instituciones (por ejemplo, una empresa de
+diálisis y una corporación municipal). Cada institución tiene sus propios centros y usuarios, y
+**no ve nada de las demás**. Tu institución aparece en el menú de tu nombre.
 
 ---
 
@@ -193,17 +198,19 @@ Avisa a un administrador para que haga un **ajuste** que corrija la cantidad.
 
 ---
 
-## Administrador
+## Administrador de institución
 
-Tienes acceso completo a toda la red: todo lo del [Bodeguero](#bodeguero), más traslados, ajustes y
-mermas, reportes y la administración del sistema.
+Tienes acceso completo a **tu institución**: todo lo del [Bodeguero](#bodeguero) en cualquiera de
+sus centros (sin que te los asignen uno a uno), más traslados, ajustes y mermas, reportes y la
+administración de tu institución. No ves centros, usuarios, stock ni auditoría de otras
+instituciones.
 
 ![Panel del administrador](capturas/02-panel-administrador.png)
 
-### Revisar la red cada día — *Panel*
+### Revisar tu institución cada día — *Panel*
 
-Con **Toda la red** seleccionada arriba, el Panel reúne lo que requiere atención en todos los
-centros, en orden de prioridad: insumos sin stock, lotes vencidos por dar de baja y lo que vence
+Con **Toda mi institución** seleccionada arriba, el Panel reúne lo que requiere atención en todos
+tus centros, en orden de prioridad: insumos sin stock, lotes vencidos por dar de baja y lo que vence
 esta semana. Cada fila trae el botón para resolverlo (**Ingresar**, **Dar de baja** o **Retirar**).
 El gráfico **Actividad de los últimos 14 días** muestra cuántos movimientos de entrada y de salida
 se registraron cada día (cuenta movimientos, no unidades). Cambia el selector para ver un solo
@@ -212,7 +219,8 @@ centro.
 ### Trasladar insumos
 
 Menú **Registrar → Traslado**. Elige el insumo y el lote, la ubicación de **origen**, la de
-**destino** (puede ser de otro centro) y la cantidad. El sistema registra la salida y la entrada
+**destino** (puede ser de otro centro de tu institución; no se traslada entre instituciones) y la
+cantidad. El sistema registra la salida y la entrada
 juntas. Sirve también para mover lotes vencidos a un lugar apartado mientras se dan de baja.
 
 ### Corregir el stock o dar de baja — *Ajuste o merma*
@@ -240,6 +248,8 @@ Indica la fecha correcta y el motivo, revisa el antes y el después y confirma.
 
 La fecha es del lote: cambia en **todas** las ubicaciones y centros donde esté, y puede dejarlo
 vencido o vigente. Queda en la auditoría con tu nombre, la fecha anterior, la nueva y el motivo.
+Si el mismo lote también tiene existencias en otra institución, solo puede corregirlo el
+administrador de la red.
 
 ### Reportes
 
@@ -260,12 +270,12 @@ En el menú **Administración**:
 
 | Sección | Para qué |
 |---|---|
-| **Insumos** | El catálogo común a toda la red: código, nombre, categoría, unidad de medida, si controla vencimiento o requiere cadena de frío y, opcionalmente, su registro sanitario. En la ficha de cada insumo defines el **stock mínimo y máximo por centro**, que es lo que activa las alertas. |
-| **Categorías** | Los grupos en que se ordenan los insumos. |
-| **Centros y ubicaciones** | Los establecimientos de la red y los lugares donde cada uno guarda su stock (bodegas, salas, refrigeradores). |
-| **Proveedores** | A quiénes se les compra, para indicarlos en los ingresos. |
-| **Usuarios** | Quién puede entrar, con qué rol y en qué centros. |
-| **Auditoría** | Registro de quién hizo qué y cuándo. Solo lectura. |
+| **Insumos** | El catálogo **compartido por toda la red**: código, nombre, categoría, unidad de medida, si controla vencimiento o requiere cadena de frío y, opcionalmente, su registro sanitario. Puedes **crear insumos nuevos** y, en la ficha de cada insumo, definir el **stock mínimo y máximo de tus centros**, que es lo que activa las alertas. No puedes modificar ni desactivar un insumo que ya existe (lo usan otras instituciones): pídeselo al administrador de la red. |
+| **Categorías** | Los grupos en que se ordenan los insumos. Puedes crear categorías nuevas; renombrar o eliminar las existentes es del administrador de la red. |
+| **Centros y ubicaciones** | Los establecimientos de tu institución y los lugares donde cada uno guarda su stock (bodegas, salas, refrigeradores). Puedes crear, editar y desactivar tus centros. |
+| **Proveedores** | A quiénes se les compra, para indicarlos en los ingresos. Son compartidos por toda la red. |
+| **Usuarios** | Quién puede entrar en tu institución, con qué rol y en qué centros. |
+| **Auditoría** | Registro de quién hizo qué y cuándo en tu institución. Solo lectura. |
 
 Lo que tiene historial **no se elimina, se desactiva**: un insumo, centro, ubicación, proveedor o
 usuario desactivado deja de usarse pero sus registros se conservan.
@@ -274,6 +284,10 @@ usuario desactivado deja de usarse pero sus registros se conservan.
 
 ![Usuarios](capturas/11-usuarios.png)
 
+- **Roles que puedes asignar:** **Administrador de institución** (otro administrador de tu
+  institución; ve todos sus centros), **Bodeguero** y **Visitante** (solo los centros que les
+  marques, siempre de tu institución). No puedes crear administradores de la red ni usuarios de
+  otra institución, y un usuario no se cambia de institución.
 - **Crear:** botón **Nuevo usuario**. Indica nombre, correo electrónico, rol y centros. El sistema muestra una
   **contraseña temporal una sola vez**: entrégasela a la persona por un medio seguro. Deberá
   cambiarla al entrar, y tiene **72 horas** para hacerlo: después la temporal vence y hay que
@@ -290,7 +304,7 @@ usuario desactivado deja de usarse pero sus registros se conservan.
     reactivar después.
 
 Buenas prácticas: una cuenta por persona (nunca compartidas), el rol más limitado que le permita
-hacer su trabajo, y al menos dos administradores en la red. El detalle de estas tareas está en
+hacer su trabajo, y al menos dos administradores en cada institución. El detalle de estas tareas está en
 [`OPERACION.md`](OPERACION.md#usuarios).
 
 ### Auditoría
@@ -310,6 +324,45 @@ periódicamente, en especial los ajustes, las mermas y los intentos de ingreso f
 5. **Usuarios:** crea las cuentas del personal y asígnales el centro.
 6. Carga el stock inicial: con **ingresos** (si hay guía o factura) o con **Ajuste → Sumar stock**
    y motivo "Stock inicial".
+
+---
+
+## Administrador de la red
+
+Operas la plataforma: tienes todo lo del [Administrador de institución](#administrador-de-institución),
+pero en **todas** las instituciones, y además:
+
+### Ver el complejo total — *Panel*
+
+Con **Toda la red** seleccionada arriba, el Panel muestra **La red por institución**: una tarjeta
+por institución con su número de centros y cuántos insumos tiene sin stock, bajo el mínimo, y
+cuántos lotes vencidos y por vencer. Haz clic en una institución para ver el detalle de sus
+centros; cada número lleva a las Alertas de ese centro. El selector de centro agrupa los centros
+por institución.
+
+### Instituciones
+
+**Administración → Instituciones** lista las instituciones con sus centros, usuarios y stock.
+
+- **Nueva institución:** indica el nombre (y el RUT, si lo tienes). Deja marcado **Crear a su
+  primer administrador** e indica su nombre y correo: verás **una sola vez** su contraseña
+  temporal (válida 72 horas) para entregársela. Con esa cuenta, la institución crea sus centros y
+  sus demás usuarios.
+- **Desactivar institución:** sus usuarios dejan de poder entrar (se cierran sus sesiones) y sus
+  datos se conservan. No se puede desactivar mientras tenga **centros activos con stock**: primero
+  hay que dar de baja o retirar ese stock, o desactivar esos centros.
+
+### Lo que solo tú puedes hacer
+
+- **Editar, desactivar o eliminar insumos y categorías** del catálogo compartido.
+- **Crear centros y usuarios en cualquier institución** (al crear eliges la institución; después no
+  se puede cambiar) y crear otros administradores de la red.
+- **Corregir el vencimiento de un lote que está en más de una institución.**
+- **Ver la auditoría de toda la red**, filtrarla por institución y ver los eventos de la red
+  (catálogo, instituciones, intentos de ingreso con correos desconocidos).
+
+Los traslados son siempre dentro de una misma institución, también para ti. La red debe tener
+siempre al menos un administrador de la red activo: conviene que sean dos.
 
 ---
 

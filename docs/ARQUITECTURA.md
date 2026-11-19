@@ -35,8 +35,9 @@ este documento.
 prisma/
   schema.prisma            Modelo de datos (tablas snake_case con @@map, columnas camelCase)
   migrations/              Inicial (+ CHECKs, trigger de inmutabilidad, unaccent),
-                           endurecimiento_seguridad (idempotencia, limitador, TRUNCATE, auditoría)
-                           y normaliza_numero_lote (lotes en forma canónica)
+                           endurecimiento_seguridad (idempotencia, limitador, TRUNCATE, auditoría),
+                           normaliza_numero_lote (lotes en forma canónica) e instituciones
+                           (nivel Institución, rol ADMIN_RED, alcance de la auditoría)
   seed.ts                  Seed demo (referencia idempotente + historial vía servicios)
 src/
   proxy.ts                 Redirección optimista a /login (las Server Actions pasan y responden
@@ -47,12 +48,13 @@ src/
     (app)/                 Área autenticada: layout con AppShell, loading, error, sin-permiso
       panel/, inventario/, movimientos/ (ingreso, retiro, traslado, ajuste)
       alertas/ (+ reposicion/exportar), reportes/ (+ exportar/[reporte]), ayuda/
-      admin/ (insumos, categorias, centros, usuarios, proveedores, auditoria)
+      admin/ (instituciones, insumos, categorias, centros, usuarios, proveedores, auditoria)
     (directo)/             Mismo shell, SIN loading.tsx por encima: ficha del insumo
                            (inventario/[insumoId]) y comodín [...resto] → 404 HTTP real (§10)
     api/salud/             Verificación de salud (pública)
   acciones/                Server Actions ("use server"): auth, movimientos, consultas (solo
-                           lectura) y admin-* (catálogo, centros, usuarios, proveedores)
+                           lectura) y admin-* (instituciones, catálogo, centros, usuarios,
+                           proveedores)
   components/
     ui/                    UI kit (importar SIEMPRE desde "@/components/ui")
     shell/                 AppShell (sidebar, barra superior, navegación inferior), Logo,
@@ -67,14 +69,14 @@ src/
     fechas.ts, formato.ts  Fechas America/Santiago, números es-CL, CLP
     chile/                 rut.ts, regiones.ts
     esquemas/              Esquemas zod (base, movimientos, consultas, auth, catalogo, centros,
-                           proveedores, usuarios)
+                           instituciones, proveedores, usuarios)
     resultado.ts           ResultadoAccion<T>, Paginado<T>
     csv.ts, unidades.ts, parametros.ts, parametros-url.ts, filtros-reportes.ts,
     fefo.ts, abastecimiento.ts, errores-formulario.ts   Utilidades compartidas (§9)
   server/                  SOLO servidor (todos importan "server-only")
     db.ts                  Cliente Prisma singleton + enTransaccion()
     errores.ts             ErrorDominio y códigos
-    autorizacion.ts        verificarPermiso(), alcanceDeCentros()
+    autorizacion.ts        verificarPermiso(), alcanceDeCentros(), verificarInstitucion()
     auditoria.ts           registrarAuditoria()
     validacion.ts          validar(esquema, datos), erroresDeZod()
     accion-segura.ts       ★ accionSegura(): patrón de toda Server Action
@@ -98,12 +100,29 @@ acciones **no usan Prisma directamente**; si falta una consulta, se agrega un se
 
 ## 3. Modelo de datos (resumen)
 
-`Centro` 1—N `Ubicacion`. `Usuario` N—M `Centro` (`UsuarioCentro`). `Insumo` (catálogo común) N—1
-`Categoria`. `ParametroStock` (insumo × centro: mínimo/máximo). `Lote` (insumo + número, vencimiento).
+`Institucion` 1—N `Centro` 1—N `Ubicacion`. `Usuario` N—1 `Institucion` (salvo ADMIN_RED) y N—M
+`Centro` (`UsuarioCentro`). `Insumo` (catálogo común a toda la red) N—1 `Categoria`. `ParametroStock` (insumo × centro: mínimo/máximo). `Lote` (insumo + número, vencimiento).
 `Existencia` (lote × ubicación → `cantidad`, con `CHECK (cantidad >= 0)`). `Movimiento` = libro mayor
 **inmutable**. `Proveedor` (RUT único normalizado), `Sesion`, `RegistroAuditoria` (también
 inmutable), `LimiteIntentos` (tabla `intentos_login`: contadores del limitador).
 
+- **Instituciones (la red = todas las instituciones).** `Institucion` (nombre único, RUT opcional,
+  `activo`). `Centro.institucionId` es obligatorio y **no cambia** (no es un campo editable).
+  `Usuario.institucionId` es obligatorio salvo para `ADMIN_RED`, que no tiene institución: lo
+  garantiza el `CHECK usuarios_institucion_segun_rol` (`(rol = 'ADMIN_RED') = (institucionId IS
+  NULL)`). Las asignaciones `UsuarioCentro` solo pueden ser a centros de la institución del usuario
+  (lo valida `resolverDestino` en `servicios/usuarios.ts`; además, al armar la sesión se descarta
+  cualquier asignación a un centro de otra institución). Un `ADMIN` no lleva asignaciones: su
+  alcance son todos los centros de su institución. Un usuario no se mueve de institución. Catálogo
+  (`Insumo`, `Categoria`), `Proveedor` y `Lote` son **compartidos** por toda la red; stock,
+  movimientos y parámetros son de cada centro y, por lo tanto, de su institución. Una institución
+  desactivada deja fuera a sus usuarios (no pueden ingresar y sus sesiones se cierran).
+- **Migración `instituciones`** (bases ya desplegadas): crea la institución `institucion_inicial`
+  ("Institución principal") con todos los centros y usuarios existentes; los `ADMIN` existentes
+  pasan a `ADMIN_RED` (eran el operador); la auditoría histórica de centros, movimientos y
+  usuarios se atribuye a esa institución y el resto queda como evento de red. Para rellenar
+  `registros_auditoria.institucionId` deshabilita el trigger de fila **solo** durante ese `UPDATE`
+  y lo vuelve a habilitar dentro de la misma transacción. En una base vacía no crea instituciones.
 - **Inmutabilidad:** triggers SQL rechazan `UPDATE`, `DELETE` y `TRUNCATE` sobre `movimientos` y
   `registros_auditoria` (solo admiten `INSERT`). Ningún código las modifica; el soporte de tests
   deshabilita los triggers únicamente dentro de su limpieza (`tests/soporte/escenario.ts`). Como la
@@ -131,21 +150,87 @@ inmutable), `LimiteIntentos` (tabla `intentos_login`: contadores del limitador).
 
 ## 4. Permisos
 
-Fuente única: `src/lib/permisos.ts` (`PERMISOS_POR_ROL`, `puede`, `puedeEnCentro`).
+Fuente única: `src/lib/permisos.ts` (`PERMISOS_POR_ROL`, `puede`, `puedeEnCentro`,
+`alcanzaInstitucion`, `rolesAsignables`) + `src/server/autorizacion.ts`.
 
-| Permiso | ADMIN | BODEGUERO | VISITANTE |
-|---|:-:|:-:|:-:|
-| `panel:ver`, `inventario:ver`, `alertas:ver`, `catalogo:ver` | ✔ | ✔ sus centros | ✔ sus centros |
-| `movimientos:ver`, `proveedores:ver` | ✔ | ✔ sus centros | — |
-| `movimientos:ingreso`, `movimientos:retiro` | ✔ | ✔ sus centros | — |
-| `movimientos:ajuste`, `movimientos:merma`, `movimientos:traslado` | ✔ | — | — |
-| `reportes:ver`, `auditoria:ver` | ✔ | — | — |
-| `catalogo:gestionar`, `centros:gestionar`, `usuarios:gestionar`, `proveedores:gestionar`, `parametros:gestionar` | ✔ | — | — |
+Cuatro roles (nombres visibles en `NOMBRE_ROL`):
 
-ADMIN ve toda la red; los demás solo sus centros asignados. La autorización se valida **siempre
-en el servidor y en tres capas**: página (`contextoPagina`), acción (`accionSegura`) y servicio
-(`verificarPermiso(actor, permiso, centroId)` con el centro real del dato). En la UI, `puede(rol,
-permiso)` solo decide qué se muestra.
+| Rol | Nombre visible | Alcance |
+|---|---|---|
+| `ADMIN_RED` | Administrador de la red | Toda la red: todas las instituciones, centros y usuarios. Es el operador de la plataforma. |
+| `ADMIN` | Administrador de institución | **Su institución**: todos sus centros (sin asignarlos uno a uno) y sus usuarios. Nada de otras instituciones. |
+| `BODEGUERO` | Bodeguero | Sus centros asignados. |
+| `VISITANTE` | Visitante | Sus centros asignados. |
+
+| Permiso | ADMIN_RED | ADMIN | BODEGUERO | VISITANTE |
+|---|:-:|:-:|:-:|:-:|
+| `panel:ver`, `inventario:ver`, `alertas:ver`, `catalogo:ver` | ✔ | ✔ su institución | ✔ sus centros | ✔ sus centros |
+| `movimientos:ver`, `proveedores:ver` | ✔ | ✔ su institución | ✔ sus centros | — |
+| `movimientos:ingreso`, `movimientos:retiro` | ✔ | ✔ su institución | ✔ sus centros | — |
+| `movimientos:ajuste`, `movimientos:merma`, `movimientos:traslado` | ✔ | ✔ su institución | — | — |
+| `reportes:ver`, `auditoria:ver` | ✔ | ✔ su institución | — | — |
+| `centros:gestionar`, `usuarios:gestionar`, `parametros:gestionar` | ✔ | ✔ su institución | — | — |
+| `proveedores:gestionar` (proveedores compartidos por la red) | ✔ | ✔ | — | — |
+| `catalogo:crear` (ver el catálogo de administración; crear insumos y categorías) | ✔ | ✔ | — | — |
+| `catalogo:gestionar` (editar, desactivar o eliminar insumos y categorías) | ✔ | — | — | — |
+| `instituciones:gestionar` | ✔ | — | — | — |
+
+La autorización se valida **siempre en el servidor y en tres capas**: página (`contextoPagina`),
+acción (`accionSegura`) y servicio (`verificarPermiso(actor, permiso, centroId)` con el centro real
+del dato). En la UI, `puede(rol, permiso)` solo decide qué se muestra.
+
+### Alcance: cómo se limita cada rol
+
+- **`Actor`** = `{ usuarioId, rol, institucionId, centroIds, ip? }`. `institucionId` es `null`
+  solo para `ADMIN_RED`. **`centroIds` es el alcance de centros ya resuelto** al armar la sesión
+  (`alcanceDeUsuario` en `auth/autenticacion.ts`, en cada solicitud): los centros asignados
+  (BODEGUERO, VISITANTE) o **todos los centros de su institución** (ADMIN). Para `ADMIN_RED` se
+  ignora.
+- **Datos de un centro** (inventario, movimientos, alertas, panel, reportes, exportaciones,
+  ubicaciones, lotes, parámetros): `alcanceDeCentros(actor, centroId?)` devuelve `null` solo para
+  `ADMIN_RED` (sin filtro); para los demás, `actor.centroIds`. Pedir un centro fuera del alcance
+  lanza `SIN_ACCESO_AL_CENTRO`. Como el alcance del ADMIN ya viene acotado a su institución, todo
+  servicio que usa `alcanceDeCentros` / `verificarPermiso(…, centroId)` queda aislado por
+  institución sin lógica adicional.
+- **Entidades administradas** (centros, ubicaciones, usuarios): se filtran por
+  `institucionId` del actor (`centrosDelAlcance`, `usuariosDelAlcance`,
+  `verificarInstitucion`). Lo que es de otra institución responde **`NO_ENCONTRADO`**: para un
+  ADMIN "no existe" (tampoco los administradores de la red).
+- **Reglas del ADMIN de institución** (todas en el servicio, no en la UI):
+  crea centros solo en su institución; crea y edita usuarios solo de su institución, con roles
+  `rolesAsignables("ADMIN")` = ADMIN, BODEGUERO, VISITANTE (**nunca** `ADMIN_RED`) y centros de su
+  institución; nadie cambia de institución; define mínimos y máximos solo de sus centros (un
+  centro ajeno en la entrada rechaza todo); traslada solo dentro de su institución; crea insumos
+  y categorías pero no modifica los existentes; corrige el vencimiento solo de lotes que pasaron
+  por sus centros y sin existencias en otra institución.
+- **Traslados:** nunca cruzan instituciones, tampoco para `ADMIN_RED` (`TRASLADO_INVALIDO`).
+- **Salvaguardas:** siempre queda al menos un `ADMIN_RED` activo (no se puede desactivar ni
+  degradar al último); nadie se cambia su propio rol ni se desactiva; `npm run admin:crear` crea
+  `ADMIN_RED`.
+- **Vista "todos mis centros":** `centroId: null` en `contextoPagina` es "Toda la red" para
+  `ADMIN_RED` y "Toda mi institución" para `ADMIN` (`etiquetaTodos`, `etiquetaAlcanceTotal(rol)`,
+  `fraseAlcanceTotal(rol)`). `puedeVerTodaLaRed` es `true` solo para `ADMIN_RED`.
+
+### Auditoría por institución
+
+`RegistroAuditoria.institucionId` es el alcance de cada registro y se escribe al registrar
+(`registrarAuditoria`, `server/auditoria.ts`):
+
+- lo que ocurre **en un centro o sobre un usuario** lleva la institución de ese centro o usuario,
+  lo haga quien lo haga (la institución también ve lo que el administrador de la red hizo sobre
+  sus datos; en ese caso el visor le muestra "Administrador de la red", sin nombre ni correo);
+- lo demás (sesiones, exportaciones, proveedores, insumos y categorías creados) lleva la
+  institución **de quien actúa**;
+- `null` = **evento de red**: acciones del administrador de la red que no pertenecen a una
+  institución (catálogo, instituciones, proveedores editados por él), intentos de ingreso sin
+  usuario y resúmenes del limitador.
+
+`listarAuditoria` y `opcionesFiltroAuditoria` muestran a un ADMIN **solo** los registros de su
+institución; los eventos de red los ve únicamente `ADMIN_RED` (que además puede filtrar por
+institución o por "eventos de la red"). Un cambio de mínimos o una corrección de vencimiento que
+toca varias instituciones escribe **un registro por institución**, cada uno solo con sus centros
+y sus unidades. Al escribir un registro nuevo: pasa `institucionId` explícito si la entidad
+pertenece a una institución; si lo omites se usa la del actor.
 
 Para un permiso nuevo: agrégalo a `PERMISOS` y a la matriz en `permisos.ts`, actualiza
 `tests/permisos.test.ts` y esta tabla.
@@ -186,13 +271,14 @@ Helpers (`@/server/auth/sesion`):
 | `obtenerSesion()` | `Sesion \| null`, memoizada por solicitud. |
 | `requerirSesion()` | Redirige a `/login` (o `/cambiar-password`). |
 | `requerirPermiso(permiso, centroId?)` | Para páginas/layouts: redirige a `/sin-permiso`. |
-| `contextoPagina(permiso)` | ★ Lo normal en una página: `{ sesion, actor, centroId, centro, centros, puedeVerTodaLaRed, sinCentro }`. |
-| `obtenerCentroActivo(sesion)` | Centro activo (cookie `ri_centro`); `centroId: null` = "Toda la red" **solo si `sinCentro` es `false`**. |
+| `contextoPagina(permiso)` | ★ Lo normal en una página: `{ sesion, actor, centroId, centro, centros, puedeVerTodaLaRed, puedeVerTodos, etiquetaTodos, sinCentro }`. |
+| `obtenerCentroActivo(sesion)` | Centro activo (cookie `ri_centro`); `centroId: null` = "Toda la red" (ADMIN_RED) o "Toda mi institución" (ADMIN) **solo si `sinCentro` es `false`**. `centros` viene ordenado por institución y nombre, con `institucionId` e `institucion`. |
 
-**`sinCentro`** es `true` para quien no ve toda la red y no tiene ningún centro activo asignado
+**`sinCentro`** es `true` para quien no es administrador y no tiene ningún centro activo asignado
 (su único centro fue desactivado). No es "toda la red": toda página que pueda ver un bodeguero o
 un visitante empieza con `if (sinCentro) return <SinCentroActivo titulo="…" />;`
-(`@/components/shell/sin-centro`).
+(`@/components/shell/sin-centro`). `sesion.usuario` trae además `institucionId` e `institucion`
+(`{ id, nombre }`, `null` para ADMIN_RED).
 
 Al crear o restablecer usuarios (ver `servicios/usuarios.ts`): `hashearPassword` y
 `validarPoliticaPassword` (`@/server/auth/password`), email con `normalizarEmail`,
@@ -270,7 +356,7 @@ registrarTraslado(actor, entrada: EntradaTraslado): Promise<ResultadoTraslado>
   // { loteId, ubicacionOrigenId, ubicacionDestinoId, cantidad, motivo?, nota? }
   // → { trasladoGrupoId, salida, entrada }
 corregirVencimientoLote(actor, entrada: EntradaCorregirVencimientoLote): Promise<ResultadoCorreccionLote>
-  // { loteId, fechaVencimiento? (vacío = sin fecha), motivo }      SOLO ADMIN
+  // { loteId, fechaVencimiento? (vacío = sin fecha), motivo }      SOLO ADMINISTRADORES
   // → { loteId, numeroLote, fechaVencimientoAnterior, fechaVencimiento, cambiado }
 
 interface MovimientoRegistrado { id; tipo; insumoId; loteId; numeroLote; ubicacionId; centroId;
@@ -290,7 +376,7 @@ montar el formulario y de nuevo tras cada éxito (así lo hacen los cuatro formu
 Acciones (`@/acciones/movimientos`): `registrarIngresoAccion`, `registrarRetiroAccion`,
 `registrarAjusteAccion`, `registrarMermaAccion`, `registrarTrasladoAccion` (las cuatro primeras
 agregan `stock: StockActual | null`) y `corregirVencimientoLoteAccion` (permiso
-`movimientos:ajuste`; el servicio exige además rol ADMIN). La pantalla de esta última es
+`movimientos:ajuste`; el servicio exige además rol ADMIN_RED o ADMIN). La pantalla de esta última es
 `BotonCorregirVencimiento` (`@/components/inventario/corregir-vencimiento`), en la tabla de lotes
 de la ficha del insumo: fecha nueva + motivo + paso de confirmación.
 
@@ -307,18 +393,26 @@ Reglas de negocio:
 - **Fechas de lote** (`VALIDACION`): la fabricación no puede ser futura, el vencimiento no puede
   superar hoy + 15 años ni ser anterior a la fabricación.
 - **Completar el vencimiento** de un lote que existía sin fecha (al ingresar indicando una): solo si
-  el lote no tiene existencias en centros fuera del alcance del actor (o es ADMIN); si no,
+  el lote no tiene existencias en centros fuera del alcance del actor (o es ADMIN_RED); si no,
   `LOTE_INCONSISTENTE`. Se audita como `LOTE_ACTUALIZADO` (`cambios.fechaVencimiento.antes/despues`).
-  Cambiar una fecha ya registrada es `corregirVencimientoLote` (solo ADMIN, con motivo, auditado;
-  admite fechas pasadas: el lote queda vencido).
+  Cambiar una fecha ya registrada es `corregirVencimientoLote` (solo administradores, con motivo,
+  auditado; admite fechas pasadas: el lote queda vencido).
+- **Lotes y alcance por institución.** Un lote es global por (insumo, número): dos instituciones
+  que reciben el mismo lote del fabricante comparten la fila `Lote` y su fecha. Por eso: los lotes
+  ya registrados solo se muestran a quien tiene (o tuvo) existencias o movimientos de ese lote en
+  SUS centros (`lotesDeInsumo`); un ADMIN de institución solo corrige el vencimiento de un lote
+  que pasó por sus centros (si no, `NO_ENCONTRADO`) y que no tiene existencias en centros de otra
+  institución (`LOTE_INCONSISTENTE`: lo corrige el administrador de la red); la corrección se
+  audita una vez por institución con existencias, cada una con sus unidades.
 - **Retiro:** FEFO ordena por vencimiento (sin fecha al final) dentro de la ubicación. **Nunca**
   retira lotes vencidos (`LOTE_VENCIDO` si se pide uno; FEFO los salta). Sin stock vigente
   suficiente → `STOCK_INSUFICIENTE` con `detalle: { solicitado, disponible, vencido }`.
 - **Merma:** única salida para lotes vencidos. Motivo obligatorio (`MOTIVOS_MERMA` sugiere valores).
 - **Ajuste:** motivo obligatorio (`MOTIVOS_AJUSTE`). El positivo puede crear la existencia del
   lote en la ubicación. Para "conteo", la UI calcula la diferencia y envía sentido + cantidad.
-- **Traslado:** exige permiso en el centro de origen y en el de destino; origen ≠ destino. Permite
-  mover lotes vencidos (p. ej. a cuarentena).
+- **Traslado:** exige permiso en el centro de origen y en el de destino; origen ≠ destino; ambos
+  centros deben ser de la **misma institución** (`TRASLADO_INVALIDO`, también para ADMIN_RED).
+  Permite mover lotes vencidos (p. ej. a cuarentena).
 - Un lote vence al **terminar** su día de vencimiento (ese día aún se puede usar), hora de Chile.
 
 ### Consultas
@@ -363,14 +457,32 @@ listarUbicaciones(actor, { centroId?, soloActivas? }?): Promise<OpcionUbicacion[
 listarProveedoresActivos(actor): Promise<OpcionProveedor[]>
 lotesDisponibles(actor, { insumoId, ubicacionId, incluirVencidos? }): Promise<OpcionLote[]>  // FEFO
 lotesDeInsumo(actor, insumoId, limite?)   // lotes ya registrados, SOLO los que pasaron por los
-                                          // centros del actor (todos para ADMIN)
+                                          // centros del actor (todos para ADMIN_RED)
 obtenerOpcionInsumo(actor, insumoId): Promise<(OpcionInsumo & { activo }) | null>
 
-// usuarios.ts
-listarUsuarios(actor, filtros?)                     // texto sin tildes; bloqueado, passwordTemporalVencida
+// usuarios.ts — todo limitado a la institución del actor (ADMIN_RED: toda la red)
+listarUsuarios(actor, filtros?)                     // { texto?, rol?, estado?, centroId?, institucionId? }
 crearUsuario / actualizarUsuario / restablecerPasswordUsuario / desbloquearUsuario
+  // entrada: { nombre, email, rol, institucionId?, centroIds }. `resolverDestino` autoriza rol,
+  // institución y centros (ver §4). ADMIN_RED indica la institución (o se deduce de los centros).
 establecerUsuarioActivo(actor, usuarioId, activo)   // ejemplo canónico de mutación administrativa
 
+// instituciones.ts — solo ADMIN_RED (`instituciones:gestionar`)
+listarInstituciones(actor): Promise<FilaInstitucion[]>   // con conteos de centros, usuarios y stock
+crearInstitucion(actor, { nombre, rut?, administrador?: { nombre, email } })
+  // → { id, nombre, administrador: UsuarioConPasswordTemporal | null }  (todo en una transacción)
+actualizarInstitucion(actor, { id, nombre, rut? })
+establecerInstitucionActiva(actor, id, activo)   // EN_USO si tiene centros activos con stock;
+                                                 // al desactivar cierra las sesiones de sus usuarios
+listarOpcionesInstitucion(actor)   // para selects: todas (ADMIN_RED) o solo la propia (ADMIN)
+resumenPorInstitucion(actor, resumenPanel.porCentro)   // panel "La red por institución" (ADMIN_RED)
+
+// centros.ts
+listarCentrosAdmin(actor, { institucionId? }?)   // con `institucionId` e `institucion`
+crearCentro(actor, { …, institucionId? })        // ADMIN_RED la indica; ADMIN crea en la suya
+// insumos.ts / categorias.ts: listar, ver y CREAR piden `catalogo:crear`; editar, desactivar y
+// eliminar piden `catalogo:gestionar`. `obtenerInsumoAdmin` devuelve stock y parámetros SOLO de
+// los centros del alcance; `guardarParametrosStock` exige el permiso en cada centro.
 // administración: insumos.ts, categorias.ts, centros.ts, proveedores.ts, auditoria-consultas.ts
 // reportes y exportaciones: reportes.ts, alertas.ts (listaReposicion), exportaciones.ts
 ```
@@ -390,7 +502,8 @@ abrir y rotula "Más usados en este centro" / "Otros insumos" según `masUsado`.
 
 Convenciones de las consultas:
 
-- `centroId` omitido o `null` = **todos los centros visibles del actor** (toda la red para ADMIN).
+- `centroId` omitido o `null` = **todos los centros visibles del actor** (toda la red para
+  ADMIN_RED; toda su institución para ADMIN).
   Pasar un centro ajeno lanza `SIN_ACCESO_AL_CENTRO`. Lo habitual: pasar el `centroId` de
   `contextoPagina`.
 - `Paginado<T>` = `{ items, total, pagina, porPagina, totalPaginas }`; por defecto 25, máximo 100.
@@ -684,7 +797,9 @@ Fuera del kit, piezas compartidas por las pantallas:
 | `ComboboxInsumo` (`@/components/movimientos/combobox-insumo`) | Buscador accesible de insumos (combobox WAI-ARIA; nombre, código o código de barras escaneado). `<ComboboxInsumo valor onCambiar iniciales placeholder? autoFocus? disabled? compacto? priorizarRetirosDeCentroId? />` con `InsumoOpcion` (= `OpcionInsumo` de `buscarInsumos`). Llama a `buscarInsumosAccion`. Dentro de `<Field>` toma id y aria. |
 | `@/components/movimientos/formulario` | `useExistenciasInsumo(insumoId, centroId)` (existencias en vivo vía `existenciasInsumoAccion`), `PanelExistencias`, `Confirmacion` (props `centro`: centro REAL del movimiento según el servidor; `repetido`: avisa "Este movimiento ya estaba registrado; no se duplicó."), `CifrasConfirmacion`, `enfocarPrimerError`, `erroresDeEsquema`, `unirErrores`, `AnuncioErrores`, `ResumenErrores`, `AYUDA_SIN_PACIENTES` (ayuda de todo campo de nota o motivo libre). |
 | `AvisoCambioCentro` (`@/components/movimientos/aviso-cambio-centro`) | En las cuatro páginas de formulario: al volver a la pestaña refresca los datos del servidor y, si el centro activo cambió en otra pestaña, lo avisa. |
-| `BotonCorregirVencimiento` (`@/components/inventario/corregir-vencimiento`) | Diálogo de corrección del vencimiento de un lote (solo ADMIN). |
+| `BotonCorregirVencimiento` (`@/components/inventario/corregir-vencimiento`) | Diálogo de corrección del vencimiento de un lote (solo administradores). |
+| `ResumenInstituciones` (`@/components/panel/resumen-instituciones`) | "La red por institución" del panel de ADMIN_RED en "Toda la red": una tarjeta por institución (centros, sin stock, bajo mínimo, vencidos, por vencer); `/panel?institucion=<id>` despliega sus centros y cada conteo enlaza a `/alertas?tab=…&centro=…`. |
+| `AvisoCatalogoCompartido` (`@/components/admin/aviso-catalogo-compartido`) | Aviso al ADMIN de institución: el catálogo es de toda la red (crea, no modifica). |
 | `@/components/movimientos/campos` | `CampoCantidad`, `SelectUbicacion`, `SelectorLote`, `OpcionesTarjeta`, `Grupo`, `Sugerencias`, `ubicacionPorDefecto`, `leerCantidad`. |
 | `useParametrosUrl()` (`@/components/inventario/parametros-url`) | Estado en la URL para filtros y paneles: `{ params, urlCon(cambios, { conservarPagina? }), filtrar(cambios), pendiente, iniciar, router }`. `filtrar` reemplaza la entrada del historial, vuelve a la página 1 y no salta al inicio. `enfocarFila(id)` devuelve el foco a la fila (`data-fila`) que abrió un panel. |
 | `@/components/admin/filtros-url` | ★ Módulo único de filtros que escriben en la URL (lo usan administración, alertas y reportes): `BarraFiltros`, `FiltroBusqueda`, `FiltroSelect`, `FiltroFecha`, `FiltroPeriodo`, `FiltroCentro` (solo en "Toda la red"), `LimpiarFiltros`. `useValidacion(esquema, erroresServidor)` en `use-validacion`. |
@@ -708,7 +823,9 @@ Si `columnas` contiene funciones y la tabla se renderiza desde un Client Compone
 columnas en ese mismo componente (las funciones no cruzan el límite servidor → cliente).
 
 **Shell:** `AppShell` (sidebar colapsable en ≥ lg; barra inferior + drawer en móvil), selector de
-centro y menú de usuario. Para agregar una entrada de navegación edita `src/lib/navegacion.ts`
+centro y menú de usuario. El selector ofrece "Toda la red" + los centros agrupados por
+institución (ADMIN_RED), "Toda mi institución" + sus centros (ADMIN) o solo los centros asignados
+(BODEGUERO, VISITANTE); el menú de usuario muestra la institución. Para agregar una entrada de navegación edita `src/lib/navegacion.ts`
 (con su permiso). El contenido de cada página se renderiza dentro de `<main>` con ancho máximo y
 márgenes ya definidos: empieza directamente con `<PageHeader>`.
 
@@ -752,7 +869,8 @@ márgenes ya definidos: empieza directamente con `<PageHeader>`.
 - **Revalidación:** la hace `accionSegura`. Tras una acción desde el cliente no hace falta
   `router.refresh()`.
 - **Auditoría:** `accion` en MAYÚSCULAS `ENTIDAD_VERBO` (`INSUMO_CREADO`, `USUARIO_DESACTIVADO`),
-  `entidad` = nombre del modelo, `detalle` sin datos sensibles.
+  `entidad` = nombre del modelo, `detalle` sin datos sensibles, e `institucionId` según §4
+  ("Auditoría por institución").
 - **Commits:** mensajes claros en español; sin identificadores de herramientas de IA.
 - **Trabajo en paralelo:** cada equipo trabaja en sus rutas y en archivos nuevos de `servicios/`,
   `acciones/` y `esquemas/`. Los archivos compartidos (`permisos.ts`, `navegacion.ts`,
@@ -792,14 +910,23 @@ opcional; la comprobación equivalente a lo que corre en producción es
 
 ### Cuentas demo (seed)
 
-| Rol | Email | Contraseña | Centros |
+Dos instituciones ficticias: **Centros de Diálisis Andes SpA** (Centro de Diálisis Ñuñoa y Centro
+de Diálisis Concepción) y **Corporación Municipal de Salud Cerro Alegre** (Consultorio Cerro
+Alegre).
+
+| Rol | Email | Contraseña | Institución · centros |
 |---|---|---|---|
-| ADMIN | admin@redinsumos.cl | Admin.Demo.2026 | toda la red |
-| BODEGUERO | bodega@redinsumos.cl | Bodega.Demo.2026 | Centro de Diálisis Ñuñoa |
-| VISITANTE | visita@redinsumos.cl | Visita.Demo.2026 | Centro de Diálisis Ñuñoa |
-| BODEGUERO | bodega.valparaiso@redinsumos.cl | Bodega.Valpo.2026 | Consultorio Cerro Alegre |
-| BODEGUERO | bodega.concepcion@redinsumos.cl | Bodega.Conce.2026 | Centro de Diálisis Concepción |
-| VISITANTE | nuevo@redinsumos.cl | Temporal.2026 (debe cambiarla) | Valparaíso y Concepción |
+| ADMIN_RED | admin@redinsumos.cl | Admin.Demo.2026 | toda la red |
+| ADMIN | admin.andes@redinsumos.cl | AdminAndes.Demo.2026 | Andes · todos sus centros |
+| ADMIN | admin.cerroalegre@redinsumos.cl | AdminCerro.Demo.2026 | Cerro Alegre · todos sus centros |
+| BODEGUERO | bodega@redinsumos.cl | Bodega.Demo.2026 | Andes · Centro de Diálisis Ñuñoa |
+| VISITANTE | visita@redinsumos.cl | Visita.Demo.2026 | Andes · Centro de Diálisis Ñuñoa |
+| BODEGUERO | bodega.valparaiso@redinsumos.cl | Bodega.Valpo.2026 | Cerro Alegre · Consultorio Cerro Alegre |
+| BODEGUERO | bodega.concepcion@redinsumos.cl | Bodega.Conce.2026 | Andes · Centro de Diálisis Concepción |
+| VISITANTE | nuevo@redinsumos.cl | Temporal.2026 (debe cambiarla) | Andes · Ñuñoa y Concepción |
+
+Si el seed corre sobre una base demo anterior al nivel Institución (ya migrada), reutiliza la
+"Institución principal" de la migración como Andes y mueve el consultorio a Cerro Alegre.
 
 La contraseña temporal de la cuenta demo `nuevo@` no vence (el seed deja `passwordTemporalExpira`
 en `null`); las que genera la aplicación vencen a las 72 h.
@@ -820,7 +947,16 @@ en `null`); las que genera la aplicación vencen a las 72 h.
 - **Deuda — bloqueo global por cuenta:** un ataque muy distribuido (30+ fallos desde muchas IP)
   retrasa hasta 15 min a un titular que entra desde una red nueva; no afecta a sus redes habituales.
   Sin `TRUST_PROXY`, un tercero puede bloquear una cuenta 15 min repitiendo claves erradas.
-- **Deuda — recuperación de contraseña:** no hay flujo por correo; la restablece un ADMIN.
+- **Deuda — recuperación de contraseña:** no hay flujo por correo; la restablece un administrador
+  (de la institución o de la red).
+- **Límites conocidos del nivel Institución:** (1) el correo de un usuario, el nombre de un centro,
+  el código de un insumo y el RUT de un proveedor son únicos en toda la red: al crear uno repetido,
+  el mensaje "ya existe" revela que existe en otra institución; (2) el contador "ingresos" de la
+  lista de proveedores cuenta los de toda la red; (3) la restricción "centros asignados de la
+  misma institución" se valida en el servidor y al armar la sesión, no con una FK compuesta en la
+  base; (4) no hay vista "Toda la institución X" para el administrador de la red (elige un centro
+  o usa el resumen por institución del panel); (5) lo que un ADMIN de institución hace sobre
+  proveedores solo queda en la auditoría de su institución y de la red.
 - **Deuda — 404 real fuera de `(directo)`:** las rutas de detalle de administración
   (`/admin/insumos/<id>`, `/admin/centros/<id>`) siguen bajo `(app)/loading.tsx`: un id inexistente
   muestra "no encontrado" (con `noindex`) pero responde HTTP 200.

@@ -16,7 +16,7 @@ proveedores:
 
 | Dato | Dónde | Para qué |
 |---|---|---|
-| Nombre y email de cada usuario; rol y centros asignados | Usuarios | Identificar a la persona y definir su acceso. |
+| Nombre y email de cada usuario; rol, institución y centros asignados | Usuarios | Identificar a la persona y definir su acceso. |
 | Contraseña | Usuarios | Solo se guarda un resumen cifrado irreversible (hash argon2id), nunca la contraseña. |
 | Fecha del último acceso, intentos fallidos y bloqueos | Usuarios | Seguridad de la cuenta. |
 | Contadores de intentos de inicio de sesión por IP (sin emails: solo un código irreversible) | Intentos | Frenar ataques de fuerza bruta. Se borran solos al vencer (minutos). |
@@ -31,7 +31,14 @@ sensibles y exigen resguardos que este sistema no está diseñado para dar.
 
 ## Medidas de resguardo incluidas
 
-- Acceso con cuenta personal, roles y permisos por centro, validados siempre en el servidor.
+- Acceso con cuenta personal, roles y permisos por institución y por centro, validados siempre en
+  el servidor.
+- **Separación entre instituciones:** cuando la red reúne a varias instituciones, cada una ve solo
+  sus propios centros, usuarios, movimientos y auditoría. El **administrador de la red** (el
+  operador de la plataforma) sí ve los datos de todas, incluidos nombre, correo y actividad de sus
+  usuarios: quien opere la plataforma para terceros actúa como encargado de esos datos y conviene
+  que lo formalice con cada institución. Son comunes a toda la red el catálogo de insumos, las
+  categorías y los proveedores (con sus datos de contacto).
 - Contraseñas con hash argon2id, cambio obligatorio de la clave temporal y bloqueo tras intentos
   fallidos.
 - Sesiones con vencimiento, en cookie no accesible desde scripts y solo por HTTPS en producción.
