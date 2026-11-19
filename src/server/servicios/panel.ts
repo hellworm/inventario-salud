@@ -5,7 +5,7 @@ import { hoyEnSantiago, inicioDelDia, sumarDias, ZONA_HORARIA, type DiaISO } fro
 import { puede, type Actor } from "@/lib/permisos";
 import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { db } from "../db";
-import { obtenerAlertas, type ResumenAlertas } from "./alertas";
+import { obtenerAlertas, type AlertaStock, type AlertaVencimiento, type ResumenAlertas } from "./alertas";
 import { listarMovimientos, type FilaMovimiento } from "./consultas-movimientos";
 
 export interface ActividadDia {
@@ -26,6 +26,33 @@ export interface ResumenCentro {
   porVencer: number;
 }
 
+/** Un grupo de la lista "Qué requiere atención hoy": los primeros ítems y el total real. */
+export interface GrupoAtencion<T> {
+  items: T[];
+  total: number;
+}
+
+/** Lista priorizada de lo que hay que resolver primero. */
+export interface AtencionHoy {
+  /** 1.º Insumos sin stock utilizable (con mínimo definido). */
+  sinStock: GrupoAtencion<AlertaStock>;
+  /** 2.º Lotes vencidos con stock físico: hay que darlos de baja (los más antiguos primero). */
+  vencidos: GrupoAtencion<AlertaVencimiento>;
+  /** 3.º Lotes que vencen dentro de `DIAS_VENCE_ESTA_SEMANA` días. */
+  venceEstaSemana: GrupoAtencion<AlertaVencimiento>;
+  total: number;
+}
+
+/** Lotes y unidades por tramo de vencimiento (para el gráfico del panel). */
+export interface TramoVencimientoPanel {
+  clave: "VENCIDO" | "30" | "60" | "90";
+  lotes: number;
+  unidades: number;
+}
+
+/** "Vence esta semana" = hoy + 7 días. */
+export const DIAS_VENCE_ESTA_SEMANA = 7;
+
 export interface ResumenPanel {
   /** Insumos distintos con stock > 0. */
   insumosConStock: number;
@@ -34,6 +61,9 @@ export interface ResumenPanel {
   /** Unidades físicas totales (incluye vencidas). */
   unidadesTotales: number;
   alertas: ResumenAlertas;
+  atencion: AtencionHoy;
+  /** Siempre los 4 tramos, en orden: vencido, ≤30, 31–60, 61–90. */
+  vencimientos: TramoVencimientoPanel[];
   /** Desglose de alertas por centro del alcance. */
   porCentro: ResumenCentro[];
   /** `false` si el rol no puede ver movimientos (los campos siguientes van vacíos). */
@@ -50,7 +80,7 @@ export interface ResumenPanel {
  */
 export async function resumenPanel(
   actor: Actor,
-  filtros: { centroId?: string | null; diasActividad?: number; ultimos?: number } = {},
+  filtros: { centroId?: string | null; diasActividad?: number; ultimos?: number; porGrupoAtencion?: number } = {},
   opciones: { ahora?: Date } = {},
 ): Promise<ResumenPanel> {
   verificarPermiso(actor, "panel:ver");
@@ -130,7 +160,28 @@ export async function resumenPanel(
     else r.porVencer++;
   }
 
+  const porGrupo = Math.min(Math.max(filtros.porGrupoAtencion ?? 4, 1), 20);
+  const grupo = <T>(todos: T[]): GrupoAtencion<T> => ({ items: todos.slice(0, porGrupo), total: todos.length });
+  const sinStock = alertas.stock.filter((a) => a.tipo === "SIN_STOCK");
+  const vencidos = alertas.vencimientos.filter((a) => a.tipo === "VENCIDO");
+  const estaSemana = alertas.vencimientos.filter((a) => a.tipo === "POR_VENCER" && a.dias <= DIAS_VENCE_ESTA_SEMANA);
+  const atencion: AtencionHoy = {
+    sinStock: grupo(sinStock),
+    vencidos: grupo(vencidos),
+    venceEstaSemana: grupo(estaSemana),
+    total: sinStock.length + vencidos.length + estaSemana.length,
+  };
+
+  const vencimientos: TramoVencimientoPanel[] = (["VENCIDO", "30", "60", "90"] as const).map((clave) => {
+    const delTramo = alertas.vencimientos.filter((a) =>
+      clave === "VENCIDO" ? a.tipo === "VENCIDO" : String(a.tramo) === clave,
+    );
+    return { clave, lotes: delTramo.length, unidades: delTramo.reduce((s, a) => s + a.cantidad, 0) };
+  });
+
   return {
+    atencion,
+    vencimientos,
     insumosConStock: totales[0]?.insumos ?? 0,
     lotesConStock: totales[0]?.lotes ?? 0,
     unidadesTotales: totales[0]?.unidades ?? 0,
