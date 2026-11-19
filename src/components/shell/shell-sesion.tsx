@@ -12,7 +12,9 @@ export async function ShellSesion({ sesion, children }: { sesion: Sesion; childr
       usuario={{ nombre: sesion.usuario.nombre, email: sesion.usuario.email, rol: sesion.usuario.rol }}
       centros={centroActivo.centros}
       centroActivoId={centroActivo.centroId}
-      puedeVerTodaLaRed={centroActivo.puedeVerTodaLaRed}
+      puedeVerTodos={centroActivo.puedeVerTodos}
+      etiquetaTodos={centroActivo.etiquetaTodos}
+      institucion={sesion.usuario.institucion?.nombre ?? null}
       sidebarColapsadaInicial={almacen.get(COOKIE_SIDEBAR)?.value === "1"}
     >
       {children}

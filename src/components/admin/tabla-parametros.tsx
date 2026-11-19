@@ -14,6 +14,8 @@ import { useValidacion } from "./use-validacion";
 export interface FilaParametro {
   centroId: string;
   centro: string;
+  /** Institución del centro (se muestra cuando hay centros de varias). */
+  institucion?: string;
   centroActivo: boolean;
   stockMinimo: number | null;
   stockMaximo: number | null;
@@ -29,7 +31,17 @@ function aValores(filas: readonly FilaParametro[]): Valores {
 }
 
 /** Tabla centro × mínimo × máximo de un insumo. Se guarda todo junto. */
-export function TablaParametros({ insumoId, unidadMedida, filas }: { insumoId: string; unidadMedida: string; filas: FilaParametro[] }) {
+export function TablaParametros({
+  insumoId,
+  unidadMedida,
+  filas,
+  mostrarInstitucion = false,
+}: {
+  insumoId: string;
+  unidadMedida: string;
+  filas: FilaParametro[];
+  mostrarInstitucion?: boolean;
+}) {
   const [valores, setValores] = React.useState<Valores>(() => aValores(filas));
   const [guardados, setGuardados] = React.useState<Valores>(() => aValores(filas));
   const guardar = useAccion(guardarParametrosStockAccion, {
@@ -107,7 +119,12 @@ export function TablaParametros({ insumoId, unidadMedida, filas }: { insumoId: s
               <div key={f.centroId} role="row" className="px-4 py-3.5 md:py-3">
                 <div className="grid grid-cols-2 items-center gap-x-4 gap-y-2.5 md:grid-cols-[minmax(0,1fr)_9rem_8rem_8rem]">
                   <div role="cell" className="col-span-2 flex min-w-0 flex-col items-start gap-x-3 gap-y-0.5 md:col-span-1 md:flex-row md:flex-wrap md:items-center">
-                    <span className="max-w-full min-w-0 text-[0.9375rem] font-medium break-words text-texto">{f.centro}</span>
+                    <span className="max-w-full min-w-0 text-[0.9375rem] font-medium break-words text-texto">
+                      {f.centro}
+                      {mostrarInstitucion && f.institucion ? (
+                        <span className="block text-xs font-normal text-texto-tenue">{f.institucion}</span>
+                      ) : null}
+                    </span>
                     {!f.centroActivo ? <Badge tono="neutro">Centro inactivo</Badge> : null}
                     <span className="cifras text-sm text-texto-suave md:hidden">
                       Hoy: {cantidadConUnidad(f.stockActual, unidadMedida)}

@@ -13,10 +13,11 @@ const TAREAS = {
   vencimiento: "Corregir el vencimiento de un lote",
 } as const;
 
-const POR_ROL: Record<Exclude<Rol, "valpo">, { etiqueta: string; ve: (keyof typeof TAREAS)[] }> = {
+const POR_ROL: Record<Exclude<Rol, "valpo" | "cerro">, { etiqueta: string; ve: (keyof typeof TAREAS)[] }> = {
   visita: { etiqueta: "Visitante", ve: ["buscar", "alertas"] },
   bodega: { etiqueta: "Bodeguero", ve: ["buscar", "alertas", "ingreso", "retiro", "historial"] },
-  admin: { etiqueta: "Administrador", ve: ["buscar", "alertas", "ingreso", "retiro", "historial", "traslado", "ajuste", "vencimiento"] },
+  andes: { etiqueta: "Administrador de institución", ve: ["buscar", "alertas", "ingreso", "retiro", "historial", "traslado", "ajuste", "vencimiento"] },
+  admin: { etiqueta: "Administrador de la red", ve: ["buscar", "alertas", "ingreso", "retiro", "historial", "traslado", "ajuste", "vencimiento"] },
 };
 
 test.describe("Ayuda por rol", () => {

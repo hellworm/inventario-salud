@@ -15,9 +15,12 @@ export interface FilaCategoria {
   insumosActivos: number;
 }
 
-/** Categorías con su conteo de insumos. Permiso: `catalogo:gestionar`. */
+/**
+ * Categorías con su conteo de insumos (catálogo común: los conteos son de la
+ * red, no revelan stock de nadie). Permiso: `catalogo:crear`.
+ */
 export async function listarCategoriasAdmin(actor: Actor): Promise<FilaCategoria[]> {
-  verificarPermiso(actor, "catalogo:gestionar");
+  verificarPermiso(actor, "catalogo:crear");
   const [categorias, activos] = await Promise.all([
     db.categoria.findMany({
       select: { id: true, nombre: true, _count: { select: { insumos: true } } },
@@ -44,9 +47,12 @@ async function exigirNombreLibre(tx: Tx, nombre: string, exceptoId?: string): Pr
   }
 }
 
-/** Crea una categoría. Permiso: `catalogo:gestionar`. */
+/**
+ * Crea una categoría. Permiso: `catalogo:crear` (también un administrador de
+ * institución; renombrar o eliminar una existente exige `catalogo:gestionar`).
+ */
 export async function crearCategoria(actor: Actor, entrada: EntradaCategoria): Promise<{ id: string; nombre: string }> {
-  verificarPermiso(actor, "catalogo:gestionar");
+  verificarPermiso(actor, "catalogo:crear");
   const datos = validar(esquemaCategoria, entrada);
   return enTransaccion(async (tx) => {
     await exigirNombreLibre(tx, datos.nombre);

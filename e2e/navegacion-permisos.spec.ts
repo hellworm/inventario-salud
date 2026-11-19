@@ -3,7 +3,11 @@ import type { Rol } from "./soporte/entorno";
 import { expect, test } from "./soporte/fixtures";
 
 const BASE = ["Panel", "Inventario", "Alertas"];
-const NAVEGACION: Record<Exclude<Rol, "valpo">, string[]> = {
+const OPERACION = ["Movimientos", "Reportes", "Ingreso", "Retiro", "Traslado", "Ajuste o merma"];
+const ADMINISTRACION = ["Insumos", "Categorías", "Centros y ubicaciones", "Proveedores", "Usuarios", "Auditoría"];
+const NAVEGACION: Record<Exclude<Rol, "valpo" | "cerro">, string[]> = {
+  // Administrador de institución: todo salvo "Instituciones".
+  andes: [...BASE, ...OPERACION, ...ADMINISTRACION],
   admin: [
     ...BASE,
     "Movimientos",
@@ -12,6 +16,7 @@ const NAVEGACION: Record<Exclude<Rol, "valpo">, string[]> = {
     "Retiro",
     "Traslado",
     "Ajuste o merma",
+    "Instituciones",
     "Insumos",
     "Categorías",
     "Centros y ubicaciones",
@@ -33,6 +38,7 @@ const SOLO_ADMIN = [
   "/reportes/consumo",
   "/reportes/vencimientos",
   "/admin",
+  "/admin/instituciones",
   "/admin/insumos",
   "/admin/insumos/nuevo",
   "/admin/categorias",
@@ -65,7 +71,7 @@ async function enlacesDeNavegacion(pagina: Page, movil: boolean): Promise<string
 }
 
 test.describe("Navegación visible por rol", () => {
-  for (const rol of ["admin", "bodega", "visita"] as const) {
+  for (const rol of ["admin", "andes", "bodega", "visita"] as const) {
     test(`${rol}: el menú muestra solo lo que su rol permite @movil`, async ({ abrirComo, isMobile }) => {
       const pagina = await abrirComo(rol);
       await pagina.goto("/panel");

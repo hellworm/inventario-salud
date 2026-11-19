@@ -9,6 +9,7 @@ import { formatearDia, formatearFechaHora } from "@/lib/fechas";
 import { leerFiltros } from "@/lib/filtros-reportes";
 import { formatearNumero, pluralizar } from "@/lib/formato";
 import { construirHref, resolverCentro } from "@/lib/parametros-url";
+import { etiquetaAlcanceTotal } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { pluralUnidad, unidadSegun } from "@/lib/unidades";
 import { listaReposicion, listarCategorias, type AlertaStock } from "@/server/servicios";
@@ -121,7 +122,7 @@ export default async function PaginaReposicion({ searchParams }: PageProps<"/ale
     listaReposicion(actor, { centroId, categoriaId: filtros.categoriaId }),
     listarCategorias(actor),
   ]);
-  const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? "Toda la red";
+  const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? etiquetaAlcanceTotal(actor.rol);
   const categoria = categorias.find((c) => c.id === filtros.categoriaId)?.nombre;
   const hrefCsv = construirHref("/alertas/reposicion/exportar", { centro: centroId, categoria: filtros.categoriaId });
   const resumen =

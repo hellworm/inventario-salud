@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { buttonClasses, PageHeader } from "@/components/ui";
 import { enumParam, paginaParam, textoParam } from "@/lib/parametros";
-import { puede } from "@/lib/permisos";
+import { fraseAlcanceTotal, puede } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { esErrorDominio } from "@/server/errores";
 import {
@@ -63,7 +63,7 @@ export default async function PaginaInventario({ searchParams }: PageProps<"/inv
         descripcion={
           centro
             ? `Qué hay en ${centro.nombre}: cantidades, lotes, vencimientos y dónde está cada cosa.`
-            : "Qué hay en toda la red: cantidades, lotes, vencimientos y dónde está cada cosa."
+            : `Qué hay en ${fraseAlcanceTotal(actor.rol)}: cantidades, lotes, vencimientos y dónde está cada cosa.`
         }
         acciones={
           puedeIngresar || puedeRetirar ? (

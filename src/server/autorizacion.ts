@@ -1,5 +1,6 @@
 import "server-only";
 import {
+  alcanzaInstitucion,
   puede,
   tieneAccesoACentro,
   veTodaLaRed,
@@ -23,10 +24,22 @@ export function verificarPermiso(actor: Actor, permiso: Permiso, centroId?: stri
 }
 
 /**
+ * Exige que el actor alcance la institución (ADMIN_RED todas; los demás solo
+ * la propia). Se responde `NO_ENCONTRADO` a propósito: quien no alcanza una
+ * institución no debe poder distinguir "no existe" de "es de otra institución".
+ */
+export function verificarInstitucion(actor: Actor, institucionId: string | null, queEs = "El registro"): void {
+  if (!alcanzaInstitucion(actor, institucionId)) {
+    throw new ErrorDominio("NO_ENCONTRADO", `${queEs} no existe.`);
+  }
+}
+
+/**
  * Resuelve el alcance de centros de una consulta.
  * - Con `centroId`: valida el acceso y devuelve `[centroId]`.
- * - Sin `centroId`: `null` para quien ve toda la red (sin filtro) o los
- *   centros asignados del actor.
+ * - Sin `centroId`: `null` para quien ve toda la red (ADMIN_RED, sin filtro) o
+ *   los centros del actor (`actor.centroIds`: los asignados o, para un ADMIN,
+ *   todos los de su institución).
  */
 export function alcanceDeCentros(actor: Actor, centroId?: string | null): string[] | null {
   if (centroId) {

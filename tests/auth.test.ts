@@ -30,6 +30,7 @@ beforeEach(async () => {
       email: "ana@test.cl",
       passwordHash: await hashearPassword(PASSWORD),
       rol: "BODEGUERO",
+      institucionId: e.institucion,
       debeCambiarPassword: true,
       centros: { create: [{ centroId: e.centroA }] },
     },

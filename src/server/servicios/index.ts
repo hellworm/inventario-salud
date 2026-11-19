@@ -11,6 +11,7 @@ export * from "./reportes";
 // Administración
 export * from "./insumos";
 export * from "./categorias";
+export * from "./instituciones";
 export * from "./centros";
 export * from "./proveedores";
 export * from "./auditoria-consultas";

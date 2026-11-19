@@ -4,6 +4,8 @@ import { Tags } from "lucide-react";
 import { AccionesCategoria, BotonNuevaCategoria } from "@/components/admin/categorias";
 import { Card, DataTable, EmptyState, PageHeader, type Columna } from "@/components/ui";
 import { pluralizar } from "@/lib/formato";
+import { AvisoCatalogoCompartido } from "@/components/admin/aviso-catalogo-compartido";
+import { puede } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { listarCategoriasAdmin, type FilaCategoria } from "@/server/servicios";
 
@@ -48,20 +50,28 @@ const COLUMNAS: Columna<FilaCategoria>[] = [
 ];
 
 export default async function PaginaAdminCategorias() {
-  const { actor } = await contextoPagina("catalogo:gestionar");
+  const { actor } = await contextoPagina("catalogo:crear");
   const categorias = await listarCategoriasAdmin(actor);
+  // Renombrar o eliminar afecta a todas las instituciones: solo el administrador de la red.
+  const puedeModificar = puede(actor.rol, "catalogo:gestionar");
+  const columnas = puedeModificar ? COLUMNAS : COLUMNAS.filter((c) => c.clave !== "acciones");
 
   return (
     <>
       <PageHeader
         titulo="Categorías"
-        descripcion="Agrupan los insumos del catálogo. Una categoría solo se puede eliminar cuando no tiene insumos."
+        descripcion={
+          puedeModificar
+            ? "Agrupan los insumos del catálogo. Una categoría solo se puede eliminar cuando no tiene insumos."
+            : "Agrupan los insumos del catálogo compartido por toda la red. Puedes crear categorías nuevas."
+        }
         acciones={<BotonNuevaCategoria />}
       />
+      {!puedeModificar ? <AvisoCatalogoCompartido que="categorias" className="mb-4 max-w-3xl" /> : null}
       <Card relleno={false} className="max-w-3xl overflow-hidden">
         <DataTable
           titulo="Categorías"
-          columnas={COLUMNAS}
+          columnas={columnas}
           filas={categorias}
           claveFila={(c) => c.id}
           vacio={

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { MapPinOff } from "lucide-react";
 import { EmptyState, PageHeader } from "@/components/ui";
 import { textoParam } from "@/lib/parametros";
-import { puede } from "@/lib/permisos";
+import { fraseAlcanceTotal, puede } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { buscarInsumos, listarUbicaciones, obtenerOpcionInsumo } from "@/server/servicios";
 import { volverDeFormulario } from "../volver";
@@ -33,7 +33,7 @@ export default async function PaginaRetiro({ searchParams }: PageProps<"/movimie
         descripcion={
           centro
             ? `Salida de insumos de ${centro.nombre} para su uso.`
-            : "Salida de insumos para su uso. Estás viendo toda la red: revisa bien la ubicación."
+            : `Salida de insumos para su uso. Estás viendo ${fraseAlcanceTotal(actor.rol)}: revisa bien la ubicación.`
         }
         volver={volver}
       />

@@ -17,7 +17,7 @@ import {
 } from "@/lib/esquemas/movimientos";
 import { dateADia, diaADate, formatearDia, hoyEnSantiago, type DiaISO } from "@/lib/fechas";
 import { formatearNumero } from "@/lib/formato";
-import type { Actor, Permiso } from "@/lib/permisos";
+import { esAdministrador, type Actor, type Permiso } from "@/lib/permisos";
 import { registrarAuditoria } from "../auditoria";
 import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { enTransaccion, type Tx } from "../db";
@@ -107,6 +107,16 @@ interface Contexto {
   hoy: DiaISO;
   /** Clave de idempotencia de la operación y el índice del próximo asiento. */
   idempotencia: { clave: string; siguiente: number } | null;
+  /**
+   * Institución del centro donde ocurre la operación (la fija
+   * `cargarUbicacionAutorizada`). Es el alcance de sus registros de auditoría.
+   */
+  institucionId: string | null;
+}
+
+/** Actor para auditar: el registro pertenece a la institución del centro. */
+function actorDeAuditoria(ctx: Contexto): { usuarioId: string; ip: string | null; institucionId: string | null } {
+  return { usuarioId: ctx.actor.usuarioId, ip: ctx.actor.ip ?? null, institucionId: ctx.institucionId };
 }
 
 /** Un movimiento ya registrado con una clave de idempotencia. */
@@ -166,6 +176,7 @@ interface UbicacionCargada {
   nombre: string;
   centroId: string;
   centroNombre: string;
+  institucionId: string;
 }
 
 interface InsumoCargado {
@@ -216,7 +227,7 @@ async function cargarUbicacionAutorizada(
       nombre: true,
       activo: true,
       centroId: true,
-      centro: { select: { nombre: true, activo: true } },
+      centro: { select: { nombre: true, activo: true, institucionId: true } },
     },
   });
   if (!ubicacion) {
@@ -235,11 +246,13 @@ async function cargarUbicacionAutorizada(
   if (!estado || !estado.activo || !estado.centroActivo) {
     throw new ErrorDominio("INACTIVO", `La ubicación "${ubicacion.nombre}" está inactiva.`, { campo });
   }
+  ctx.institucionId = ubicacion.centro.institucionId;
   return {
     id: ubicacion.id,
     nombre: ubicacion.nombre,
     centroId: ubicacion.centroId,
     centroNombre: ubicacion.centro.nombre,
+    institucionId: ubicacion.centro.institucionId,
   };
 }
 
@@ -431,6 +444,7 @@ function ejecutar<T>(
       ahora,
       hoy: hoyEnSantiago(ahora),
       idempotencia: idem.clave ? { clave: idem.clave, siguiente: 0 } : null,
+      institucionId: actor.institucionId,
     });
   });
 }
@@ -464,7 +478,7 @@ function stockInsuficiente(
  * Reglas:
  *  - Si el insumo controla vencimiento, un lote nuevo exige fecha de vencimiento.
  *  - No se puede cambiar el vencimiento de un lote existente (LOTE_INCONSISTENTE);
- *    eso lo hace un ADMIN con `corregirVencimientoLote`.
+ *    eso lo hace un administrador con `corregirVencimientoLote`.
  *  - A un lote existente SIN fecha se le puede completar el vencimiento solo
  *    si no tiene existencias en centros fuera del alcance del actor (o si es
  *    ADMIN). Queda auditado como LOTE_ACTUALIZADO (antes/después).
@@ -566,7 +580,7 @@ export async function registrarIngreso(
         });
         await registrarAuditoria(
           ctx.tx,
-          ctx.actor,
+          actorDeAuditoria(ctx),
           {
             accion: "LOTE_ACTUALIZADO",
             entidad: "Lote",
@@ -625,7 +639,7 @@ export async function registrarIngreso(
     if (loteCreado) {
       await registrarAuditoria(
         ctx.tx,
-        ctx.actor,
+        actorDeAuditoria(ctx),
         {
           accion: "LOTE_CREADO",
           entidad: "Lote",
@@ -637,7 +651,7 @@ export async function registrarIngreso(
     }
     await registrarAuditoria(
       ctx.tx,
-      ctx.actor,
+      actorDeAuditoria(ctx),
       {
         accion: "MOVIMIENTO_INGRESO",
         entidad: "Movimiento",
@@ -761,7 +775,7 @@ export async function registrarRetiro(
       pendiente -= tomar;
       await registrarAuditoria(
         ctx.tx,
-        ctx.actor,
+        actorDeAuditoria(ctx),
         {
           accion: "MOVIMIENTO_RETIRO",
           entidad: "Movimiento",
@@ -823,7 +837,7 @@ async function descontarDeLote(
  * obligatorio. El ajuste positivo puede crear la existencia del lote en la
  * ubicación; el negativo no puede dejar el saldo bajo cero.
  *
- * Permiso: `movimientos:ajuste` (solo ADMIN).
+ * Permiso: `movimientos:ajuste` (solo administradores, en sus centros).
  */
 export async function registrarAjuste(
   actor: Actor,
@@ -859,7 +873,7 @@ export async function registrarAjuste(
     });
     await registrarAuditoria(
       ctx.tx,
-      ctx.actor,
+      actorDeAuditoria(ctx),
       {
         accion: "MOVIMIENTO_AJUSTE",
         entidad: "Movimiento",
@@ -885,7 +899,7 @@ export async function registrarAjuste(
  * Merma: baja de stock por vencimiento, daño, pérdida, etc. Es la única
  * salida permitida para lotes vencidos. Motivo obligatorio.
  *
- * Permiso: `movimientos:merma` (solo ADMIN).
+ * Permiso: `movimientos:merma` (solo administradores, en sus centros).
  */
 export async function registrarMerma(
   actor: Actor,
@@ -916,7 +930,7 @@ export async function registrarMerma(
     });
     await registrarAuditoria(
       ctx.tx,
-      ctx.actor,
+      actorDeAuditoria(ctx),
       {
         accion: "MOVIMIENTO_MERMA",
         entidad: "Movimiento",
@@ -943,7 +957,7 @@ export async function registrarMerma(
 
 /**
  * Traslada stock de un lote entre dos ubicaciones (del mismo centro o de
- * centros distintos). Genera TRASLADO_SALIDA + TRASLADO_ENTRADA enlazados por
+ * centros distintos DE LA MISMA INSTITUCIÓN). Genera TRASLADO_SALIDA + TRASLADO_ENTRADA enlazados por
  * `trasladoGrupoId`, de forma atómica.
  *
  * Permiso: `movimientos:traslado` en el centro de origen Y en el de destino.
@@ -990,6 +1004,16 @@ export async function registrarTraslado(
         campo: "ubicacionDestinoId",
       });
     }
+    // El stock es de la institución: un traslado nunca cruza instituciones
+    // (tampoco para el administrador de la red).
+    if (origen.institucionId !== destino.institucionId) {
+      throw new ErrorDominio(
+        "TRASLADO_INVALIDO",
+        "Solo se puede trasladar entre centros de la misma institución.",
+        { campo: "ubicacionDestinoId" },
+      );
+    }
+    ctx.institucionId = origen.institucionId;
     const lote = await cargarLote(ctx, datos.loteId);
 
     // Garantiza que exista la fila de destino y bloquea ambas en orden estable
@@ -1041,7 +1065,7 @@ export async function registrarTraslado(
     });
     await registrarAuditoria(
       ctx.tx,
-      ctx.actor,
+      actorDeAuditoria(ctx),
       {
         accion: "MOVIMIENTO_TRASLADO",
         entidad: "Movimiento",
@@ -1082,7 +1106,12 @@ export async function registrarTraslado(
  * ni ser anterior a la fabricación (VALIDACION). Sí se admite una fecha pasada
  * (el lote queda vencido y solo podrá salir como merma).
  *
- * Permiso: solo ADMIN (`movimientos:ajuste` + rol ADMIN).
+ * Permiso: solo administradores (`movimientos:ajuste` + rol ADMIN_RED o ADMIN).
+ * Un ADMIN de institución solo puede corregir lotes que pasaron por sus
+ * centros (si no, NO_ENCONTRADO) y que no tengan existencias en centros de
+ * otras instituciones (LOTE_INCONSISTENTE: lo corrige el administrador de la
+ * red). La auditoría se escribe una vez por institución con existencias del
+ * lote, cada una con SUS unidades afectadas.
  */
 export async function corregirVencimientoLote(
   actor: Actor,
@@ -1090,9 +1119,10 @@ export async function corregirVencimientoLote(
   opciones?: OpcionesMutacion,
 ): Promise<ResultadoCorreccionLote> {
   verificarPermiso(actor, "movimientos:ajuste");
-  if (actor.rol !== "ADMIN") {
+  if (!esAdministrador(actor.rol)) {
     throw new ErrorDominio("SIN_PERMISO", "No tienes permiso para realizar esta acción.");
   }
+  const alcance = alcanceDeCentros(actor);
   const datos = validar(esquemaCorregirVencimientoLote, entrada);
   const ahora = opciones?.ahora ?? new Date();
   const hoy = hoyEnSantiago(ahora);
@@ -1104,6 +1134,17 @@ export async function corregirVencimientoLote(
       FROM "lotes" WHERE "id" = ${datos.loteId} FOR UPDATE
     `);
     if (!lote) throw new ErrorDominio("NO_ENCONTRADO", "El lote no existe.", { campo: "loteId" });
+    if (alcance !== null) {
+      // Mismo criterio de visibilidad que `lotesDeInsumo`: el lote debe haber
+      // pasado por los centros del actor.
+      const [propias, movimientos] = await Promise.all([
+        tx.existencia.count({ where: { loteId: lote.id, ubicacion: { centroId: { in: alcance } } } }),
+        tx.movimiento.count({ where: { loteId: lote.id, centroId: { in: alcance } } }),
+      ]);
+      if (propias + movimientos === 0) {
+        throw new ErrorDominio("NO_ENCONTRADO", "El lote no existe.", { campo: "loteId" });
+      }
+    }
     const insumo = await tx.insumo.findUniqueOrThrow({
       where: { id: lote.insumoId },
       select: { codigo: true, nombre: true, controlaVencimiento: true },
@@ -1113,6 +1154,19 @@ export async function corregirVencimientoLote(
     const nueva = datos.fechaVencimiento ?? null;
     const base = { loteId: lote.id, numeroLote: lote.numeroLote, fechaVencimientoAnterior: anterior, fechaVencimiento: nueva };
     if (anterior === nueva) return { ...base, cambiado: false };
+
+    if (alcance !== null) {
+      const ajenas = await tx.existencia.count({
+        where: { loteId: lote.id, cantidad: { gt: 0 }, ubicacion: { centroId: { notIn: alcance } } },
+      });
+      if (ajenas > 0) {
+        throw new ErrorDominio(
+          "LOTE_INCONSISTENTE",
+          `El lote ${lote.numeroLote} también tiene existencias en centros de otra institución: la fecha es del lote en toda la red. Pide al administrador de la red que la corrija.`,
+          { campo: "fechaVencimiento" },
+        );
+      }
+    }
 
     if (nueva === null && insumo.controlaVencimiento) {
       throw new ErrorDominio(
@@ -1130,34 +1184,51 @@ export async function corregirVencimientoLote(
       );
     }
 
-    const existencias = await tx.existencia.aggregate({
-      where: { loteId: lote.id, cantidad: { gt: 0 } },
-      _sum: { cantidad: true },
-      _count: { _all: true },
-    });
+    // Existencias afectadas, por institución: cada una verá en su auditoría
+    // solo sus propias unidades.
+    const afectadas = await tx.$queryRaw<{ institucionId: string; unidades: bigint; ubicaciones: bigint }[]>(Prisma.sql`
+      SELECT c."institucionId", COALESCE(SUM(e."cantidad"), 0) AS unidades, COUNT(*) AS ubicaciones
+      FROM "existencias" e
+      JOIN "ubicaciones" u ON u."id" = e."ubicacionId"
+      JOIN "centros" c ON c."id" = u."centroId"
+      WHERE e."loteId" = ${lote.id} AND e."cantidad" > 0
+      GROUP BY c."institucionId"
+      ORDER BY c."institucionId"
+    `);
     await tx.lote.update({
       where: { id: lote.id },
       data: { fechaVencimiento: nueva ? diaADate(nueva) : null },
     });
-    await registrarAuditoria(
-      tx,
-      actor,
-      {
-        accion: "LOTE_ACTUALIZADO",
-        entidad: "Lote",
-        entidadId: lote.id,
-        detalle: {
-          insumo: insumo.codigo,
-          numeroLote: lote.numeroLote,
-          origen: "CORRECCION",
-          motivo: datos.motivo,
-          cambios: { fechaVencimiento: { antes: anterior, despues: nueva } },
-          unidadesAfectadas: existencias._sum.cantidad ?? 0,
-          ubicacionesAfectadas: existencias._count._all,
+    const registros: { institucionId: string | null; unidades: number; ubicaciones: number }[] =
+      afectadas.length > 0
+        ? afectadas.map((a) => ({
+            institucionId: a.institucionId,
+            unidades: Number(a.unidades),
+            ubicaciones: Number(a.ubicaciones),
+          }))
+        : [{ institucionId: actor.institucionId, unidades: 0, ubicaciones: 0 }];
+    for (const registro of registros) {
+      await registrarAuditoria(
+        tx,
+        actor,
+        {
+          accion: "LOTE_ACTUALIZADO",
+          entidad: "Lote",
+          entidadId: lote.id,
+          institucionId: registro.institucionId,
+          detalle: {
+            insumo: insumo.codigo,
+            numeroLote: lote.numeroLote,
+            origen: "CORRECCION",
+            motivo: datos.motivo,
+            cambios: { fechaVencimiento: { antes: anterior, despues: nueva } },
+            unidadesAfectadas: registro.unidades,
+            ubicacionesAfectadas: registro.ubicaciones,
+          },
         },
-      },
-      ahora,
-    );
+        ahora,
+      );
+    }
     return { ...base, cambiado: true };
   });
 }

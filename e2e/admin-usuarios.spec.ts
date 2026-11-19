@@ -1,4 +1,4 @@
-import { CENTROS, comoSeMuestra, diaSantiago, sufijo } from "./soporte/entorno";
+import { CENTROS, INSTITUCIONES, comoSeMuestra, diaSantiago, sufijo } from "./soporte/entorno";
 import { avisos, desmarcar, marcar } from "./soporte/datos";
 import { expect, iniciarSesion, ipDePrueba, sesionDe, test } from "./soporte/fixtures";
 import { crearUsuario, filaDeUsuario, primerIngreso } from "./soporte/usuarios";
@@ -87,6 +87,12 @@ test.describe("Administración de usuarios", () => {
     await dialogo.getByLabel("Nombre y apellido").fill("Duplicado E2E");
     await dialogo.getByLabel("Correo electrónico").fill("BODEGA@redinsumos.cl");
     await marcar(dialogo.getByRole("radio", { name: /^Visitante/ }));
+    await dialogo.getByRole("button", { name: "Crear usuario" }).click();
+    // El administrador de la red debe elegir primero la institución; los centros que se ofrecen son solo los suyos.
+    await expect(dialogo).toContainText("Selecciona la institución del usuario");
+    await dialogo.locator('select[name="institucionId"]').selectOption({ label: INSTITUCIONES.cerro });
+    await expect(dialogo.getByRole("checkbox", { name: CENTROS.valpo })).toBeVisible();
+    await expect(dialogo.getByRole("checkbox", { name: CENTROS.nunoa })).toHaveCount(0);
     await dialogo.getByRole("button", { name: "Crear usuario" }).click();
     await expect(dialogo).toContainText("Asigna al menos un centro");
     await marcar(dialogo.getByRole("checkbox", { name: CENTROS.valpo }));
@@ -240,19 +246,21 @@ test.describe("Administración de usuarios", () => {
     await sesionUsuario.goto("/movimientos/retiro");
     await expect(sesionUsuario.getByRole("heading", { level: 1, name: "Registrar retiro" })).toBeVisible();
 
-    // El administrador lo pasa a Visitante de Valparaíso.
+    // El administrador lo pasa a Visitante de Concepción (otro centro de SU institución:
+    // un usuario no cambia de institución, y los centros de otra ni se ofrecen).
     const fila = await filaDeUsuario(page, usuario);
     await fila.getByRole("button", { name: `Acciones para ${usuario.nombre}` }).click();
     await page.getByRole("menuitem", { name: "Editar datos, rol y centros" }).click();
     const dialogo = page.getByRole("dialog", { name: "Editar usuario" });
     await marcar(dialogo.getByRole("radio", { name: /^Visitante/ }));
+    await expect(dialogo.getByRole("checkbox", { name: CENTROS.valpo })).toHaveCount(0);
     await desmarcar(dialogo.getByRole("checkbox", { name: CENTROS.nunoa }));
-    await marcar(dialogo.getByRole("checkbox", { name: CENTROS.valpo }));
+    await marcar(dialogo.getByRole("checkbox", { name: CENTROS.conce }));
     await dialogo.getByRole("button", { name: "Guardar cambios" }).click();
     await expect(dialogo).toBeHidden();
     const actualizada = page.getByRole("row").filter({ hasText: usuario.email });
     await expect(actualizada).toContainText("Visitante");
-    await expect(actualizada).toContainText(CENTROS.valpo);
+    await expect(actualizada).toContainText(CENTROS.conce);
 
     // Su sesión anterior ya no puede retirar: o se cerró, o quedó sin permiso.
     await sesionUsuario.goto("/movimientos/retiro");

@@ -7,7 +7,7 @@ import {
   BotonNuevoUsuario,
   BotonRestablecerVencida,
   DistintivoYo,
-  type OpcionCentro,
+  type AlcanceUsuarios,
 } from "@/components/admin/usuarios";
 import {
   Badge,
@@ -21,9 +21,9 @@ import {
   type Columna,
 } from "@/components/ui";
 import { formatearFecha, formatearFechaHora, formatearRelativo } from "@/lib/fechas";
-import { NOMBRE_ROL, ROLES, type Rol } from "@/lib/permisos";
+import { NOMBRE_ROL, rolesAsignables, veTodaLaRed, type Rol } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
-import { listarCentrosAdmin, listarUsuarios, type FilaUsuario } from "@/server/servicios";
+import { listarCentrosAdmin, listarOpcionesInstitucion, listarUsuarios, type FilaUsuario } from "@/server/servicios";
 import { paginaParam, textoParam } from "@/lib/parametros";
 
 export const metadata: Metadata = { title: "Usuarios" };
@@ -33,7 +33,9 @@ const ESTADOS = [
   { value: "inactivos", label: "Solo inactivos" },
 ];
 
-function columnas(usuarioActualId: string, centros: OpcionCentro[]): Columna<FilaUsuario>[] {
+function columnas(usuarioActualId: string, alcance: AlcanceUsuarios): Columna<FilaUsuario>[] {
+  // El administrador de la red ve usuarios de varias instituciones: se indica la de cada uno.
+  const mostrarInstitucion = alcance.eligeInstitucion;
   return [
     {
       clave: "usuario",
@@ -53,17 +55,27 @@ function columnas(usuarioActualId: string, centros: OpcionCentro[]): Columna<Fil
     { clave: "rol", encabezado: "Rol", celda: (u) => <BadgeRol rol={u.rol} /> },
     {
       clave: "centros",
-      encabezado: "Centros",
-      celda: (u) =>
-        u.rol === "ADMIN" ? (
-          <span className="text-texto-suave">Toda la red</span>
-        ) : u.centros.length === 0 ? (
-          <span className="font-medium text-alerta-800">Sin centros asignados</span>
-        ) : (
-          <span className="block whitespace-normal" title={u.centros.map((c) => c.nombre).join(", ")}>
-            {u.centros.map((c) => c.nombre).join(", ")}
-          </span>
-        ),
+      encabezado: mostrarInstitucion ? "Institución y centros" : "Centros",
+      celda: (u) => (
+        <span className="block whitespace-normal">
+          {mostrarInstitucion && u.institucion ? (
+            <span className="block font-medium text-texto" data-institucion-de-usuario>
+              {u.institucion}
+            </span>
+          ) : null}
+          {u.rol === "ADMIN_RED" ? (
+            <span className="text-texto-suave">Toda la red</span>
+          ) : u.rol === "ADMIN" ? (
+            <span className="text-texto-suave">Todos los centros de la institución</span>
+          ) : u.centros.length === 0 ? (
+            <span className="font-medium text-alerta-800">Sin centros asignados</span>
+          ) : (
+            <span className="block" title={u.centros.map((c) => c.nombre).join(", ")}>
+              {u.centros.map((c) => c.nombre).join(", ")}
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       clave: "estado",
@@ -111,7 +123,7 @@ function columnas(usuarioActualId: string, centros: OpcionCentro[]): Columna<Fil
       celda: (u) => (
         <AccionesUsuario
           esYo={u.id === usuarioActualId}
-          centros={centros}
+          alcance={alcance}
           usuario={{
             id: u.id,
             nombre: u.nombre,
@@ -119,6 +131,7 @@ function columnas(usuarioActualId: string, centros: OpcionCentro[]): Columna<Fil
             rol: u.rol,
             activo: u.activo,
             bloqueado: u.bloqueado,
+            institucionId: u.institucionId,
             centroIds: u.centros.map((c) => c.id),
           }}
         />
@@ -135,7 +148,7 @@ function AyudaRoles() {
         <span className="text-sm font-normal text-marca-700 group-open:hidden">Ver</span>
         <span className="hidden text-sm font-normal text-marca-700 group-open:inline">Ocultar</span>
       </summary>
-      <div className="grid gap-4 border-t border-borde px-4 py-4 sm:px-5 lg:grid-cols-3">
+      <div className="grid gap-x-4 gap-y-5 border-t border-borde px-4 py-4 sm:grid-cols-2 sm:px-5 xl:grid-cols-4">
         {ROLES_ORDENADOS.map((rol) => (
           <div key={rol}>
             <BadgeRol rol={rol} />
@@ -165,35 +178,61 @@ export default async function PaginaAdminUsuarios({ searchParams }: PageProps<"/
   const { actor } = await contextoPagina("usuarios:gestionar");
   const sp = await searchParams;
   const texto = textoParam(sp.q) ?? undefined;
-  const rol = ROLES.find((r) => r === sp.rol) as Rol | undefined;
+  const esRed = veTodaLaRed(actor);
+  const roles = rolesAsignables(actor.rol);
+  const rol = roles.find((r) => r === sp.rol) as Rol | undefined;
+  const institucionId = esRed ? (textoParam(sp.institucion) ?? undefined) : undefined;
   const estado = sp.estado === "activos" || sp.estado === "inactivos" ? sp.estado : undefined;
   const centroId = textoParam(sp.centro) ?? undefined;
 
-  const [usuarios, centrosRed] = await Promise.all([
-    listarUsuarios(actor, { texto, rol, estado, centroId, pagina: paginaParam(sp.pagina) }),
+  // Todo lo que llega al formulario ya viene acotado al alcance del actor: sus
+  // roles asignables, sus instituciones y sus centros (el servicio lo revalida).
+  const [usuarios, centrosAlcance, instituciones] = await Promise.all([
+    listarUsuarios(actor, { texto, rol, estado, centroId, institucionId, pagina: paginaParam(sp.pagina) }),
     listarCentrosAdmin(actor),
+    listarOpcionesInstitucion(actor),
   ]);
-  const centros: OpcionCentro[] = centrosRed.map((c) => ({ id: c.id, nombre: c.nombre, activo: c.activo }));
-  const hayFiltros = Boolean(texto || rol || estado || centroId);
+  const alcance: AlcanceUsuarios = {
+    roles,
+    instituciones,
+    eligeInstitucion: esRed,
+    centros: centrosAlcance.map((c) => ({ id: c.id, nombre: c.nombre, activo: c.activo, institucionId: c.institucionId })),
+  };
+  // Con una institución elegida, el filtro de centros muestra solo los suyos.
+  const centrosFiltro = institucionId ? alcance.centros.filter((c) => c.institucionId === institucionId) : alcance.centros;
+  const hayFiltros = Boolean(texto || rol || estado || centroId || institucionId);
+  const institucionPropia = !esRed ? (instituciones[0]?.nombre ?? null) : null;
 
   return (
     <>
       <PageHeader
         titulo="Usuarios"
-        descripcion="Quién puede entrar al sistema, con qué rol y en qué centros."
-        acciones={<BotonNuevoUsuario centros={centros} />}
+        descripcion={
+          institucionPropia
+            ? `Quién puede entrar al sistema en ${institucionPropia}, con qué rol y en qué centros.`
+            : "Quién puede entrar al sistema, de qué institución, con qué rol y en qué centros."
+        }
+        acciones={<BotonNuevoUsuario alcance={alcance} />}
       />
 
       <AyudaRoles />
 
-      <BarraFiltros parametros={["q", "rol", "centro", "estado"]}>
+      <BarraFiltros parametros={["q", "institucion", "rol", "centro", "estado"]}>
         <FiltroBusqueda placeholder="Nombre o correo electrónico…" />
-        <FiltroSelect parametro="rol" etiqueta="Rol" todos="Todos" opciones={ROLES.map((r) => ({ value: r, label: NOMBRE_ROL[r] }))} />
+        {esRed ? (
+          <FiltroSelect
+            parametro="institucion"
+            etiqueta="Institución"
+            todos="Todas"
+            opciones={instituciones.map((i) => ({ value: i.id, label: i.activo ? i.nombre : `${i.nombre} (inactiva)` }))}
+          />
+        ) : null}
+        <FiltroSelect parametro="rol" etiqueta="Rol" todos="Todos" opciones={roles.map((r) => ({ value: r, label: NOMBRE_ROL[r] }))} />
         <FiltroSelect
           parametro="centro"
           etiqueta="Centro"
           todos="Todos"
-          opciones={centros.map((c) => ({ value: c.id, label: c.nombre }))}
+          opciones={centrosFiltro.map((c) => ({ value: c.id, label: c.nombre }))}
         />
         <FiltroSelect parametro="estado" etiqueta="Estado" todos="Activos e inactivos" opciones={ESTADOS} />
       </BarraFiltros>
@@ -201,7 +240,7 @@ export default async function PaginaAdminUsuarios({ searchParams }: PageProps<"/
       <Card relleno={false} className="overflow-hidden">
         <DataTable
           titulo="Usuarios"
-          columnas={columnas(actor.usuarioId, centros)}
+          columnas={columnas(actor.usuarioId, alcance)}
           filas={usuarios.items}
           claveFila={(u) => u.id}
           claseFila={(u) => (u.activo ? undefined : "bg-superficie-2/60 [&_td]:text-texto-suave")}

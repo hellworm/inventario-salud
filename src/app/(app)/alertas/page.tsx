@@ -30,7 +30,7 @@ import { describirVencimiento, formatearDia } from "@/lib/fechas";
 import { leerFiltros } from "@/lib/filtros-reportes";
 import { formatearNumero, pluralizar } from "@/lib/formato";
 import { construirHref, leerOpcion, resolverCentro } from "@/lib/parametros-url";
-import { puede, type Rol } from "@/lib/permisos";
+import { etiquetaAlcanceTotal, puede, type Rol } from "@/lib/permisos";
 import { POR_PAGINA_DEFECTO } from "@/lib/resultado";
 import { contextoPagina } from "@/server/auth/sesion";
 import { cantidadConUnidad, unidadSegun } from "@/lib/unidades";
@@ -230,6 +230,10 @@ function columnasVencimiento(
 
 /** Aviso de la pestaña "Vencidos": qué hacer con ellos según lo que el rol puede hacer. */
 const AVISO_VENCIDOS: Record<Rol, { titulo: string; texto: string }> = {
+  ADMIN_RED: {
+    titulo: "El stock vencido no se puede retirar",
+    texto: "Sepáralo y dalo de baja como merma para que deje de figurar en el inventario: usa «Dar de baja» en cada lote.",
+  },
   ADMIN: {
     titulo: "El stock vencido no se puede retirar",
     texto: "Sepáralo y dalo de baja como merma para que deje de figurar en el inventario: usa «Dar de baja» en cada lote.",
@@ -294,7 +298,7 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
 
   const mostrarCentro = centroId === null && centros.length > 1;
   const hayFiltros = Boolean(filtros.texto || filtros.categoriaId || (!centroActivoId && centroId));
-  const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? "Toda la red";
+  const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? etiquetaAlcanceTotal(actor.rol);
   const permisos = { retirar: puede(actor.rol, "movimientos:retiro"), darDeBaja: puede(actor.rol, "movimientos:merma") };
   const ubicacionesIngreso = puedeIngresar ? ubicacionesDeIngreso(ubicaciones) : null;
   const avisoVencidos = AVISO_VENCIDOS[actor.rol];

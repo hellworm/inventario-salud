@@ -4,12 +4,14 @@ import * as React from "react";
 import { CircleCheck, CircleSlash } from "lucide-react";
 import { establecerInsumoActivoAccion } from "@/acciones/admin-catalogo";
 import { establecerCentroActivoAccion, establecerUbicacionActivaAccion } from "@/acciones/admin-centros";
+import { establecerInstitucionActivaAccion } from "@/acciones/admin-instituciones";
 import { establecerProveedorActivoAccion } from "@/acciones/admin-proveedores";
 import { establecerUsuarioActivoAccion } from "@/acciones/admin-usuarios";
 import { Button, ConfirmDialog, toast, type ButtonSize, type ButtonVariant } from "@/components/ui";
 import { useFocoAlCerrar } from "./use-foco-al-cerrar";
 
 const ACCIONES = {
+  institucion: establecerInstitucionActivaAccion,
   insumo: establecerInsumoActivoAccion,
   centro: establecerCentroActivoAccion,
   ubicacion: establecerUbicacionActivaAccion,
@@ -20,6 +22,13 @@ const ACCIONES = {
 export type EntidadActivable = keyof typeof ACCIONES;
 
 const TEXTOS: Record<EntidadActivable, { articulo: string; desactivar: string; activar: string; femenino: boolean }> = {
+  institucion: {
+    articulo: "la institución",
+    femenino: true,
+    desactivar:
+      "Sus usuarios no podrán ingresar (se cierran sus sesiones) y no se le podrán crear centros ni usuarios. Sus datos e historial se conservan. No se puede desactivar mientras tenga centros activos con stock.",
+    activar: "Sus usuarios podrán volver a ingresar.",
+  },
   insumo: {
     articulo: "el insumo",
     femenino: false,

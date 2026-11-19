@@ -126,7 +126,7 @@ export function BadgeTipoMovimiento({ tipo, className }: { tipo: TipoMovimiento;
 }
 
 export function BadgeRol({ rol, className }: { rol: Rol; className?: string }) {
-  const tono: BadgeTono = rol === "ADMIN" ? "marca" : rol === "BODEGUERO" ? "info" : "neutro";
+  const tono: BadgeTono = rol === "ADMIN_RED" ? "exito" : rol === "ADMIN" ? "marca" : rol === "BODEGUERO" ? "info" : "neutro";
   return (
     <Badge tono={tono} className={className}>
       {NOMBRE_ROL[rol]}

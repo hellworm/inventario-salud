@@ -41,6 +41,8 @@ export interface OpcionUbicacion {
   tipo: TipoUbicacion;
   centroId: string;
   centro: string;
+  /** Institución del centro. */
+  institucionId: string;
 }
 
 export interface OpcionProveedor {
@@ -159,10 +161,10 @@ export async function listarUbicaciones(
         ...(centros === null ? {} : { id: { in: centros } }),
       },
     },
-    select: { id: true, nombre: true, tipo: true, centroId: true, centro: { select: { nombre: true } } },
+    select: { id: true, nombre: true, tipo: true, centroId: true, centro: { select: { nombre: true, institucionId: true } } },
     orderBy: [{ centro: { nombre: "asc" } }, { nombre: "asc" }],
   });
-  return filas.map(({ centro, ...resto }) => ({ ...resto, centro: centro.nombre }));
+  return filas.map(({ centro, ...resto }) => ({ ...resto, centro: centro.nombre, institucionId: centro.institucionId }));
 }
 
 /** Proveedores activos. Permiso: `proveedores:ver`. */

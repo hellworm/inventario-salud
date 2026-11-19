@@ -153,7 +153,7 @@ export function PanelExistencias({
       ) : grupos.length === 0 ? (
         <div className="flex items-center gap-3 rounded-control border border-dashed border-borde-fuerte/70 px-3.5 py-4 text-sm text-texto-suave">
           <Boxes className="size-5 shrink-0 text-texto-tenue" aria-hidden />
-          Sin existencias de este insumo{mostrarCentro ? " en la red" : " en este centro"}.
+          Sin existencias de este insumo{mostrarCentro ? " en tus centros" : " en este centro"}.
         </div>
       ) : (
         <ul className={cn("space-y-4 transition-opacity", estado.cargando && "opacity-60")}>

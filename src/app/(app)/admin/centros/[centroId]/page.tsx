@@ -9,7 +9,7 @@ import { GestorUbicaciones } from "@/components/admin/ubicaciones";
 import { Alert, Badge, BadgeActivo, buttonClasses, Card, CardHeader, PageHeader } from "@/components/ui";
 import { ETIQUETA_TIPO_CENTRO } from "@/lib/estados";
 import { pluralizar } from "@/lib/formato";
-import type { Actor } from "@/lib/permisos";
+import { veTodaLaRed, type Actor } from "@/lib/permisos";
 import { contextoPagina, obtenerSesion } from "@/server/auth/sesion";
 import { esErrorDominio } from "@/server/errores";
 import { obtenerCentroAdmin, type CentroAdmin } from "@/server/servicios";
@@ -44,6 +44,7 @@ export default async function PaginaCentro({ params }: PageProps<"/admin/centros
   }
 
   const lotesConStock = centro.ubicaciones.reduce((suma, u) => suma + u.lotesConStock, 0);
+  const esRed = veTodaLaRed(actor);
 
   return (
     <>
@@ -54,6 +55,7 @@ export default async function PaginaCentro({ params }: PageProps<"/admin/centros
             <Badge tono="marca">{ETIQUETA_TIPO_CENTRO[centro.tipo]}</Badge>
             <BadgeActivo activo={centro.activo} />
             <span>
+              {esRed ? <>{centro.institucion} · </> : null}
               {centro.comuna} · {lotesConStock > 0 ? `${pluralizar(lotesConStock, "lote")} con stock` : "sin stock"}
             </span>
           </span>
@@ -92,7 +94,7 @@ export default async function PaginaCentro({ params }: PageProps<"/admin/centros
           <Card className="sm:p-6">
             <CardHeader
               titulo="Estado y accesos"
-              descripcion={`${pluralizar(centro.usuariosAsignados, "usuario asignado", "usuarios asignados")} a este centro (los administradores ven toda la red).`}
+              descripcion={`${pluralizar(centro.usuariosAsignados, "usuario asignado", "usuarios asignados")} a este centro (los administradores de la institución ven todos sus centros).`}
             />
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               <Link href={`/admin/usuarios?centro=${centro.id}`} className={buttonClasses({ variant: "secundario" })}>

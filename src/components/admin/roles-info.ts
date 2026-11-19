@@ -5,15 +5,30 @@ import { ROLES, type Rol } from "@/lib/permisos";
  * mantenerse coherente con la matriz de `src/lib/permisos.ts`.
  */
 export const INFO_ROL: Readonly<Record<Rol, { resumen: string; puede: readonly string[]; noPuede: readonly string[] }>> = {
-  ADMIN: {
-    resumen: "Gestiona toda la red, sin restricción de centros.",
+  ADMIN_RED: {
+    resumen: "Opera la plataforma: ve y gestiona todas las instituciones.",
     puede: [
-      "Ve y opera todos los centros",
-      "Registra ingresos, retiros, traslados, ajustes y mermas",
-      "Administra insumos, centros, proveedores y usuarios",
-      "Consulta y exporta reportes; revisa la auditoría",
+      "Crea y administra instituciones, y a sus administradores",
+      "Ve y opera todos los centros de todas las instituciones",
+      "Edita el catálogo compartido de insumos y categorías",
+      "Consulta reportes y auditoría de toda la red",
     ],
     noPuede: [],
+  },
+  ADMIN: {
+    resumen: "Gestiona su institución completa, sin asignarle centros.",
+    puede: [
+      "Ve y opera todos los centros de su institución",
+      "Registra ingresos, retiros, traslados, ajustes y mermas",
+      "Administra los centros, ubicaciones y usuarios de su institución, y los proveedores",
+      "Crea insumos nuevos y define mínimos y máximos de sus centros",
+      "Consulta y exporta reportes y auditoría de su institución",
+    ],
+    noPuede: [
+      "No ve nada de otras instituciones",
+      "No edita ni desactiva insumos o categorías existentes (son de toda la red)",
+      "No crea administradores de la red ni instituciones",
+    ],
   },
   BODEGUERO: {
     resumen: "Registra ingresos y retiros en sus centros.",

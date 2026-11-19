@@ -16,6 +16,7 @@ import { formatearDia, formatearFechaHora, hoyEnSantiago } from "@/lib/fechas";
 import { leerFiltros } from "@/lib/filtros-reportes";
 import { formatearCLP, formatearNumero, pluralizar } from "@/lib/formato";
 import { construirHref, resolverCentro } from "@/lib/parametros-url";
+import { etiquetaAlcanceTotal } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { listarCategorias, reporteExistencias, type FilaExistencia } from "@/server/servicios";
 
@@ -82,7 +83,7 @@ export default async function PaginaReporteExistencias({ searchParams }: PagePro
     listarCategorias(actor),
   ]);
   const { totales } = reporte;
-  const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? "Toda la red";
+  const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? etiquetaAlcanceTotal(actor.rol);
 
   return (
     <VistaReporte

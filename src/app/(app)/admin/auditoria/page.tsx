@@ -13,11 +13,14 @@ import { BotonDetalleAuditoria } from "@/components/admin/detalle-auditoria";
 import { BarraFiltros, FiltroFecha, FiltroSelect } from "@/components/admin/filtros-url";
 import { Alert, Badge, buttonClasses, Card, DataTable, EmptyState, PageHeader, Pagination, type Columna } from "@/components/ui";
 import { formatearFechaHora, hoyEnSantiago } from "@/lib/fechas";
+import { veTodaLaRed } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import {
   buscarInsumos,
+  FILTRO_EVENTOS_DE_RED,
   listarAuditoria,
   listarCategorias,
+  listarOpcionesInstitucion,
   opcionesFiltroAuditoria,
   type FilaAuditoria,
 } from "@/server/servicios";
@@ -27,6 +30,19 @@ export const metadata: Metadata = { title: "Auditoría" };
 
 /** Fila de auditoría con los nombres legibles que menciona su detalle. */
 type FilaLegible = FilaAuditoria & { nombres: NombresAuditoria };
+
+/** Columna extra para el administrador de la red: a qué institución pertenece cada registro. */
+const COLUMNA_INSTITUCION: Columna<FilaLegible> = {
+  clave: "institucion",
+  encabezado: "Institución",
+  movil: "oculto",
+  celda: (r) =>
+    r.institucion ? (
+      <span className="block whitespace-normal">{r.institucion}</span>
+    ) : (
+      <span className="text-texto-tenue">Red</span>
+    ),
+};
 
 const COLUMNAS: Columna<FilaLegible>[] = [
   {
@@ -90,9 +106,11 @@ function parametro(valor: string | string[] | undefined): string | undefined {
 }
 
 export default async function PaginaAuditoria({ searchParams }: PageProps<"/admin/auditoria">) {
-  const { actor, centros } = await contextoPagina("auditoria:ver");
+  const { actor, centros, sesion } = await contextoPagina("auditoria:ver");
   const sp = await searchParams;
+  const esRed = veTodaLaRed(actor);
   const filtros = {
+    institucionId: esRed ? parametro(sp.institucion) : undefined,
     usuarioId: parametro(sp.usuario),
     accion: parametro(sp.accion),
     entidad: parametro(sp.entidad),
@@ -101,9 +119,10 @@ export default async function PaginaAuditoria({ searchParams }: PageProps<"/admi
     hasta: diaParam(sp.hasta) ?? undefined,
   };
   const rangoInvertido = Boolean(filtros.desde && filtros.hasta && filtros.desde > filtros.hasta);
-  const [registros, opciones, insumos, categorias] = await Promise.all([
+  const [registros, opciones, instituciones, insumos, categorias] = await Promise.all([
     listarAuditoria(actor, { ...filtros, pagina: paginaParam(sp.pagina) }),
     opcionesFiltroAuditoria(actor),
+    esRed ? listarOpcionesInstitucion(actor) : [],
     buscarInsumos(actor, { soloActivos: false, limite: 500 }),
     listarCategorias(actor),
   ]);
@@ -129,10 +148,25 @@ export default async function PaginaAuditoria({ searchParams }: PageProps<"/admi
     <>
       <PageHeader
         titulo="Auditoría"
-        descripcion="Registro de quién hizo qué y cuándo: ingresos al sistema, movimientos de stock y cambios de administración. Solo lectura."
+        descripcion={
+          esRed
+            ? "Registro de quién hizo qué y cuándo en toda la red: ingresos al sistema, movimientos de stock y cambios de administración. Solo lectura."
+            : `Registro de quién hizo qué y cuándo en ${sesion.usuario.institucion?.nombre ?? "tu institución"}: ingresos al sistema, movimientos de stock y cambios de administración. Solo lectura.`
+        }
       />
 
-      <BarraFiltros parametros={["usuario", "accion", "entidad", "entidadId", "desde", "hasta"]}>
+      <BarraFiltros parametros={["institucion", "usuario", "accion", "entidad", "entidadId", "desde", "hasta"]}>
+        {esRed ? (
+          <FiltroSelect
+            parametro="institucion"
+            etiqueta="Institución"
+            todos="Todas"
+            opciones={[
+              ...instituciones.map((i) => ({ value: i.id, label: i.nombre })),
+              { value: FILTRO_EVENTOS_DE_RED, label: "Eventos de la red (sin institución)" },
+            ]}
+          />
+        ) : null}
         <FiltroSelect
           parametro="usuario"
           etiqueta="Usuario"
@@ -178,7 +212,7 @@ export default async function PaginaAuditoria({ searchParams }: PageProps<"/admi
       <Card relleno={false} className="overflow-hidden">
         <DataTable
           titulo="Registro de auditoría"
-          columnas={COLUMNAS}
+          columnas={esRed ? [...COLUMNAS.slice(0, 3), COLUMNA_INSTITUCION, ...COLUMNAS.slice(3)] : COLUMNAS}
           filas={filas}
           claveFila={(r) => r.id}
           vacio={

@@ -580,7 +580,7 @@ describe("búsquedas sin tildes y orden por uso", () => {
   });
 
   it("la búsqueda de usuarios no distingue tildes", async () => {
-    await db.usuario.create({ data: { nombre: "María Núñez", email: "maria@test.cl", passwordHash: "x", rol: "VISITANTE" } });
+    await db.usuario.create({ data: { nombre: "María Núñez", email: "maria@test.cl", passwordHash: "x", rol: "VISITANTE", institucionId: e.institucion } });
     for (const texto of ["maria nunez", "NÚÑEZ", "maria@test"]) {
       const r = await listarUsuarios(e.admin, { texto });
       expect(r.items.map((u) => u.email), texto).toEqual(["maria@test.cl"]);

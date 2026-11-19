@@ -4,7 +4,7 @@ import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { buttonClasses, PageHeader } from "@/components/ui";
 import { TIPOS_MOVIMIENTO } from "@/lib/estados";
 import { diaParam, enumParam, paginaParam, textoParam } from "@/lib/parametros";
-import { puede } from "@/lib/permisos";
+import { fraseAlcanceTotal, puede } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import {
   buscarInsumos,
@@ -70,7 +70,7 @@ export default async function PaginaMovimientos({ searchParams }: PageProps<"/mo
         descripcion={
           centro
             ? `Entradas, salidas, traslados y ajustes de ${centro.nombre}. Cada registro es permanente.`
-            : "Entradas, salidas, traslados y ajustes de toda la red. Cada registro es permanente."
+            : `Entradas, salidas, traslados y ajustes de ${fraseAlcanceTotal(actor.rol)}. Cada registro es permanente.`
         }
         acciones={
           puedeIngresar || puedeRetirar ? (

@@ -26,6 +26,7 @@ import { describirVencimiento, formatearDia, formatearFechaHora } from "@/lib/fe
 import { leerFiltros } from "@/lib/filtros-reportes";
 import { formatearCLP, formatearNumero, pluralizar } from "@/lib/formato";
 import { construirHref, leerPagina, resolverCentro } from "@/lib/parametros-url";
+import { etiquetaAlcanceTotal } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import {
   reporteMermas,
@@ -140,7 +141,7 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
       porPagina: 15,
     }),
   ]);
-  const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? "Toda la red";
+  const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? etiquetaAlcanceTotal(actor.rol);
   const mostrarCentro = centroId === null && centros.length > 1;
   const { periodo } = mermas;
   // Los insumos se cuentan en unidades de medida distintas: los motivos se comparan por número de bajas.

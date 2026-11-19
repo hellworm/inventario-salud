@@ -4,7 +4,9 @@
 
 RedInsumos permite a centros de diálisis, consultorios y clínicas saber, en todo momento, **qué
 insumos tienen, dónde están, cuándo vencen y quién los movió**. Funciona en el navegador (computador,
-tablet o teléfono) y conecta a todos los centros de una misma red.
+tablet o teléfono) y conecta a todos los centros de una misma red. La red puede reunir a **varias
+instituciones**: cada una ve y administra solo lo suyo, y el operador de la plataforma ve el
+conjunto.
 
 ![Panel del administrador](docs/capturas/02-panel-administrador.png)
 
@@ -20,7 +22,8 @@ tablet o teléfono) y conecta a todos los centros de una misma red.
   usuario, fecha y motivo. El historial no se puede modificar ni borrar.
 - **Menos errores al registrar.** Confirmación antes de un ajuste, una merma o un retiro grande;
   desde cada alerta se abre el formulario ya prellenado; un doble clic no duplica el movimiento.
-- **Permisos por rol y por centro.** Cada persona ve y hace solo lo que le corresponde.
+- **Permisos por rol, por institución y por centro.** Cada persona ve y hace solo lo que le
+  corresponde; una institución nunca ve datos de otra.
 - **Reportes para Excel.** Existencias, movimientos, consumo y cobertura, vencimientos y mermas.
 - **Pensado para Chile.** RUT, regiones y comunas, pesos chilenos, hora de Santiago y textos en
   español de Chile.
@@ -37,7 +40,8 @@ tablet o teléfono) y conecta a todos los centros de una misma red.
 
 | Rol | Para quién | Qué puede hacer |
 |---|---|---|
-| **Administrador** | Encargado de la red | Ve y opera todos los centros; registra todo tipo de movimientos; administra insumos, centros, proveedores y usuarios; consulta reportes y auditoría. |
+| **Administrador de la red** | Operador de la plataforma | Ve y gestiona toda la red: crea instituciones y a sus administradores, administra el catálogo compartido y cualquier centro o usuario; ve el resumen de la red por institución. |
+| **Administrador de institución** | Encargado de una institución | Todo dentro de **su institución**: opera todos sus centros, registra todo tipo de movimientos, administra sus centros, ubicaciones y usuarios, los proveedores y los mínimos de stock; consulta reportes y auditoría de su institución. Crea insumos nuevos, pero no modifica los existentes (son de toda la red). |
 | **Bodeguero** | Quien recibe y entrega insumos | Registra ingresos y retiros en sus centros; consulta inventario, alertas e historial. |
 | **Visitante** | Quien solo necesita consultar | Consulta inventario y alertas de sus centros. No modifica nada. |
 
@@ -96,20 +100,24 @@ Abre <http://localhost:3000> e ingresa con una de las cuentas de demostración.
 
 ### Cuentas de demostración
 
-Las crea `npm run db:seed` junto con 3 centros, 52 insumos y unos 60 días de historial.
+Las crea `npm run db:seed` junto con 2 instituciones, 3 centros, 52 insumos y unos 60 días de
+historial. Instituciones: **Centros de Diálisis Andes SpA** (Centro de Diálisis Ñuñoa y Centro de
+Diálisis Concepción) y **Corporación Municipal de Salud Cerro Alegre** (Consultorio Cerro Alegre).
 
-| Rol | Correo electrónico | Contraseña | Centros |
+| Rol | Correo electrónico | Contraseña | Institución · centros |
 |---|---|---|---|
-| Administrador | `admin@redinsumos.cl` | `Admin.Demo.2026` | Toda la red |
+| Administrador de la red | `admin@redinsumos.cl` | `Admin.Demo.2026` | Toda la red |
+| Administrador de institución | `admin.andes@redinsumos.cl` | `AdminAndes.Demo.2026` | Andes · todos sus centros |
+| Administrador de institución | `admin.cerroalegre@redinsumos.cl` | `AdminCerro.Demo.2026` | Cerro Alegre · todos sus centros |
 | Bodeguero | `bodega@redinsumos.cl` | `Bodega.Demo.2026` | Centro de Diálisis Ñuñoa |
 | Visitante | `visita@redinsumos.cl` | `Visita.Demo.2026` | Centro de Diálisis Ñuñoa |
 | Bodeguero | `bodega.valparaiso@redinsumos.cl` | `Bodega.Valpo.2026` | Consultorio Cerro Alegre |
 | Bodeguero | `bodega.concepcion@redinsumos.cl` | `Bodega.Conce.2026` | Centro de Diálisis Concepción |
-| Visitante | `nuevo@redinsumos.cl` | `Temporal.2026` (pide cambiarla) | Valparaíso y Concepción |
+| Visitante | `nuevo@redinsumos.cl` | `Temporal.2026` (pide cambiarla) | Ñuñoa y Concepción (Andes) |
 
 > **Los datos de demostración son solo para desarrollo y capacitación.** Sus contraseñas son
-> públicas. En producción el seed se niega a ejecutarse y el primer administrador se crea con
-> `npm run admin:crear` (ver [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)).
+> públicas. En producción el seed se niega a ejecutarse y el primer administrador de la red se crea
+> con `npm run admin:crear` (ver [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)).
 
 ## Producción en tres pasos
 
@@ -138,7 +146,7 @@ producción, está en [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md).
 | `npm run db:deploy` | Producción: aplica las migraciones pendientes. |
 | `npm run db:seed` | Carga datos de **demostración** (bloqueado en producción). |
 | `npm run db:studio` | Explorador visual de la base (Prisma Studio). |
-| `npm run admin:crear -- --email …` | Crea el primer administrador (o recupera su acceso con `--restablecer`). |
+| `npm run admin:crear -- --email …` | Crea el primer administrador de la red (o recupera su acceso con `--restablecer`). |
 | `npm run sesiones:limpiar` | Borra las sesiones vencidas y los contadores vencidos del limitador de intentos. |
 | `npm run respaldo` | Respaldo comprimido de la base, con rotación. |
 | `npm run restaurar -- <archivo>` | Restaura un respaldo (pide confirmación). |
@@ -219,7 +227,11 @@ npm run test:e2e          # todo; agrega p. ej. `retiros`, `--project=movil` o `
   ya instalado).
 - `@playwright/test` debe coincidir con el navegador instalado (`npx playwright install chromium`
   si no hay uno).
-- Cada rol inicia sesión una vez (`e2e/sesiones.setup.ts`) y los tests reutilizan esa sesión.
+- Cada cuenta del seed (administrador de la red, los dos administradores de institución,
+  bodegueros y visitante) inicia sesión una vez (`e2e/sesiones.setup.ts`) y los tests reutilizan
+  esa sesión. `e2e/instituciones.spec.ts` cubre el aislamiento entre instituciones (menú, URL
+  directa con ids ajenos, selector de centro, exportación CSV y Server Actions manipuladas), el
+  resumen de la red por institución y el alta de una institución con su primer administrador.
 - **Límite de intentos de ingreso.** El servidor de la suite corre con `TRUST_PROXY=1` (lo fija
   `playwright.config.ts`; es solo de ese servidor de pruebas) y cada test envía su propia
   `X-Forwarded-For` con una IP distinta (`ipDelTest`, en `e2e/soporte/fixtures.ts`), como personas

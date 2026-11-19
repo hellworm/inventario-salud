@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronsUpDown,
   KeyRound,
+  Landmark,
   LifeBuoy,
   LogOut,
   Menu,
@@ -44,14 +45,21 @@ export interface CentroShell {
   nombre: string;
   tipo: string;
   comuna: string;
+  institucionId: string;
+  institucion: string;
 }
 
 export interface AppShellProps {
   usuario: { nombre: string; email: string; rol: Rol };
   centros: CentroShell[];
-  /** `null` = "Toda la red". */
+  /** `null` = todos los centros del usuario ("Toda la red" o "Toda mi institución"). */
   centroActivoId: string | null;
-  puedeVerTodaLaRed: boolean;
+  /** ¿Puede elegir la vista de todos sus centros? (administradores). */
+  puedeVerTodos: boolean;
+  /** Nombre de esa vista: "Toda la red" o "Toda mi institución". */
+  etiquetaTodos: string;
+  /** Institución del usuario (`null` para el administrador de la red). */
+  institucion: string | null;
   sidebarColapsadaInicial: boolean;
   children: React.ReactNode;
 }
@@ -161,19 +169,31 @@ function ListaNavegacion({
 function SelectorCentro({
   centros,
   centroActivoId,
-  puedeVerTodaLaRed,
-}: Pick<AppShellProps, "centros" | "centroActivoId" | "puedeVerTodaLaRed">) {
+  puedeVerTodos,
+  etiquetaTodos,
+}: Pick<AppShellProps, "centros" | "centroActivoId" | "puedeVerTodos" | "etiquetaTodos">) {
   const router = useRouter();
   const [pendiente, iniciar] = React.useTransition();
   const activo = centros.find((c) => c.id === centroActivoId) ?? null;
   const Icono = activo ? Building2 : Network;
-  const titulo = activo ? activo.nombre : puedeVerTodaLaRed ? "Toda la red" : "Sin centro asignado";
+  const titulo = activo ? activo.nombre : puedeVerTodos ? etiquetaTodos : "Sin centro asignado";
+  // Agrupados por institución (el servidor ya los entrega ordenados así). Con
+  // una sola institución no hace falta el encabezado de grupo.
+  const grupos: { institucionId: string; institucion: string; centros: CentroShell[] }[] = [];
+  for (const c of centros) {
+    const ultimo = grupos[grupos.length - 1];
+    if (ultimo && ultimo.institucionId === c.institucionId) ultimo.centros.push(c);
+    else grupos.push({ institucionId: c.institucionId, institucion: c.institucion, centros: [c] });
+  }
+  const variasInstituciones = grupos.length > 1;
   const subtitulo = activo
     ? `${ETIQUETA_TIPO_CENTRO[activo.tipo as TipoCentro] ?? activo.tipo} · ${activo.comuna}`
-    : puedeVerTodaLaRed
-      ? `${centros.length} ${centros.length === 1 ? "centro" : "centros"}`
+    : puedeVerTodos
+      ? variasInstituciones
+        ? `${grupos.length} instituciones · ${centros.length} centros`
+        : `${centros.length} ${centros.length === 1 ? "centro" : "centros"}`
       : "Contacta a un administrador";
-  const opciones = centros.length + (puedeVerTodaLaRed ? 1 : 0);
+  const opciones = centros.length + (puedeVerTodos ? 1 : 0);
 
   const contenido = (
     <>
@@ -211,29 +231,40 @@ function SelectorCentro({
         {contenido}
         <ChevronsUpDown className="size-4 shrink-0 text-texto-tenue" aria-hidden />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[min(20rem,calc(100vw-1.5rem))]">
+      <DropdownMenuContent
+        align="start"
+        className="max-h-[min(32rem,var(--radix-dropdown-menu-content-available-height))] w-[min(22rem,calc(100vw-1.5rem))] overflow-y-auto"
+      >
         <DropdownMenuLabel>Centro activo</DropdownMenuLabel>
-        {puedeVerTodaLaRed ? (
-          <>
-            <DropdownMenuItem onSelect={() => elegir(CENTRO_TODOS)}>
-              <Network aria-hidden />
-              <span className="flex-1">Toda la red</span>
-              {centroActivoId === null ? <Check className="!text-marca-700" aria-label="Seleccionado" /> : null}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        ) : null}
-        {centros.map((c) => (
-          <DropdownMenuItem key={c.id} onSelect={() => elegir(c.id)} className="h-auto py-2">
-            <Building2 aria-hidden />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate">{c.nombre}</span>
-              <span className="block truncate text-xs text-texto-tenue">
-                {ETIQUETA_TIPO_CENTRO[c.tipo as TipoCentro] ?? c.tipo} · {c.comuna}
-              </span>
-            </span>
-            {c.id === centroActivoId ? <Check className="!text-marca-700" aria-label="Seleccionado" /> : null}
+        {puedeVerTodos ? (
+          <DropdownMenuItem onSelect={() => elegir(CENTRO_TODOS)}>
+            <Network aria-hidden />
+            <span className="flex-1">{etiquetaTodos}</span>
+            {centroActivoId === null ? <Check className="!text-marca-700" aria-label="Seleccionado" /> : null}
           </DropdownMenuItem>
+        ) : null}
+        {grupos.map((g, i) => (
+          <React.Fragment key={g.institucionId}>
+            {variasInstituciones || (puedeVerTodos && i === 0) ? <DropdownMenuSeparator /> : null}
+            {variasInstituciones ? (
+              <DropdownMenuLabel className="flex items-center gap-1.5 normal-case" data-grupo-institucion>
+                <Landmark className="size-3.5 shrink-0" aria-hidden />
+                <span className="truncate">{g.institucion}</span>
+              </DropdownMenuLabel>
+            ) : null}
+            {g.centros.map((c) => (
+              <DropdownMenuItem key={c.id} onSelect={() => elegir(c.id)} className="h-auto py-2">
+                <Building2 aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{c.nombre}</span>
+                  <span className="block truncate text-xs text-texto-tenue">
+                    {ETIQUETA_TIPO_CENTRO[c.tipo as TipoCentro] ?? c.tipo} · {c.comuna}
+                  </span>
+                </span>
+                {c.id === centroActivoId ? <Check className="!text-marca-700" aria-label="Seleccionado" /> : null}
+              </DropdownMenuItem>
+            ))}
+          </React.Fragment>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -244,7 +275,7 @@ function SelectorCentro({
 // Menú de usuario
 // ---------------------------------------------------------------------------
 
-function MenuUsuario({ usuario }: Pick<AppShellProps, "usuario">) {
+function MenuUsuario({ usuario, institucion }: Pick<AppShellProps, "usuario" | "institucion">) {
   const [saliendo, iniciar] = React.useTransition();
   return (
     <DropdownMenu>
@@ -258,7 +289,7 @@ function MenuUsuario({ usuario }: Pick<AppShellProps, "usuario">) {
         </span>
         <span className="hidden min-w-0 text-left sm:block">
           <span className="block max-w-40 truncate text-sm leading-5 font-semibold text-texto">{usuario.nombre}</span>
-          <span className="block text-xs leading-4 text-texto-tenue">{NOMBRE_ROL[usuario.rol]}</span>
+          <span className="block max-w-40 truncate text-xs leading-4 text-texto-tenue">{NOMBRE_ROL[usuario.rol]}</span>
         </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-72">
@@ -266,6 +297,12 @@ function MenuUsuario({ usuario }: Pick<AppShellProps, "usuario">) {
           <p className="truncate font-semibold text-texto">{usuario.nombre}</p>
           <p className="truncate text-sm text-texto-suave">{usuario.email}</p>
           <BadgeRol rol={usuario.rol} className="mt-2" />
+          {institucion ? (
+            <p className="mt-2 flex items-center gap-1.5 text-sm text-texto-suave" data-institucion-usuario>
+              <Landmark className="size-4 shrink-0 text-texto-tenue" aria-hidden />
+              <span className="min-w-0 truncate">{institucion}</span>
+            </p>
+          ) : null}
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
@@ -371,7 +408,9 @@ export function AppShell({
   usuario,
   centros,
   centroActivoId,
-  puedeVerTodaLaRed,
+  puedeVerTodos,
+  etiquetaTodos,
+  institucion,
   sidebarColapsadaInicial,
   children,
 }: AppShellProps) {
@@ -481,9 +520,9 @@ export function AppShell({
             <Isotipo />
           </Link>
           <div className="min-w-0 flex-1">
-            <SelectorCentro centros={centros} centroActivoId={centroActivoId} puedeVerTodaLaRed={puedeVerTodaLaRed} />
+            <SelectorCentro centros={centros} centroActivoId={centroActivoId} puedeVerTodos={puedeVerTodos} etiquetaTodos={etiquetaTodos} />
           </div>
-          <MenuUsuario usuario={usuario} />
+          <MenuUsuario usuario={usuario} institucion={institucion} />
         </header>
 
         <main id="contenido" tabIndex={-1} className="mx-auto w-full max-w-[84rem] min-w-0 px-4 pt-6 pb-28 outline-none sm:px-6 lg:px-8 lg:pb-12">

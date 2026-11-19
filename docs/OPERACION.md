@@ -35,14 +35,24 @@ el servidor. Sin Docker, los equivalentes son los `npm run …` indicados.
 
 ## Usuarios
 
-Todo se hace en la aplicación, con una cuenta de **Administrador**, en **Administración →
-Usuarios**. Cada fila tiene un menú de acciones (botón **⋮**).
+Todo se hace en la aplicación, en **Administración → Usuarios**, con una cuenta de
+**Administrador de institución** (gestiona solo a los usuarios de su institución) o de
+**Administrador de la red** (gestiona a todos y puede filtrar por institución). Cada fila tiene un
+menú de acciones (botón **⋮**).
+
+| Rol | Qué ve | Quién lo crea |
+|---|---|---|
+| Administrador de la red | Toda la red: todas las instituciones | Otro administrador de la red, o `admin:crear` |
+| Administrador de institución | Todos los centros de su institución | El administrador de la red (al crear la institución o después) u otro administrador de la misma institución |
+| Bodeguero / Visitante | Los centros que se le asignen, de su institución | Un administrador de su institución o de la red |
 
 ### Crear un usuario
 
 1. **Nuevo usuario**.
 2. Completa nombre y apellido, email (lo usará para ingresar), rol y, para Bodeguero o Visitante,
-   los centros a los que tendrá acceso. El enlace **¿Qué puede hacer cada rol?** lo explica.
+   los centros a los que tendrá acceso. El administrador de la red elige además la **institución**
+   (los centros que se ofrecen son solo los de esa institución; un usuario no se cambia de
+   institución después). El enlace **¿Qué puede hacer cada rol?** lo explica.
 3. Al guardar, el sistema muestra una **contraseña temporal una sola vez**. Entrégasela a la persona
    por un medio seguro (en persona o por teléfono; evita correo o chats grupales).
 4. En su primer ingreso el sistema le pedirá cambiarla.
@@ -100,10 +110,23 @@ Menú **⋮** → **Desactivar usuario**. Queda fuera de inmediato (se cierran s
 volver a entrar. Los usuarios no se eliminan, para conservar el historial de lo que registraron;
 se pueden reactivar con **Reactivar usuario**.
 
-El sistema impide dejar la red sin administradores: no permite desactivar ni degradar al último
-administrador activo, ni desactivarse a uno mismo.
+El sistema impide dejar la red sin administrador: no permite desactivar ni degradar al último
+**administrador de la red** activo, ni desactivarse o cambiarse el rol a uno mismo.
 
-### Ningún administrador puede entrar
+### Instituciones
+
+**Administración → Instituciones** (solo administrador de la red).
+
+- **Alta:** **Nueva institución**, con su primer administrador (se muestra su contraseña temporal
+  una sola vez). Si una institución quedó sin administrador activo, la lista lo avisa: créale uno
+  en **Usuarios** eligiendo esa institución.
+- **Baja:** menú **⋮** → **Desactivar institución**. Sus usuarios quedan fuera de inmediato y no
+  pueden volver a entrar; sus centros, stock e historial se conservan. El sistema lo impide
+  mientras la institución tenga **centros activos con stock**: da de baja o retira ese stock, o
+  desactiva esos centros, y vuelve a intentarlo. Se puede reactivar después.
+- Las instituciones no se eliminan, y un centro o un usuario no se mueve de una institución a otra.
+
+### Ningún administrador de la red puede entrar
 
 Desde el servidor:
 
@@ -112,9 +135,11 @@ docker compose run --rm mantenimiento npm run admin:crear -- --email ana@miclini
 # sin Docker:  npm run admin:crear -- --email ana@miclinica.cl --restablecer
 ```
 
-Asigna una contraseña temporal nueva a ese administrador, lo desbloquea, lo reactiva y cierra sus
-sesiones. Queda anotado en la auditoría. Si no existe ningún administrador, el mismo comando sin
-`--restablecer` crea uno.
+Asigna una contraseña temporal nueva a ese administrador de la red, lo desbloquea, lo reactiva y
+cierra sus sesiones. Queda anotado en la auditoría. Si no existe ninguno, el mismo comando sin
+`--restablecer` crea uno. (El comando solo crea o recupera administradores **de la red**; a un
+administrador de institución le restablece la contraseña el administrador de la red u otro
+administrador de su institución, desde **Usuarios**.)
 
 ---
 
@@ -180,8 +205,13 @@ Anota la fecha del ensayo y cuánto tardó. La restauración real (sobre la base
 
 ## Revisar la auditoría
 
-**Administración → Auditoría** (solo Administrador) muestra quién hizo qué y cuándo: ingresos al
+**Administración → Auditoría** (solo administradores) muestra quién hizo qué y cuándo: ingresos al
 sistema, movimientos de stock y cambios de administración. Es de solo lectura y se puede filtrar.
+Un **administrador de institución** ve únicamente los registros de su institución (lo que hicieron
+sus usuarios y lo que se hizo sobre sus centros y usuarios; si lo hizo el administrador de la red,
+aparece como "Administrador de la red"). El **administrador de la red** ve todo, puede filtrar por
+institución y ve además los "eventos de la red": cambios al catálogo y a las instituciones e
+intentos de ingreso con correos que no existen.
 Al abrir un registro se ve su detalle.
 
 Qué mirar periódicamente:
@@ -304,8 +334,10 @@ curl -s http://127.0.0.1:3000/api/salud
 
 ### Un usuario no ve un centro, un menú o un botón
 
-Es por su rol o sus centros asignados. Revisa **Editar datos, rol y centros**. Recuerda que solo el
-Administrador hace traslados, ajustes y mermas, y ve reportes y administración.
+Es por su rol, su institución o sus centros asignados. Revisa **Editar datos, rol y centros**.
+Recuerda que solo los administradores hacen traslados, ajustes y mermas, y ven reportes y
+administración; que nadie ve centros de otra institución; y que solo el administrador de la red ve
+**Instituciones** y puede modificar insumos y categorías existentes.
 
 ### "Ocurrió un error inesperado"
 

@@ -91,7 +91,13 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
     return conStock.length === 1 ? conStock[0]!.id : "";
   }, [origenElegido, existencias.datos, origenes, totalEn]);
   const origen = origenes.find((u) => u.id === origenId) ?? null;
-  const destino = destinos.find((u) => u.id === destinoId) ?? null;
+  // Un traslado nunca cruza instituciones: con el origen elegido, solo se
+  // ofrecen destinos de su misma institución (relevante en "Toda la red").
+  const destinosPosibles = React.useMemo(
+    () => (origen?.institucionId ? destinos.filter((u) => u.institucionId === origen.institucionId) : destinos),
+    [destinos, origen],
+  );
+  const destino = destinosPosibles.find((u) => u.id === destinoId) ?? null;
 
   const lotes = React.useMemo(
     () => (existencias.datos?.existencias ?? []).filter((e) => e.ubicacionId === origenId),
@@ -265,7 +271,7 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
               <Field label="Destino" requerido error={errores.ubicacionDestinoId}>
                 <SelectUbicacion
                   name="ubicacionDestinoId"
-                  ubicaciones={destinos}
+                  ubicaciones={destinosPosibles}
                   valor={destinoId}
                   placeholder="¿Hacia dónde?"
                   onCambiar={alEditar(setDestinoId)}

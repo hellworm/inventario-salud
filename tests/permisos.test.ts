@@ -1,5 +1,19 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { PERMISOS, PERMISOS_POR_ROL, puede, puedeEnCentro, type Permiso } from "@/lib/permisos";
+import {
+  alcanzaInstitucion,
+  etiquetaAlcanceTotal,
+  NOMBRE_ROL,
+  PERMISOS,
+  PERMISOS_POR_ROL,
+  puede,
+  puedeEnCentro,
+  puedeVerTodosSusCentros,
+  ROLES,
+  rolesAsignables,
+  tieneAccesoACentro,
+  veTodaLaRed,
+  type Permiso,
+} from "@/lib/permisos";
 import { alcanceDeCentros } from "@/server/autorizacion";
 import {
   buscarInsumos,
@@ -21,8 +35,71 @@ import {
 import { crearEscenario, esperarError, stockInsumo, type Escenario } from "./soporte/escenario";
 
 describe("matriz de permisos", () => {
-  it("ADMIN tiene todos los permisos", () => {
-    for (const p of PERMISOS) expect(puede("ADMIN", p)).toBe(true);
+  it("hay exactamente cuatro roles, con sus nombres visibles", () => {
+    expect([...ROLES]).toEqual(["ADMIN_RED", "ADMIN", "BODEGUERO", "VISITANTE"]);
+    expect(NOMBRE_ROL).toEqual({
+      ADMIN_RED: "Administrador de la red",
+      ADMIN: "Administrador de institución",
+      BODEGUERO: "Bodeguero",
+      VISITANTE: "Visitante",
+    });
+  });
+
+  it("ADMIN_RED tiene todos los permisos", () => {
+    for (const p of PERMISOS) expect(puede("ADMIN_RED", p)).toBe(true);
+  });
+
+  it("ADMIN (de institución): todo salvo modificar el catálogo compartido y gestionar instituciones", () => {
+    const negados: Permiso[] = ["catalogo:gestionar", "instituciones:gestionar"];
+    const esperados = PERMISOS.filter((p) => !negados.includes(p));
+    expect([...PERMISOS_POR_ROL.ADMIN].sort()).toEqual([...esperados].sort());
+    for (const p of negados) expect(puede("ADMIN", p)).toBe(false);
+    // Lo que sí conserva, explícito (si alguien lo quita de la matriz, falla aquí).
+    for (const p of [
+      "catalogo:crear", "centros:gestionar", "usuarios:gestionar", "proveedores:gestionar", "parametros:gestionar",
+      "movimientos:ajuste", "movimientos:merma", "movimientos:traslado", "reportes:ver", "auditoria:ver",
+    ] as const) {
+      expect(puede("ADMIN", p)).toBe(true);
+    }
+  });
+
+  it("solo ADMIN_RED gestiona instituciones y modifica el catálogo; BODEGUERO y VISITANTE no administran nada", () => {
+    for (const rol of ROLES) {
+      expect(puede(rol, "instituciones:gestionar")).toBe(rol === "ADMIN_RED");
+      expect(puede(rol, "catalogo:gestionar")).toBe(rol === "ADMIN_RED");
+    }
+    for (const rol of ["BODEGUERO", "VISITANTE"] as const) {
+      for (const p of PERMISOS.filter((x) => x.endsWith(":gestionar") || x === "catalogo:crear")) expect(puede(rol, p)).toBe(false);
+    }
+  });
+
+  it("alcance: solo ADMIN_RED ve toda la red; un ADMIN alcanza su institución y los centros de su alcance", () => {
+    expect(veTodaLaRed({ rol: "ADMIN_RED" })).toBe(true);
+    for (const rol of ["ADMIN", "BODEGUERO", "VISITANTE"] as const) expect(veTodaLaRed({ rol })).toBe(false);
+    expect(puedeVerTodosSusCentros({ rol: "ADMIN_RED" })).toBe(true);
+    expect(puedeVerTodosSusCentros({ rol: "ADMIN" })).toBe(true);
+    expect(puedeVerTodosSusCentros({ rol: "BODEGUERO" })).toBe(false);
+    expect(etiquetaAlcanceTotal("ADMIN_RED")).toBe("Toda la red");
+    expect(etiquetaAlcanceTotal("ADMIN")).toBe("Toda mi institución");
+
+    const adminA = { rol: "ADMIN" as const, institucionId: "inst-a", centroIds: ["a1", "a2"] };
+    expect(tieneAccesoACentro(adminA, "a1")).toBe(true);
+    expect(tieneAccesoACentro(adminA, "b1")).toBe(false);
+    expect(alcanzaInstitucion(adminA, "inst-a")).toBe(true);
+    expect(alcanzaInstitucion(adminA, "inst-b")).toBe(false);
+    // Los usuarios sin institución (administradores de la red) quedan fuera de su alcance.
+    expect(alcanzaInstitucion(adminA, null)).toBe(false);
+    const red = { rol: "ADMIN_RED" as const, institucionId: null, centroIds: [] };
+    expect(tieneAccesoACentro(red, "cualquiera")).toBe(true);
+    expect(alcanzaInstitucion(red, "inst-b")).toBe(true);
+    expect(alcanzaInstitucion(red, null)).toBe(true);
+  });
+
+  it("roles asignables: un ADMIN nunca puede asignar ADMIN_RED; BODEGUERO y VISITANTE no asignan nada", () => {
+    expect([...rolesAsignables("ADMIN_RED")]).toEqual(["ADMIN_RED", "ADMIN", "BODEGUERO", "VISITANTE"]);
+    expect([...rolesAsignables("ADMIN")]).toEqual(["ADMIN", "BODEGUERO", "VISITANTE"]);
+    expect([...rolesAsignables("BODEGUERO")]).toEqual([]);
+    expect([...rolesAsignables("VISITANTE")]).toEqual([]);
   });
 
   it("BODEGUERO: lectura de sus centros + ingreso y retiro, nada más", () => {
@@ -52,7 +129,10 @@ describe("matriz de permisos", () => {
     expect(puedeEnCentro(bodeguero, "movimientos:ingreso", "a")).toBe(true);
     expect(puedeEnCentro(bodeguero, "movimientos:ingreso", "b")).toBe(false);
     expect(puedeEnCentro(bodeguero, "movimientos:ajuste", "a")).toBe(false);
-    expect(puedeEnCentro({ rol: "ADMIN", centroIds: [] }, "movimientos:ajuste", "cualquiera")).toBe(true);
+    expect(puedeEnCentro({ rol: "ADMIN_RED", centroIds: [] }, "movimientos:ajuste", "cualquiera")).toBe(true);
+    // El administrador de institución depende de su alcance, igual que los demás.
+    expect(puedeEnCentro({ rol: "ADMIN", centroIds: ["a"] }, "movimientos:ajuste", "a")).toBe(true);
+    expect(puedeEnCentro({ rol: "ADMIN", centroIds: ["a"] }, "movimientos:ajuste", "b")).toBe(false);
   });
 });
 

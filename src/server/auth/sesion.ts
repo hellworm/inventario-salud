@@ -2,7 +2,15 @@ import "server-only";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { puede, tieneAccesoACentro, veTodaLaRed, type Actor, type Permiso } from "@/lib/permisos";
+import {
+  etiquetaAlcanceTotal,
+  puede,
+  puedeVerTodosSusCentros,
+  tieneAccesoACentro,
+  veTodaLaRed,
+  type Actor,
+  type Permiso,
+} from "@/lib/permisos";
 import { db } from "../db";
 import {
   cerrarSesionPorToken,
@@ -46,6 +54,7 @@ export const obtenerSesion = cache(async (): Promise<Sesion | null> => {
     actor: {
       usuarioId: valida.usuario.id,
       rol: valida.usuario.rol,
+      institucionId: valida.usuario.institucionId,
       centroIds: valida.usuario.centroIds,
       ip: meta.ip,
     },
@@ -122,35 +131,50 @@ export interface CentroResumen {
   nombre: string;
   tipo: string;
   comuna: string;
+  institucionId: string;
+  /** Nombre de la institución (para agrupar el selector de centros). */
+  institucion: string;
 }
 
 export interface CentroActivo {
-  /** Centro seleccionado, o `null` si es "Toda la red" (solo quien ve toda la red). */
+  /**
+   * Centro seleccionado, o `null` si es la vista de todos los centros del
+   * actor: "Toda la red" (ADMIN_RED) o "Toda mi institución" (ADMIN).
+   */
   centroId: string | null;
   centro: CentroResumen | null;
   /** Centros activos que el usuario puede seleccionar. */
   centros: CentroResumen[];
-  /** ¿Puede elegir "Toda la red"? */
+  /** ¿Ve toda la red (todas las instituciones)? Solo ADMIN_RED. */
   puedeVerTodaLaRed: boolean;
+  /** ¿Puede elegir la vista de todos sus centros? (ADMIN_RED y ADMIN). */
+  puedeVerTodos: boolean;
+  /** Nombre de esa vista: "Toda la red" o "Toda mi institución". */
+  etiquetaTodos: string;
   /**
-   * `true` si la persona NO ve toda la red y no tiene ningún centro activo
+   * `true` si la persona no es administradora y no tiene ningún centro activo
    * asignado (p. ej. su único centro fue desactivado). `centroId === null`
-   * significa "Toda la red" SOLO cuando `sinCentro` es `false`: las páginas
-   * deben mostrar `<SinCentroActivo />` en vez de textos de toda la red.
+   * significa "todos mis centros" SOLO cuando `sinCentro` es `false`: las
+   * páginas deben mostrar `<SinCentroActivo />` en vez de textos de toda la red.
    */
   sinCentro: boolean;
 }
 
-/** Centros activos visibles para el actor, ordenados por nombre. */
+/**
+ * Centros activos visibles para el actor, ordenados por institución y nombre
+ * (toda la red para ADMIN_RED; los de su institución para ADMIN; los
+ * asignados para los demás).
+ */
 export const listarCentrosDelActor = cache(async (sesion: Sesion): Promise<CentroResumen[]> => {
-  return db.centro.findMany({
+  const centros = await db.centro.findMany({
     where: {
       activo: true,
       ...(veTodaLaRed(sesion.actor) ? {} : { id: { in: [...sesion.actor.centroIds] } }),
     },
-    select: { id: true, nombre: true, tipo: true, comuna: true },
-    orderBy: { nombre: "asc" },
+    select: { id: true, nombre: true, tipo: true, comuna: true, institucionId: true, institucion: { select: { nombre: true } } },
+    orderBy: [{ institucion: { nombre: "asc" } }, { nombre: "asc" }],
   });
+  return centros.map(({ institucion, ...c }) => ({ ...c, institucion: institucion.nombre }));
 });
 
 /**
@@ -161,15 +185,24 @@ export const listarCentrosDelActor = cache(async (sesion: Sesion): Promise<Centr
 export async function obtenerCentroActivo(sesion: Sesion): Promise<CentroActivo> {
   const centros = await listarCentrosDelActor(sesion);
   const puedeVerTodaLaRed = veTodaLaRed(sesion.actor);
+  const puedeVerTodos = puedeVerTodosSusCentros(sesion.actor);
   const preferido = (await cookies()).get(COOKIE_CENTRO)?.value;
 
-  // 1) el centro guardado, si sigue siendo visible; 2) "Toda la red" para
-  // quien puede verla; 3) el primer centro asignado.
+  // 1) el centro guardado, si sigue siendo visible; 2) "Toda la red" / "Toda
+  // mi institución" para los administradores; 3) el primer centro asignado.
   let centro = centros.find((c) => c.id === preferido) ?? null;
   const quiereTodaLaRed = !preferido || preferido === CENTRO_TODOS;
-  if (!centro && !(puedeVerTodaLaRed && quiereTodaLaRed)) centro = centros[0] ?? null;
+  if (!centro && !(puedeVerTodos && quiereTodaLaRed)) centro = centros[0] ?? null;
 
-  return { centroId: centro?.id ?? null, centro, centros, puedeVerTodaLaRed, sinCentro: !puedeVerTodaLaRed && centros.length === 0 };
+  return {
+    centroId: centro?.id ?? null,
+    centro,
+    centros,
+    puedeVerTodaLaRed,
+    puedeVerTodos,
+    etiquetaTodos: etiquetaAlcanceTotal(sesion.actor.rol),
+    sinCentro: !puedeVerTodos && centros.length === 0,
+  };
 }
 
 export interface ContextoPagina extends CentroActivo {

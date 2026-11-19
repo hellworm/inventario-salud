@@ -481,7 +481,7 @@ function PanelInsumo({ detalle, mostrarCentro, permisos }: { detalle: DetalleIns
               compacto
               icono={PackageSearch}
               titulo="Sin existencias"
-              descripcion={mostrarCentro ? "No hay stock de este insumo en la red." : "No hay stock de este insumo en este centro."}
+              descripcion={mostrarCentro ? "No hay stock de este insumo en tus centros." : "No hay stock de este insumo en este centro."}
             />
           ) : (
             <ExistenciasPorUbicacion

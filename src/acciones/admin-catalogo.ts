@@ -23,7 +23,7 @@ import {
 } from "@/server/servicios";
 
 export const crearInsumoAccion = accionSegura(
-  { esquema: esquemaInsumo, permiso: "catalogo:gestionar" },
+  { esquema: esquemaInsumo, permiso: "catalogo:crear" },
   ({ actor, datos }) => crearInsumo(actor, datos),
 );
 
@@ -48,7 +48,7 @@ export const guardarParametrosStockAccion = accionSegura(
 );
 
 export const crearCategoriaAccion = accionSegura(
-  { esquema: esquemaCategoria, permiso: "catalogo:gestionar" },
+  { esquema: esquemaCategoria, permiso: "catalogo:crear" },
   ({ actor, datos }) => crearCategoria(actor, datos),
 );
 

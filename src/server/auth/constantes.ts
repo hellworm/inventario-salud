@@ -4,7 +4,7 @@ export const COOKIE_SESION = "ri_sesion";
 export const COOKIE_CENTRO = "ri_centro";
 export const COOKIE_SIDEBAR = "ri_sidebar";
 
-/** Valor de la cookie de centro que significa "Toda la red". */
+/** Valor de la cookie de centro que significa "todos mis centros" (toda la red o toda mi institución). */
 export const CENTRO_TODOS = "todos";
 
 const horas = Number(process.env.SESION_HORAS);

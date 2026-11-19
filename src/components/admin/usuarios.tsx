@@ -36,14 +36,15 @@ import {
   DropdownMenuTrigger,
   Field,
   Input,
+  Select,
   toast,
   useAccion,
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { esquemaCrearUsuario, type EntradaCrearUsuario } from "@/lib/esquemas/usuarios";
+import { esquemaCrearUsuario, rolRequiereCentros, type EntradaCrearUsuario } from "@/lib/esquemas/usuarios";
 import { NOMBRE_ROL, type Rol } from "@/lib/permisos";
 import { ConfirmarActivo } from "./boton-cambiar-activo";
-import { INFO_ROL, ROLES_ORDENADOS } from "./roles-info";
+import { INFO_ROL } from "./roles-info";
 import { useFocoAlCerrar } from "./use-foco-al-cerrar";
 import { texto, useValidacion } from "./use-validacion";
 
@@ -51,6 +52,21 @@ export interface OpcionCentro {
   id: string;
   nombre: string;
   activo: boolean;
+  institucionId: string;
+}
+
+/**
+ * Lo que quien administra puede asignar (lo calcula la página en el servidor
+ * y el servicio lo vuelve a validar): roles, instituciones y centros de su alcance.
+ */
+export interface AlcanceUsuarios {
+  /** Roles asignables por quien administra (un ADMIN de institución nunca ve ADMIN_RED). */
+  roles: readonly Rol[];
+  /** Instituciones elegibles: todas para el administrador de la red; solo la propia para un ADMIN. */
+  instituciones: readonly { id: string; nombre: string; activo: boolean }[];
+  /** `true` para el administrador de la red: debe elegir la institución del usuario. */
+  eligeInstitucion: boolean;
+  centros: readonly OpcionCentro[];
 }
 
 export interface UsuarioEditable {
@@ -60,21 +76,26 @@ export interface UsuarioEditable {
   rol: Rol;
   activo: boolean;
   bloqueado: boolean;
+  /** `null` solo para un administrador de la red. */
+  institucionId: string | null;
   centroIds: string[];
 }
 
-interface PasswordEntregada {
+export interface PasswordEntregada {
   nombre: string;
   email: string;
   passwordTemporal: string;
   motivo: "creado" | "restablecida";
+  /** Título y descripción propios (p. ej. al crear una institución con su primer administrador). */
+  titulo?: string;
+  descripcion?: string;
 }
 
 // ---------------------------------------------------------------------------
 // Contraseña temporal (se muestra UNA vez)
 // ---------------------------------------------------------------------------
 
-function DialogoPasswordTemporal({ datos, onCerrar }: { datos: PasswordEntregada; onCerrar: () => void }) {
+export function DialogoPasswordTemporal({ datos, onCerrar }: { datos: PasswordEntregada; onCerrar: () => void }) {
   const [copiada, setCopiada] = React.useState(false);
   const refCampo = React.useRef<HTMLInputElement>(null);
 
@@ -99,8 +120,8 @@ function DialogoPasswordTemporal({ datos, onCerrar }: { datos: PasswordEntregada
     >
       <DialogContent
         ancho="sm"
-        titulo={datos.motivo === "creado" ? "Usuario creado" : "Contraseña restablecida"}
-        descripcion={`Entrega esta contraseña temporal a ${datos.nombre}.`}
+        titulo={datos.titulo ?? (datos.motivo === "creado" ? "Usuario creado" : "Contraseña restablecida")}
+        descripcion={datos.descripcion ?? `Entrega esta contraseña temporal a ${datos.nombre}.`}
         onPointerDownOutside={(ev) => ev.preventDefault()}
         onInteractOutside={(ev) => ev.preventDefault()}
       >
@@ -147,11 +168,13 @@ function DialogoPasswordTemporal({ datos, onCerrar }: { datos: PasswordEntregada
 // ---------------------------------------------------------------------------
 
 function SelectorRol({
+  roles,
   valor,
   onCambiar,
   bloqueado,
   error,
 }: {
+  roles: readonly Rol[];
   valor: Rol | "";
   onCambiar: (rol: Rol) => void;
   bloqueado: boolean;
@@ -167,7 +190,7 @@ function SelectorRol({
         </span>
       </legend>
       <div className="mt-1.5 grid gap-2">
-        {ROLES_ORDENADOS.map((rol) => {
+        {roles.map((rol) => {
           const info = INFO_ROL[rol];
           const elegido = valor === rol;
           const deshabilitado = bloqueado && !elegido;
@@ -226,13 +249,13 @@ function SelectorRol({
 
 function DialogoUsuario({
   usuario,
-  centros,
+  alcance,
   esYo,
   onCerrar,
   onPassword,
 }: {
   usuario?: UsuarioEditable;
-  centros: OpcionCentro[];
+  alcance: AlcanceUsuarios;
   esYo: boolean;
   onCerrar: () => void;
   onPassword: (datos: PasswordEntregada) => void;
@@ -252,8 +275,18 @@ function DialogoUsuario({
 
   const [rol, setRol] = React.useState<Rol | "">(usuario?.rol ?? "");
   const [centroIds, setCentroIds] = React.useState<ReadonlySet<string>>(new Set(usuario?.centroIds ?? []));
-  // Centros inactivos solo se listan si el usuario ya los tiene asignados.
-  const centrosVisibles = centros.filter((c) => c.activo || usuario?.centroIds.includes(c.id));
+  // Institución: fija si el usuario ya tiene una (no se cambia) o si quien
+  // administra solo alcanza la suya; el administrador de la red la elige.
+  const institucionFija = usuario?.institucionId ?? (alcance.eligeInstitucion ? null : (alcance.instituciones[0]?.id ?? null));
+  const [institucionElegida, setInstitucionElegida] = React.useState("");
+  const institucionId = institucionFija ?? institucionElegida;
+  const institucion = alcance.instituciones.find((i) => i.id === institucionId) ?? null;
+  const llevaInstitucion = rol !== "" && rol !== "ADMIN_RED";
+  // Solo centros de la institución del usuario; los inactivos solo si ya los tiene asignados.
+  const centrosVisibles = alcance.centros.filter(
+    (c) => c.institucionId === institucionId && (c.activo || usuario?.centroIds.includes(c.id)),
+  );
+  const [faltaInstitucion, setFaltaInstitucion] = React.useState(false);
 
   function alternarCentro(id: string, marcado: boolean) {
     setCentroIds((previos) => {
@@ -272,9 +305,15 @@ function DialogoUsuario({
       nombre: texto(f, "nombre"),
       email: texto(f, "email"),
       rol: rol as Rol,
-      centroIds: rol === "ADMIN" ? [] : [...centroIds],
+      institucionId: llevaInstitucion ? institucionId : undefined,
+      // Solo los centros de la institución elegida (por si se cambió después de marcar).
+      centroIds:
+        rol !== "" && rolRequiereCentros(rol) ? centrosVisibles.filter((c) => centroIds.has(c.id)).map((c) => c.id) : [],
     };
-    if (!validacion.validar(valores)) return;
+    // La institución va primero: sin ella no se muestran los centros (ni su error).
+    const sinInstitucion = llevaInstitucion && !institucionId;
+    setFaltaInstitucion(sinInstitucion);
+    if (!validacion.validar(valores) || sinInstitucion) return;
     if (usuario) void actualizar.ejecutar({ ...valores, id: usuario.id });
     else void crear.ejecutar(valores);
   }
@@ -319,6 +358,7 @@ function DialogoUsuario({
           </div>
 
           <SelectorRol
+            roles={usuario && !alcance.roles.includes(usuario.rol) ? [usuario.rol, ...alcance.roles] : alcance.roles}
             valor={rol}
             bloqueado={esYo}
             error={e.rol?.[0]}
@@ -334,8 +374,47 @@ function DialogoUsuario({
             </p>
           ) : null}
 
-          {rol === "ADMIN" ? (
-            <Alert tono="info">Los administradores ven y operan todos los centros de la red: no hace falta asignarlos.</Alert>
+          {llevaInstitucion && alcance.eligeInstitucion ? (
+            institucionFija ? (
+              <div data-institucion-fija>
+                <p className="text-sm font-medium text-texto">Institución</p>
+                <p className="mt-0.5 text-[0.9375rem] text-texto">{institucion?.nombre ?? "—"}</p>
+                <p className="mt-0.5 text-sm text-texto-suave">Un usuario no se puede mover a otra institución.</p>
+              </div>
+            ) : (
+              <Field
+                label="Institución"
+                requerido
+                error={e.institucionId ?? (faltaInstitucion ? ["Selecciona la institución del usuario."] : undefined)}
+                ayuda="Solo verá datos de esta institución. No se puede cambiar después."
+              >
+                <Select
+                  name="institucionId"
+                  value={institucionElegida}
+                  onChange={(ev) => {
+                    setInstitucionElegida(ev.target.value);
+                    setFaltaInstitucion(false);
+                    setCentroIds(new Set());
+                  }}
+                  placeholder="Selecciona…"
+                  opciones={alcance.instituciones.filter((i) => i.activo).map((i) => ({ value: i.id, label: i.nombre }))}
+                />
+              </Field>
+            )
+          ) : null}
+
+          {rol === "ADMIN_RED" ? (
+            <Alert tono="info">
+              Los administradores de la red ven y gestionan todas las instituciones y sus centros: no pertenecen a una institución ni
+              se les asignan centros.
+            </Alert>
+          ) : rol === "ADMIN" ? (
+            <Alert tono="info">
+              Los administradores de institución ven y operan todos los centros de su institución
+              {institucion ? ` (${institucion.nombre})` : ""}: no hace falta asignarlos.
+            </Alert>
+          ) : rol !== "" && !institucionId ? (
+            <p className="text-sm text-texto-suave">Elige la institución para ver sus centros.</p>
           ) : rol !== "" ? (
             <fieldset>
               <legend className="text-sm font-medium text-texto">
@@ -360,7 +439,9 @@ function DialogoUsuario({
                     onChange={(ev) => alternarCentro(c.id, ev.target.checked)}
                   />
                 ))}
-                {centrosVisibles.length === 0 ? <p className="py-3 text-sm text-texto-suave">No hay centros activos.</p> : null}
+                {centrosVisibles.length === 0 ? (
+                  <p className="py-3 text-sm text-texto-suave">Esta institución aún no tiene centros activos.</p>
+                ) : null}
               </div>
               {e.centroIds ? (
                 <p role="alert" className="mt-1.5 flex items-start gap-1.5 text-sm font-medium text-peligro-700">
@@ -389,7 +470,7 @@ function DialogoUsuario({
 // Puntos de entrada
 // ---------------------------------------------------------------------------
 
-export function BotonNuevoUsuario({ centros }: { centros: OpcionCentro[] }) {
+export function BotonNuevoUsuario({ alcance }: { alcance: AlcanceUsuarios }) {
   const [abierto, setAbierto] = React.useState(false);
   const [password, setPassword] = React.useState<PasswordEntregada | null>(null);
   const foco = useFocoAlCerrar();
@@ -406,7 +487,7 @@ export function BotonNuevoUsuario({ centros }: { centros: OpcionCentro[] }) {
       </Button>
       {abierto ? (
         <DialogoUsuario
-          centros={centros}
+          alcance={alcance}
           esYo={false}
           onCerrar={() => {
             setAbierto(false);
@@ -484,7 +565,7 @@ export function BotonRestablecerVencida({ usuario, vencida }: { usuario: { id: s
 type Vista = "editar" | "estado" | "password" | "desbloquear" | null;
 
 /** Menú de acciones por usuario. */
-export function AccionesUsuario({ usuario, centros, esYo }: { usuario: UsuarioEditable; centros: OpcionCentro[]; esYo: boolean }) {
+export function AccionesUsuario({ usuario, alcance, esYo }: { usuario: UsuarioEditable; alcance: AlcanceUsuarios; esYo: boolean }) {
   const [vista, setVista] = React.useState<Vista>(null);
   const [password, setPassword] = React.useState<PasswordEntregada | null>(null);
   const contenedor = React.useRef<HTMLSpanElement>(null);
@@ -536,7 +617,7 @@ export function AccionesUsuario({ usuario, centros, esYo }: { usuario: UsuarioEd
       </DropdownMenu>
 
       {vista === "editar" ? (
-        <DialogoUsuario usuario={usuario} centros={centros} esYo={esYo} onCerrar={cerrar} onPassword={setPassword} />
+        <DialogoUsuario usuario={usuario} alcance={alcance} esYo={esYo} onCerrar={cerrar} onPassword={setPassword} />
       ) : null}
 
       <ConfirmarActivo

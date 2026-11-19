@@ -26,6 +26,7 @@ import { formatearDia, formatearFechaHora } from "@/lib/fechas";
 import { leerFiltros } from "@/lib/filtros-reportes";
 import { formatearDecimalFijo, formatearNumero, pluralizar } from "@/lib/formato";
 import { construirHref, resolverCentro } from "@/lib/parametros-url";
+import { etiquetaAlcanceTotal } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { listarCategorias, reporteConsumo, type FilaConsumo } from "@/server/servicios";
 
@@ -65,7 +66,7 @@ export default async function PaginaReporteConsumo({ searchParams }: PageProps<"
     listarCategorias(actor),
   ]);
   const { periodo } = reporte;
-  const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? "Toda la red";
+  const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? etiquetaAlcanceTotal(actor.rol);
   const filtrosUrl = {
     centro: centroId,
     categoria: f.categoriaId,

@@ -25,8 +25,19 @@ export interface ValoresCentro {
 
 const OTRA = "__otra__";
 
-/** Formulario para crear (sin `centro`) o editar un centro de la red. */
-export function FormularioCentro({ centro }: { centro?: ValoresCentro }) {
+export interface FormularioCentroProps {
+  centro?: ValoresCentro;
+  /**
+   * Solo al CREAR como administrador de la red: instituciones entre las que
+   * elegir. Un administrador de institución no la elige (el servidor usa la suya).
+   */
+  instituciones?: readonly { id: string; nombre: string }[];
+  /** Institución preseleccionada (p. ej. al llegar desde su grupo). */
+  institucionInicial?: string;
+}
+
+/** Formulario para crear (sin `centro`) o editar un centro. */
+export function FormularioCentro({ centro, instituciones, institucionInicial }: FormularioCentroProps) {
   const router = useRouter();
   const crear = useAccion(crearCentroAccion, {
     exito: (r) => `${r.nombre} creado con una bodega inicial`,
@@ -44,11 +55,14 @@ export function FormularioCentro({ centro }: { centro?: ValoresCentro }) {
   const comunaInicialEnLista = centro ? comunasDeRegion(centro.region).includes(centro.comuna) : true;
   const [comuna, setComuna] = React.useState(centro ? (comunaInicialEnLista ? centro.comuna : OTRA) : "");
   const [otraComuna, setOtraComuna] = React.useState(centro && !comunaInicialEnLista ? centro.comuna : "");
+  const eligeInstitucion = !centro && instituciones !== undefined;
+  const [faltaInstitucion, setFaltaInstitucion] = React.useState(false);
 
   function enviar(evento: React.FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     const f = new FormData(evento.currentTarget);
     const valores: EntradaCentro = {
+      ...(eligeInstitucion ? { institucionId: texto(f, "institucionId") } : {}),
       nombre: texto(f, "nombre"),
       tipo: texto(f, "tipo") as EntradaCentro["tipo"],
       rut,
@@ -58,8 +72,15 @@ export function FormularioCentro({ centro }: { centro?: ValoresCentro }) {
       telefono: texto(f, "telefono"),
     };
     if (!validacion.validar(valores)) return;
-    if (centro) void actualizar.ejecutar({ ...valores, id: centro.id });
-    else void crear.ejecutar(valores);
+    if (eligeInstitucion && !valores.institucionId) {
+      setFaltaInstitucion(true);
+      return;
+    }
+    if (centro) {
+      const { institucionId: _institucion, ...datos } = valores;
+      void _institucion;
+      void actualizar.ejecutar({ ...datos, id: centro.id });
+    } else void crear.ejecutar(valores);
   }
 
   const hayErroresCampo = Object.keys(e).length > 0;
@@ -69,6 +90,23 @@ export function FormularioCentro({ centro }: { centro?: ValoresCentro }) {
       {accion.error && !hayErroresCampo ? <Alert tono="peligro">{accion.error}</Alert> : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
+        {eligeInstitucion ? (
+          <Field
+            label="Institución"
+            requerido
+            error={e.institucionId ?? (faltaInstitucion ? ["Selecciona la institución del centro."] : undefined)}
+            className="sm:col-span-2"
+            ayuda="El centro queda en esta institución de forma permanente: no se puede cambiar después."
+          >
+            <Select
+              name="institucionId"
+              defaultValue={instituciones.some((i) => i.id === institucionInicial) ? institucionInicial : ""}
+              onChange={() => setFaltaInstitucion(false)}
+              placeholder="Selecciona…"
+              opciones={instituciones.map((i) => ({ value: i.id, label: i.nombre }))}
+            />
+          </Field>
+        ) : null}
         <Field label="Nombre del centro" requerido error={e.nombre} className="sm:col-span-2" ayuda="Ej.: Centro de Diálisis Ñuñoa">
           <Input name="nombre" defaultValue={centro?.nombre} maxLength={100} autoComplete="off" autoFocus={!centro} />
         </Field>
