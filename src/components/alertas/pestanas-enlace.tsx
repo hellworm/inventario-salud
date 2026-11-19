@@ -35,7 +35,7 @@ export function PestanasEnlace({
 }) {
   return (
     <nav aria-label={etiqueta} className={cn("print:hidden", className)}>
-      <ul className="-mb-px flex gap-1 overflow-x-auto border-b border-borde [scrollbar-width:none]">
+      <ul className="relative -mb-px flex gap-1 overflow-x-auto border-b border-borde [scrollbar-width:none]">
         {pestanas.map((p) => (
           <li key={p.href} className="shrink-0">
             <Link

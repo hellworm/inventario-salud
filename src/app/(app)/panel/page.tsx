@@ -232,39 +232,73 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
       </section>
 
       <div className="mt-4 grid items-start gap-4 lg:grid-cols-3">
+        <div className="grid min-w-0 gap-4 lg:col-span-2">
         <AtencionHoy
-          className="lg:col-span-2"
           atencion={resumen.atencion}
           mostrarCentro={!centro && centros.length > 1}
           puedeIngresar={puede(actor.rol, "movimientos:ingreso")}
           puedeDarDeBaja={puede(actor.rol, "movimientos:merma")}
         />
 
-        <div className="grid gap-4">
+        {resumen.puedeVerMovimientos ? (
+          <Card>
+            <CardHeader
+              titulo="Actividad de los últimos 14 días"
+              descripcion={`${pluralizar(resumen.movimientosHoy, "movimiento")} hoy · ${pluralizar(totalMovimientos, "movimiento")} en el período`}
+            />
+            {totalMovimientos === 0 ? (
+              <EmptyState compacto icono={History} titulo="Sin actividad en el período" />
+            ) : (
+              <GraficoActividad dias={diasParaGrafico(resumen.actividad)} />
+            )}
+          </Card>
+        ) : (
+          <Card>
+            <div className="flex items-start gap-4">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-info-50 text-info-700">
+                <Eye className="size-[1.375rem]" aria-hidden />
+              </span>
+              <div>
+                <h2 className="text-base font-semibold tracking-tight">Tu acceso es de solo lectura</h2>
+                <p className="mt-1 max-w-prose text-[0.9375rem] text-texto-suave">
+                  Puedes consultar qué hay en inventario, qué falta y qué está por vencer en tus centros, e imprimir o descargar la lista
+                  de reposición. Para registrar movimientos, pide a un administrador que cambie tu rol.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Link href="/alertas" className={buttonClasses()}>
+                    Ver qué falta
+                  </Link>
+                  <Link href="/inventario" className={buttonClasses({ variant: "secundario" })}>
+                    Ver inventario
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        </div>
+
+        <div className="grid min-w-0 gap-4">
           <Card>
             <CardHeader
               titulo="Vencimientos"
               descripcion="Lotes con stock, por días restantes"
-              acciones={
-                <Link href="/alertas?tab=por-vencer" className={buttonClasses({ variant: "fantasma", size: "sm" })}>
-                  Ver todos
-                </Link>
-              }
             />
             <GraficoVencimientos tramos={resumen.vencimientos} />
           </Card>
 
           <Card>
-            <CardHeader titulo="Existencias" descripcion={centro ? "En este centro" : "En toda la red"} />
+            <CardHeader titulo="Existencias" descripcion={centro ? "Con stock en este centro" : "Con stock en toda la red"} />
             <div className="flex items-center gap-4">
               <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-marca-50 text-marca-700">
                 <Boxes className="size-6" aria-hidden />
               </span>
               <div>
                 <p className="cifras text-3xl font-semibold tracking-tight">{formatearNumero(resumen.insumosConStock)}</p>
-                <p className="text-sm text-texto-suave">insumos con stock</p>
+                <p className="text-sm whitespace-nowrap text-texto-suave">insumos</p>
               </div>
-              <dl className="ml-auto grid grid-cols-2 gap-x-5 text-right text-sm">
+              <dl className="ml-auto grid shrink-0 grid-cols-2 gap-x-5 text-right text-sm">
                 <div>
                   <dt className="text-texto-tenue">Lotes</dt>
                   <dd className="cifras text-lg font-semibold">{formatearNumero(resumen.lotesConStock)}</dd>
@@ -300,51 +334,11 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
               </ul>
             </div>
           </Card>
-        </div>
-      </div>
-
-      <div className="mt-4 grid items-start gap-4 lg:grid-cols-3">
-        {resumen.puedeVerMovimientos ? (
-          <Card className="lg:col-span-2">
-            <CardHeader
-              titulo="Actividad de los últimos 14 días"
-              descripcion={`${pluralizar(resumen.movimientosHoy, "movimiento")} hoy · ${pluralizar(totalMovimientos, "movimiento")} en el período`}
-            />
-            {totalMovimientos === 0 ? (
-              <EmptyState compacto icono={History} titulo="Sin actividad en el período" />
-            ) : (
-              <GraficoActividad dias={diasParaGrafico(resumen.actividad)} />
-            )}
-          </Card>
-        ) : (
-          <Card className="lg:col-span-2">
-            <div className="flex items-start gap-4">
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-info-50 text-info-700">
-                <Eye className="size-[1.375rem]" aria-hidden />
-              </span>
-              <div>
-                <h2 className="text-base font-semibold tracking-tight">Tu acceso es de solo lectura</h2>
-                <p className="mt-1 max-w-prose text-[0.9375rem] text-texto-suave">
-                  Puedes consultar qué hay en inventario, qué falta y qué está por vencer en tus centros, e imprimir o descargar la lista
-                  de reposición. Para registrar movimientos, pide a un administrador que cambie tu rol.
-                </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Link href="/alertas" className={buttonClasses()}>
-                    Ver qué falta
-                  </Link>
-                  <Link href="/inventario" className={buttonClasses({ variant: "secundario" })}>
-                    Ver inventario
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </Card>
-        )}
-
-        <Card>
+          <Card>
           <CardHeader titulo="Accesos rápidos" />
           <AccesosRapidos rol={actor.rol} incluirRegistro={esAdmin} />
-        </Card>
+          </Card>
+        </div>
       </div>
 
       {!centro && resumen.porCentro.length > 0 ? (

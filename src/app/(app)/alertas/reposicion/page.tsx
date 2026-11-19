@@ -25,13 +25,13 @@ function TablaReposicion({ items, titulo }: { items: AlertaStock[]; titulo: stri
           <caption className="sr-only">{titulo}</caption>
           <thead>
             <tr className="border-b border-borde bg-superficie-2 text-left text-xs tracking-wide text-texto-suave uppercase print:border-b-2 print:border-texto print:bg-transparent print:text-[8pt] print:text-texto">
-              <th scope="col" className="px-4 py-3 font-semibold print:px-1.5 print:py-1.5">Insumo</th>
+              <th scope="col" className="w-[36%] px-4 py-3 font-semibold print:px-1.5 print:py-1.5">Insumo</th>
               <th scope="col" className="px-4 py-3 font-semibold print:px-1.5 print:py-1.5">Estado</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Disponible</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Mínimo</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Máximo</th>
-              <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Falta para el mínimo</th>
-              <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Falta para el máximo</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Falta mínimo</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Falta máximo</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Sugerido</th>
               <th scope="col" className="hidden w-[22mm] px-1.5 py-1.5 text-right font-semibold print:table-cell">Pedido</th>
             </tr>
@@ -51,7 +51,7 @@ function TablaReposicion({ items, titulo }: { items: AlertaStock[]; titulo: stri
                   <span className="print:hidden">
                     <BadgeEstadoStock estado={i.tipo} />
                   </span>
-                  <span className="hidden font-semibold print:inline">{i.tipo === "SIN_STOCK" ? "SIN STOCK" : "Bajo mínimo"}</span>
+                  <span className="hidden font-semibold whitespace-nowrap print:inline">{i.tipo === "SIN_STOCK" ? "SIN STOCK" : "Bajo mínimo"}</span>
                 </td>
                 <td className="cifras px-4 py-3 text-right print:px-1.5 print:py-1.5">{numero(i.disponible)}</td>
                 <td className="cifras px-4 py-3 text-right print:px-1.5 print:py-1.5">{numero(i.stockMinimo)}</td>

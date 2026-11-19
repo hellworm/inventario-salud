@@ -160,7 +160,8 @@ export default async function PaginaReporteMovimientos({ searchParams }: PagePro
                   </td>
                   <td className="cifras py-1.5 pl-3 text-right font-semibold whitespace-nowrap">{formatearNumero(t.unidades)} u.</td>
                   <td className="cifras py-1.5 pl-4 text-right whitespace-nowrap text-texto-suave">
-                    {pluralizar(t.movimientos, "movimiento")}
+                    {formatearNumero(t.movimientos)} <span className="sm:hidden">mov.</span>
+                    <span className="max-sm:hidden">{t.movimientos === 1 ? "movimiento" : "movimientos"}</span>
                   </td>
                 </tr>
               ))}

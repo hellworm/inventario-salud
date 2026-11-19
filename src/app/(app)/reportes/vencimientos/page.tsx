@@ -50,7 +50,7 @@ function columnasVencimientos(mostrarCentro: boolean): Columna<FilaExistencia>[]
           <BadgeEstadoVencimiento estado="POR_VENCER" dias={f.diasParaVencer} />
         ),
     },
-    { clave: "lote", encabezado: "Lote", celda: (f) => <span className="cifras">{f.numeroLote}</span> },
+    { clave: "lote", encabezado: "Lote", celda: (f) => <span className="cifras whitespace-nowrap">{f.numeroLote}</span> },
     {
       clave: "ubicacion",
       encabezado: mostrarCentro ? "Centro y ubicación" : "Ubicación",

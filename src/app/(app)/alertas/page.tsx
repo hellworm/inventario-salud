@@ -136,7 +136,7 @@ function columnasVencimiento(mostrarCentro: boolean): Columna<AlertaVencimiento>
           <BadgeEstadoVencimiento estado="POR_VENCER" dias={a.dias} />
         ),
     },
-    { clave: "lote", encabezado: "Lote", celda: (a) => <span className="cifras">{a.numeroLote}</span> },
+    { clave: "lote", encabezado: "Lote", celda: (a) => <span className="cifras whitespace-nowrap">{a.numeroLote}</span> },
     {
       clave: "ubicacion",
       encabezado: "Ubicación",

@@ -25,7 +25,7 @@ function columnas(mostrarCentro: boolean): Columna<FilaExistencia>[] {
       encabezado: mostrarCentro ? "Centro y ubicación" : "Ubicación",
       celda: (f) => (mostrarCentro ? `${f.centro} · ${f.ubicacion}` : f.ubicacion),
     },
-    { clave: "lote", encabezado: "Lote", celda: (f) => <span className="cifras">{f.numeroLote}</span> },
+    { clave: "lote", encabezado: "Lote", celda: (f) => <span className="cifras whitespace-nowrap">{f.numeroLote}</span> },
     {
       clave: "vencimiento",
       encabezado: "Vencimiento",
