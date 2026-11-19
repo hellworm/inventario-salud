@@ -88,7 +88,8 @@ services:
         condition: service_completed_successfully
 
   # Respaldo diario de la base en ./respaldos (con rotación).
-  # Restaurar: docker compose run --rm respaldo bash /scripts/restaurar.sh /respaldos/<archivo>.dump
+  # Respaldo manual:  docker compose run --rm respaldo "bash /scripts/respaldo.sh"
+  # Restaurar:        docker compose run --rm respaldo "bash /scripts/restaurar.sh /respaldos/<archivo>.dump"
   respaldo:
     image: postgres:16
     restart: unless-stopped
