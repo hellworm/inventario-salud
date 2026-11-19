@@ -11,6 +11,7 @@ import {
   registrarIngreso,
   registrarRetiro,
   usuariosConMovimientos,
+  type OrdenInventario,
 } from "@/server/servicios";
 import { crearEscenario, esperarError, sembrarLoteVencido, type Escenario } from "./soporte/escenario";
 
@@ -118,7 +119,7 @@ describe("servicios de la grilla", () => {
   });
 
   it("listarInventario ordena por disponible, código y próximo vencimiento", async () => {
-    const codigos = async (orden: Parameters<typeof listarInventario>[1] extends infer F ? F extends { orden?: infer O } ? O : never : never) =>
+    const codigos = async (orden: OrdenInventario | null) =>
       (await listarInventario(e.admin, { centroId: e.centroA, orden })).items.map((i) => i.codigo);
     expect(await codigos("NOMBRE")).toEqual(["DIA-001", "GUA-001", "TEL-001"]);
     expect(await codigos("CODIGO")).toEqual(["DIA-001", "GUA-001", "TEL-001"]);

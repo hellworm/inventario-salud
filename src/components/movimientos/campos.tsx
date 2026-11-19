@@ -161,7 +161,7 @@ export function OpcionesTarjeta<V extends string>({
   columnas?: 2 | 3;
 }) {
   return (
-    <div className={cn("grid gap-2", columnas === 3 ? "sm:grid-cols-3" : "grid-cols-2")}>
+    <div className={cn("grid gap-2", columnas === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2")}>
       {opciones.map((o) => {
         const marcado = o.valor === valor;
         const Icono = o.icono;
@@ -345,6 +345,8 @@ export function SelectUbicacion({
   "aria-label"?: string;
 }) {
   const centros = [...new Map(ubicaciones.map((u) => [u.centroId, u.centro])).entries()];
+  // Con varios centros el nombre incluye el centro: el select cerrado no muestra el grupo.
+  const variosCentros = centros.length > 1;
   const opcion = (u: UbicacionOpcion) => {
     const extra = detalle?.(u);
     return (
@@ -353,13 +355,14 @@ export function SelectUbicacion({
         {u.tipo !== "BODEGA" && !u.nombre.toLowerCase().includes(ETIQUETA_TIPO_UBICACION[u.tipo].toLowerCase())
           ? ` (${ETIQUETA_TIPO_UBICACION[u.tipo]})`
           : ""}
+        {variosCentros ? ` · ${u.centro}` : ""}
         {extra ? ` — ${extra}` : ""}
       </option>
     );
   };
   return (
     <Select value={valor} onChange={(e) => onCambiar(e.target.value)} placeholder={placeholder} {...props}>
-      {centros.length > 1
+      {variosCentros
         ? centros.map(([centroId, centro]) => (
             <optgroup key={centroId} label={centro}>
               {ubicaciones.filter((u) => u.centroId === centroId).map(opcion)}

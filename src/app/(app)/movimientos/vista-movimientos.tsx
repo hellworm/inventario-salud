@@ -20,7 +20,7 @@ import {
   Select,
   Skeleton,
 } from "@/components/ui";
-import { useParametrosUrl } from "@/components/inventario/parametros-url";
+import { enfocarFila, useParametrosUrl } from "@/components/inventario/parametros-url";
 import { SelectUbicacion } from "@/components/movimientos/campos";
 import { ComboboxInsumo, type InsumoOpcion } from "@/components/movimientos/combobox-insumo";
 import { cn } from "@/lib/cn";
@@ -87,8 +87,10 @@ export function VistaMovimientos({
   const [filtrosAbiertos, setFiltrosAbiertos] = React.useState(false);
   const [limpiezas, setLimpiezas] = React.useState(0);
 
+  const ultimoAbierto = React.useRef<string | null>(movId);
   const abrir = (id: string) =>
     iniciarDetalle(() => {
+      ultimoAbierto.current = id;
       setIdAbierto(id);
       router.push(urlCon({ mov: id }, { conservarPagina: true }), { scroll: false });
     });
@@ -135,7 +137,7 @@ export function VistaMovimientos({
         </div>
         <div
           id="filtros-movimientos"
-          className={cn("mt-4 grid gap-x-3 gap-y-4 sm:grid-cols-2 lg:grid lg:grid-cols-3 xl:grid-cols-6", !filtrosAbiertos && "hidden")}
+          className={cn("mt-4 grid grid-cols-1 gap-x-3 gap-y-4 sm:grid-cols-2 lg:grid lg:grid-cols-3 xl:grid-cols-6", !filtrosAbiertos && "hidden")}
         >
           <Field label="Tipo">
             <Select
@@ -246,6 +248,7 @@ export function VistaMovimientos({
                         <button
                           type="button"
                           aria-haspopup="dialog"
+                          data-fila={m.id}
                           aria-label={`Ver detalle: ${ETIQUETA_TIPO_MOVIMIENTO[m.tipo]} de ${m.insumoNombre}, ${formatearFechaHora(m.creadoEn)}`}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -259,7 +262,7 @@ export function VistaMovimientos({
                       <td className="px-4 py-3 align-middle">
                         <BadgeTipoMovimiento tipo={m.tipo} />
                       </td>
-                      <td className="max-w-0 px-4 py-3 align-middle lg:w-[30%]">
+                      <td className="max-w-0 px-4 py-3 align-middle md:w-[34%]">
                         <span className="block truncate font-medium text-texto">{m.insumoNombre}</span>
                         <span className="cifras block truncate text-xs text-texto-suave">Lote {m.numeroLote}</span>
                       </td>
@@ -267,11 +270,11 @@ export function VistaMovimientos({
                         <Cantidad m={m} />
                       </td>
                       <td className="cifras hidden px-4 py-3 text-right align-middle text-texto-suave xl:table-cell">{formatearNumero(m.saldoPosterior)}</td>
-                      <td className="px-4 py-3 align-middle">
-                        <span className="block text-texto">{m.ubicacion}</span>
-                        {mostrarCentro ? <span className="block text-xs text-texto-tenue">{m.centro}</span> : null}
+                      <td className="max-w-0 px-4 py-3 align-middle md:w-[18%]">
+                        <span className="block truncate text-texto">{m.ubicacion}</span>
+                        {mostrarCentro ? <span className="block truncate text-xs text-texto-tenue">{m.centro}</span> : null}
                       </td>
-                      <td className="hidden px-4 py-3 align-middle text-texto-suave lg:table-cell">{m.usuario}</td>
+                      <td className="hidden px-4 py-3 align-middle whitespace-nowrap text-texto-suave lg:table-cell">{m.usuario}</td>
                       <td className="px-2 py-3 align-middle text-texto-tenue">
                         <ChevronRight className="size-5" aria-hidden />
                       </td>
@@ -287,6 +290,7 @@ export function VistaMovimientos({
                   <button
                     type="button"
                     aria-haspopup="dialog"
+                    data-fila={m.id}
                     onClick={() => abrir(m.id)}
                     className={cn("block w-full px-4 py-3.5 text-left active:bg-marca-50", idAbierto === m.id && "bg-marca-50")}
                   >
@@ -331,6 +335,10 @@ export function VistaMovimientos({
           ancho="lg"
           titulo={abierto ? `${ETIQUETA_TIPO_MOVIMIENTO[abierto.tipo]} · ${abierto.insumoNombre}` : "Detalle del movimiento"}
           descripcion={abierto ? `Registrado el ${formatearFechaHora(abierto.creadoEn)} por ${abierto.usuario}` : undefined}
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            enfocarFila(ultimoAbierto.current);
+          }}
         >
           {abierto ? (
             <DetalleMovimiento m={abierto} traslado={detalle?.id === abierto.id ? traslado : []} onCerrar={cerrar} />
@@ -382,18 +390,18 @@ function DetalleMovimiento({ m, traslado, onCerrar }: { m: FilaMovimiento; trasl
       </div>
 
       {salida && entrada ? (
-        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-control border border-borde px-4 py-3 text-sm">
-          <span className="min-w-0">
-            <span className="block text-xs text-texto-tenue">Origen</span>
-            <span className="font-medium text-texto">{salida.ubicacion}</span>
-            <span className="text-texto-suave"> · {salida.centro}</span>
-          </span>
-          <ArrowRight className="size-4 shrink-0 text-texto-tenue" aria-label="hacia" />
-          <span className="min-w-0">
-            <span className="block text-xs text-texto-tenue">Destino</span>
-            <span className="font-medium text-texto">{entrada.ubicacion}</span>
-            <span className="text-texto-suave"> · {entrada.centro}</span>
-          </span>
+        <div className="mt-4 grid items-center gap-x-4 gap-y-2 rounded-control border border-borde px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+          <p className="min-w-0">
+            <span className="block text-xs font-medium tracking-wide text-texto-tenue uppercase">Origen</span>
+            <span className="block font-medium text-texto">{salida.ubicacion}</span>
+            <span className="block text-texto-suave">{salida.centro}</span>
+          </p>
+          <ArrowRight className="size-5 shrink-0 text-texto-tenue max-sm:rotate-90" aria-label="hacia" />
+          <p className="min-w-0">
+            <span className="block text-xs font-medium tracking-wide text-texto-tenue uppercase">Destino</span>
+            <span className="block font-medium text-texto">{entrada.ubicacion}</span>
+            <span className="block text-texto-suave">{entrada.centro}</span>
+          </p>
         </div>
       ) : null}
 

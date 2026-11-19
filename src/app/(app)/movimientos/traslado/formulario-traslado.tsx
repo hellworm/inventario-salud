@@ -163,7 +163,7 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
   };
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
       {confirmado ? (
         <Confirmacion
           titulo="Traslado registrado"
@@ -223,7 +223,7 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
               />
             </Field>
 
-            <div className="grid items-start gap-5 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-3">
+            <div className="grid grid-cols-1 items-start gap-5 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-3">
               <Field label="Origen" requerido error={errores.ubicacionOrigenId}>
                 <SelectUbicacion
                   name="ubicacionOrigenId"

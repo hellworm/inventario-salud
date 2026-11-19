@@ -121,7 +121,7 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
       clave: "lote",
       encabezado: "Lote",
       movil: "titulo",
-      celda: (e) => <span className="cifras font-semibold">{e.numeroLote}</span>,
+      celda: (e) => <span className="cifras font-semibold whitespace-nowrap">{e.numeroLote}</span>,
     },
     {
       clave: "ubicacion",
@@ -138,26 +138,18 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
     {
       clave: "vencimiento",
       encabezado: "Vencimiento",
-      celda: (e) =>
-        e.fechaVencimiento ? (
-          <span className="block">
-            <span className="cifras block">{formatearDia(e.fechaVencimiento)}</span>
-            <span className="block text-xs text-texto-tenue">{describirVencimiento(e.diasParaVencer)}</span>
-          </span>
-        ) : (
-          <span className="text-texto-tenue">Sin vencimiento</span>
-        ),
-    },
-    {
-      clave: "estado",
-      encabezado: "Estado",
-      movil: "destacado",
-      celda: (e) => <BadgeEstadoVencimiento estado={e.estadoVencimiento} dias={e.diasParaVencer} />,
+      celda: (e) => (
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {e.fechaVencimiento ? <span className="cifras whitespace-nowrap">{formatearDia(e.fechaVencimiento)}</span> : null}
+          <BadgeEstadoVencimiento estado={e.estadoVencimiento} dias={e.diasParaVencer} />
+        </span>
+      ),
     },
     {
       clave: "cantidad",
       encabezado: "Cantidad",
       alinear: "derecha",
+      movil: "destacado",
       celda: (e) => (
         <span className="cifras whitespace-nowrap">
           <strong className="text-base font-semibold">{formatearNumero(e.cantidad)}</strong>{" "}
@@ -217,6 +209,7 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
     {
       clave: "lote",
       encabezado: "Lote y ubicación",
+      className: "md:max-w-0 md:w-[38%]",
       celda: (m) => (
         <span className="block min-w-0">
           <span className="cifras block truncate">{m.numeroLote}</span>
@@ -227,7 +220,7 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
         </span>
       ),
     },
-    { clave: "usuario", encabezado: "Usuario", celda: (m) => m.usuario },
+    { clave: "usuario", encabezado: "Usuario", celda: (m) => <span className="whitespace-nowrap">{m.usuario}</span> },
   ];
 
   return (
@@ -324,7 +317,7 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
         />
       </section>
 
-      <div className="mt-4 grid items-start gap-4 lg:grid-cols-3">
+      <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <Card relleno={false} className="overflow-hidden">
             <CardHeader

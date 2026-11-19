@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { MinusCircle, Plus, PlusCircle, ShieldCheck, SlidersHorizontal, Trash2 } from "lucide-react";
+import { MinusCircle, Plus, PlusCircle, SlidersHorizontal, Trash2 } from "lucide-react";
 import { registrarAjusteAccion, registrarMermaAccion, type StockActual } from "@/acciones/movimientos";
 import { Alert, Button, buttonClasses, Card, Field, Input, Select, Skeleton, Textarea, useAccion } from "@/components/ui";
 import {
@@ -191,7 +191,7 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
   };
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
       {confirmado ? (
         <Confirmacion
           titulo={TEXTOS[confirmado.tipo].confirmado}
@@ -321,7 +321,7 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
               )
             ) : null}
 
-            <div className="grid items-start gap-5 sm:grid-cols-2">
+            <div className="grid grid-cols-1 items-start gap-5 sm:grid-cols-2">
               <Field label={TEXTOS[tipo].cantidad} requerido error={errores.cantidad}>
                 <CampoCantidad
                   valor={cantidad}
@@ -344,7 +344,7 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
               ) : null}
             </div>
 
-            <div className="grid items-start gap-5 sm:grid-cols-2">
+            <div className="grid grid-cols-1 items-start gap-5 sm:grid-cols-2">
               <Field label="Motivo" requerido error={motivoOpcion === OTRO ? undefined : errores.motivo}>
                 <Select
                   name="motivo"
@@ -373,11 +373,8 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
             </Field>
 
             <Alert tono="info" titulo="Este movimiento queda auditado">
-              <span className="inline-flex items-start gap-1.5">
-                <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden />
-                Se guarda con tu usuario, la fecha y el motivo en el historial y en la auditoría. No se puede editar ni borrar: un
-                error se corrige con otro ajuste.
-              </span>
+              Se guarda con tu usuario, la fecha y el motivo en el historial y en la auditoría. No se puede editar ni borrar: un error
+              se corrige con otro ajuste.
             </Alert>
 
             <div className="flex flex-col gap-3 border-t border-borde pt-5 sm:flex-row sm:items-center sm:justify-end">

@@ -30,7 +30,7 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { BadgesVencimientoInsumo, ExistenciasPorUbicacion } from "@/components/inventario/existencias";
-import { useParametrosUrl } from "@/components/inventario/parametros-url";
+import { enfocarFila, useParametrosUrl } from "@/components/inventario/parametros-url";
 import { cn } from "@/lib/cn";
 import { describirVencimiento, formatearDia } from "@/lib/fechas";
 import { formatearNumero } from "@/lib/formato";
@@ -95,8 +95,10 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
   const [idAbierto, setIdAbierto] = React.useOptimistic(verId);
   const [navegando, iniciarPanel] = React.useTransition();
 
+  const ultimoAbierto = React.useRef<string | null>(verId);
   const abrir = (insumoId: string) =>
     iniciarPanel(() => {
+      ultimoAbierto.current = insumoId;
       setIdAbierto(insumoId);
       router.push(urlCon({ ver: insumoId }, { conservarPagina: true }), { scroll: false });
     });
@@ -123,7 +125,7 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
   return (
     <>
       <Card className="mb-4 space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_14rem_14rem_15rem]">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_14rem_14rem_15rem]">
           <SearchInput
             key={limpiezas}
             valorInicial={limpiezas > 0 ? "" : undefined}
@@ -265,6 +267,7 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                         <button
                           type="button"
                           aria-haspopup="dialog"
+                          data-fila={f.insumoId}
                           onClick={(e) => {
                             e.stopPropagation();
                             abrir(f.insumoId);
@@ -329,6 +332,7 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                   <button
                     type="button"
                     aria-haspopup="dialog"
+                    data-fila={f.insumoId}
                     onClick={() => abrir(f.insumoId)}
                     className={cn("block w-full px-4 py-3.5 text-left active:bg-marca-50", idAbierto === f.insumoId && "bg-marca-50")}
                   >
@@ -385,6 +389,10 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                 : "Lotes y ubicaciones"
           }
           className="w-full sm:w-[30rem]"
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            enfocarFila(ultimoAbierto.current);
+          }}
         >
           {idAbierto === null ? null : detalleAbierto ? (
             <PanelInsumo detalle={detalleAbierto} mostrarCentro={mostrarCentro} permisos={permisos} />

@@ -39,3 +39,19 @@ export function useParametrosUrl() {
 
   return { params, urlCon, filtrar, pendiente, iniciar, router };
 }
+
+/**
+ * Devuelve el foco a la fila que abrió un panel o diálogo controlado por URL
+ * (no hay `Trigger` de Radix que lo haga). Las filas se marcan con
+ * `data-fila={id}`; se elige la visible (tabla en escritorio, tarjeta en móvil).
+ */
+export function enfocarFila(id: string | null): void {
+  if (!id) return;
+  const candidatos = document.querySelectorAll<HTMLElement>(`[data-fila="${CSS.escape(id)}"]`);
+  for (const el of candidatos) {
+    if (el.offsetParent !== null) {
+      el.focus();
+      return;
+    }
+  }
+}

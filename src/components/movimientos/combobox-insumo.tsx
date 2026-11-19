@@ -124,22 +124,17 @@ export function ComboboxInsumo({
         )}
       >
         <div className="min-w-0 flex-1">
-          <p className="truncate text-base font-semibold text-texto">{valor.nombre}</p>
+          <p className="text-base leading-snug font-semibold text-texto sm:truncate">{valor.nombre}</p>
           {compacto ? null : (
-            <p className="flex flex-wrap items-center gap-x-2 text-sm text-texto-suave">
-              <span className="cifras">{valor.codigo}</span>
-              <span aria-hidden>·</span>
-              <span>{valor.categoria}</span>
-              {valor.presentacion ? (
-                <>
-                  <span aria-hidden>·</span>
-                  <span>{valor.presentacion}</span>
-                </>
-              ) : null}
+            <p className="flex items-center gap-x-2 text-sm text-texto-suave">
+              <span className="min-w-0 truncate">
+                <span className="cifras">{valor.codigo}</span> · {valor.categoria}
+                {valor.presentacion ? ` · ${valor.presentacion}` : ""}
+              </span>
               {valor.requiereCadenaFrio ? (
-                <span className="inline-flex items-center gap-1 font-medium text-info-700">
+                <span className="inline-flex shrink-0 items-center gap-1 font-medium text-info-700">
                   <Snowflake className="size-3.5" aria-hidden />
-                  Cadena de frío
+                  <span className="max-sm:sr-only">Cadena de frío</span>
                 </span>
               ) : null}
             </p>

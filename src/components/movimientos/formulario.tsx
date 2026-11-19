@@ -113,8 +113,11 @@ export function PanelExistencias({
       g.filas.push(e);
       porUbicacion.set(e.ubicacionId, g);
     }
-    return [...porUbicacion.entries()];
-  }, [estado.datos]);
+    // La ubicación elegida en el formulario va primero.
+    return [...porUbicacion.entries()].sort(
+      ([a], [b]) => Number(b === ubicacionDestacada) - Number(a === ubicacionDestacada),
+    );
+  }, [estado.datos, ubicacionDestacada]);
 
   return (
     <Card className={className} aria-busy={estado.cargando || undefined}>

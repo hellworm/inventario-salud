@@ -221,7 +221,7 @@ export function FormularioIngreso({
   }));
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_24rem]">
       {confirmado ? (
         <Confirmacion
           titulo="Ingreso registrado"
@@ -301,7 +301,7 @@ export function FormularioIngreso({
               <SelectUbicacion name="ubicacionId" ubicaciones={ubicaciones} valor={ubicacionId} onCambiar={alEditar(setUbicacionId)} />
             </Field>
 
-            <div className="grid gap-5 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
               <Field
                 label="Número de lote"
                 requerido
@@ -381,9 +381,9 @@ export function FormularioIngreso({
             <div role="group" aria-labelledby="titulo-respaldo" className="border-t border-borde pt-5">
               <h2 id="titulo-respaldo" className="mb-4 text-sm font-semibold text-texto">
                 Respaldo del ingreso
-                <span className="ml-2 font-normal text-texto-tenue">Se conserva al registrar varias líneas</span>
+                <span className="block font-normal text-texto-tenue sm:ml-2 sm:inline">Se conserva al registrar varias líneas</span>
               </h2>
-              <div className="grid gap-5 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <Field label="Proveedor" opcional error={errores.proveedorId}>
                   <Select
                     name="proveedorId"
