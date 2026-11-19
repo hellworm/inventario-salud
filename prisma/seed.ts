@@ -425,6 +425,10 @@ async function sembrarHistorial(ref: Awaited<ReturnType<typeof sembrarReferencia
     };
 
     const ingresar = async (d: DefInsumo, cantidad: number, vencimiento: DiaISO | undefined, ubicacionId = ubicacionDe(d), dia: DiaISO = hoy) => {
+      // Fabricado unos dos años antes de vencer, pero nunca después del día en
+      // que se recibe (el servicio rechaza fechas de fabricación futuras).
+      const fabricacion = (d.vence ?? true) && vencimiento ? sumarDias(vencimiento, -entre(700, 760)) : undefined;
+      const tope = sumarDias(dia, -30);
       await registrarIngreso(
         bodeguero,
         {
@@ -432,7 +436,7 @@ async function sembrarHistorial(ref: Awaited<ReturnType<typeof sembrarReferencia
           insumoId: ref.insumos.get(d.codigo)!,
           numeroLote: nuevoLote(dia),
           fechaVencimiento: (d.vence ?? true) ? vencimiento : undefined,
-          fechaFabricacion: (d.vence ?? true) && vencimiento ? sumarDias(vencimiento, -entre(700, 760)) : undefined,
+          fechaFabricacion: fabricacion && fabricacion > tope ? tope : fabricacion,
           cantidad,
           proveedorId: ref.proveedores[d.proveedor],
           documentoRef: nuevoDocumento(),
