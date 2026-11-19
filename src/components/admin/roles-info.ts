@@ -6,24 +6,28 @@ import { ROLES, type Rol } from "@/lib/permisos";
  */
 export const INFO_ROL: Readonly<Record<Rol, { resumen: string; puede: readonly string[]; noPuede: readonly string[] }>> = {
   ADMIN: {
-    resumen: "Acceso completo a toda la red.",
+    resumen: "Gestiona toda la red, sin restricción de centros.",
     puede: [
       "Ve y opera todos los centros",
       "Registra ingresos, retiros, traslados, ajustes y mermas",
       "Administra insumos, centros, proveedores y usuarios",
-      "Consulta reportes y auditoría",
+      "Consulta y exporta reportes; revisa la auditoría",
     ],
     noPuede: [],
   },
   BODEGUERO: {
-    resumen: "Opera el día a día de sus centros.",
-    puede: ["Registra ingresos y retiros en sus centros", "Consulta inventario, alertas e historial de movimientos"],
-    noPuede: ["No hace traslados, ajustes ni mermas", "No ve otros centros ni la administración"],
+    resumen: "Registra ingresos y retiros en sus centros.",
+    puede: ["Registra ingresos y retiros en sus centros asignados", "Consulta inventario, alertas, historial de movimientos y proveedores"],
+    noPuede: [
+      "No ajusta stock, no da de baja (mermas) ni traslada",
+      "No ve reportes, auditoría ni administración",
+      "No ve centros que no tenga asignados",
+    ],
   },
   VISITANTE: {
-    resumen: "Solo consulta, sin modificar nada.",
-    puede: ["Consulta inventario y alertas de sus centros"],
-    noPuede: ["No registra movimientos", "No ve el historial ni la administración"],
+    resumen: "Solo consulta inventario y alertas de sus centros.",
+    puede: ["Consulta inventario y alertas de sus centros asignados", "Imprime o descarga la lista de reposición"],
+    noPuede: ["No registra ningún movimiento", "No ve el historial de movimientos, proveedores, reportes ni administración"],
   },
 };
 

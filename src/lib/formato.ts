@@ -24,6 +24,12 @@ export function formatearDecimal(valor: number | null | undefined): string {
   return fmtDecimal.format(valor);
 }
 
+/** Decimales fijos para columnas alineadas: (5.8, 1) → "5,8"; (6.07, 1) → "6,1"; (66, 1) → "66,0". */
+export function formatearDecimalFijo(valor: number | null | undefined, decimales = 1): string {
+  if (valor === null || valor === undefined || Number.isNaN(valor)) return "—";
+  return new Intl.NumberFormat("es-CL", { minimumFractionDigits: decimales, maximumFractionDigits: decimales }).format(valor);
+}
+
 /** 12500 → "$12.500" */
 export function formatearCLP(valor: number | null | undefined): string {
   if (valor === null || valor === undefined || Number.isNaN(valor)) return "—";

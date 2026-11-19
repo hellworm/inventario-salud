@@ -33,3 +33,11 @@ export function unidadSegun(cantidad: number, unidad: string): string {
 export function cantidadConUnidad(cantidad: number, unidad: string): string {
   return `${formatearNumero(cantidad)} ${unidadSegun(cantidad, unidad)}`;
 }
+
+/**
+ * Cantidad con signo y unidad concordada, para movimientos:
+ * `cantidadConSigno(3, "caja", 1)` → "+3 cajas"; `cantidadConSigno(1, "caja", -1)` → "−1 caja".
+ */
+export function cantidadConSigno(cantidad: number, unidad: string, signo: number): string {
+  return `${signo > 0 ? "+" : "−"}${cantidadConUnidad(cantidad, unidad)}`;
+}

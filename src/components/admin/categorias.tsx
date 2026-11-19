@@ -17,6 +17,7 @@ import {
 } from "@/components/ui";
 import { esquemaCategoria } from "@/lib/esquemas/catalogo";
 import { pluralizar } from "@/lib/formato";
+import { useFocoAlCerrar } from "./use-foco-al-cerrar";
 import { texto, useValidacion } from "./use-validacion";
 
 interface CategoriaEditable {
@@ -101,13 +102,28 @@ function DialogoCategoria({
 /** Botón "Nueva categoría" con su diálogo. */
 export function BotonNuevaCategoria({ variant }: { variant?: "primario" | "secundario" }) {
   const [abierto, setAbierto] = React.useState(false);
+  const foco = useFocoAlCerrar();
   return (
     <>
-      <Button variant={variant} onClick={() => setAbierto(true)}>
+      <Button
+        variant={variant}
+        onClick={() => {
+          foco.recordar();
+          setAbierto(true);
+        }}
+      >
         <Plus aria-hidden />
         Nueva categoría
       </Button>
-      {abierto ? <DialogoCategoria open onOpenChange={setAbierto} /> : null}
+      {abierto ? (
+        <DialogoCategoria
+          open
+          onOpenChange={(valor) => {
+            setAbierto(valor);
+            if (!valor) foco.devolver();
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -115,13 +131,32 @@ export function BotonNuevaCategoria({ variant }: { variant?: "primario" | "secun
 /** Acciones por fila: renombrar y eliminar (solo si no tiene insumos). */
 export function AccionesCategoria({ categoria, insumos }: { categoria: CategoriaEditable; insumos: number }) {
   const [editando, setEditando] = React.useState(false);
+  const foco = useFocoAlCerrar();
   const tieneInsumos = insumos > 0;
   return (
     <span className="relative z-10 inline-flex items-center justify-end gap-1">
-      <Button variant="fantasma" size="icono" aria-label={`Renombrar ${categoria.nombre}`} title="Renombrar" onClick={() => setEditando(true)}>
+      <Button
+        variant="fantasma"
+        size="icono"
+        aria-label={`Renombrar ${categoria.nombre}`}
+        title="Renombrar"
+        onClick={() => {
+          foco.recordar();
+          setEditando(true);
+        }}
+      >
         <Pencil aria-hidden />
       </Button>
-      {editando ? <DialogoCategoria categoria={categoria} open onOpenChange={setEditando} /> : null}
+      {editando ? (
+        <DialogoCategoria
+          categoria={categoria}
+          open
+          onOpenChange={(valor) => {
+            setEditando(valor);
+            if (!valor) foco.devolver();
+          }}
+        />
+      ) : null}
       {tieneInsumos ? (
         <Button
           variant="fantasma"

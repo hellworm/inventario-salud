@@ -7,6 +7,8 @@ import { Alert, Badge, Button, controlClasses, EmptyState, useAccion } from "@/c
 import { cn } from "@/lib/cn";
 import { esquemaParametrosStock } from "@/lib/esquemas/catalogo";
 import { formatearNumero, pluralizar } from "@/lib/formato";
+import { cantidadConUnidad, pluralUnidad } from "@/lib/unidades";
+import { AvisoCambiosSinGuardar, useCambiosSinGuardar } from "./use-cambios-sin-guardar";
 import { useValidacion } from "./use-validacion";
 
 export interface FilaParametro {
@@ -38,14 +40,14 @@ export function TablaParametros({ insumoId, unidadMedida, filas }: { insumoId: s
   });
   const validacion = useValidacion(esquemaParametrosStock, guardar.erroresCampo);
   const idBase = React.useId();
+  const modificados = filas.filter(
+    (f) => valores[f.centroId]?.minimo !== guardados[f.centroId]?.minimo || valores[f.centroId]?.maximo !== guardados[f.centroId]?.maximo,
+  ).length;
+  useCambiosSinGuardar(modificados > 0);
 
   if (filas.length === 0) {
     return <EmptyState compacto titulo="Aún no hay centros" descripcion="Crea un centro para definir sus mínimos de stock." />;
   }
-
-  const modificados = filas.filter(
-    (f) => valores[f.centroId]?.minimo !== guardados[f.centroId]?.minimo || valores[f.centroId]?.maximo !== guardados[f.centroId]?.maximo,
-  ).length;
 
   function cambiar(indice: number, centroId: string, campo: "minimo" | "maximo", valor: string) {
     const limpio = valor.replace(/[^\d.]/g, "");
@@ -81,11 +83,11 @@ export function TablaParametros({ insumoId, unidadMedida, filas }: { insumoId: s
       <div role="table" aria-label="Stock mínimo y máximo por centro" className="rounded-control border border-borde">
         <div
           role="row"
-          className="hidden grid-cols-[minmax(0,1fr)_8rem_9rem_9rem] items-center gap-4 border-b border-borde bg-superficie-2 px-4 py-2.5 text-xs font-semibold tracking-wide text-texto-suave uppercase md:grid"
+          className="hidden grid-cols-[minmax(0,1fr)_9rem_8rem_8rem] items-center gap-4 border-b border-borde bg-superficie-2 px-4 py-2.5 text-xs font-semibold tracking-wide text-texto-suave uppercase md:grid"
         >
           <span role="columnheader">Centro</span>
           <span role="columnheader" className="text-right">
-            Stock hoy
+            Stock hoy ({pluralUnidad(unidadMedida)})
           </span>
           <span role="columnheader">Mínimo</span>
           <span role="columnheader">Máximo</span>
@@ -103,12 +105,12 @@ export function TablaParametros({ insumoId, unidadMedida, filas }: { insumoId: s
             const bajo = minimo !== null && Number.isFinite(minimo) && minimo > 0 && f.stockActual < minimo;
             return (
               <div key={f.centroId} role="row" className="px-4 py-3.5 md:py-3">
-                <div className="grid grid-cols-2 items-center gap-x-4 gap-y-2.5 md:grid-cols-[minmax(0,1fr)_8rem_9rem_9rem]">
+                <div className="grid grid-cols-2 items-center gap-x-4 gap-y-2.5 md:grid-cols-[minmax(0,1fr)_9rem_8rem_8rem]">
                   <div role="cell" className="col-span-2 flex min-w-0 flex-col items-start gap-x-3 gap-y-0.5 md:col-span-1 md:flex-row md:flex-wrap md:items-center">
-                    <span className="max-w-full min-w-0 truncate text-[0.9375rem] font-medium text-texto">{f.centro}</span>
+                    <span className="max-w-full min-w-0 text-[0.9375rem] font-medium break-words text-texto">{f.centro}</span>
                     {!f.centroActivo ? <Badge tono="neutro">Centro inactivo</Badge> : null}
                     <span className="cifras text-sm text-texto-suave md:hidden">
-                      Hoy: {formatearNumero(f.stockActual)} {unidadMedida}
+                      Hoy: {cantidadConUnidad(f.stockActual, unidadMedida)}
                     </span>
                   </div>
                   <div role="cell" className="hidden text-right md:block">
@@ -163,11 +165,12 @@ export function TablaParametros({ insumoId, unidadMedida, filas }: { insumoId: s
       </div>
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-texto-suave" aria-live="polite">
-          {modificados > 0
-            ? `${pluralizar(modificados, "centro")} con cambios sin guardar.`
-            : `Cantidades en ${unidadMedida}. Deja ambos campos vacíos si el centro no usa este insumo.`}
-        </p>
+        <div className="min-w-0 space-y-1.5">
+          <AvisoCambiosSinGuardar visible={modificados > 0} detalle={`mínimos y máximos de ${pluralizar(modificados, "centro")}`} />
+          <p className="text-sm text-texto-suave">
+            Cantidades en {pluralUnidad(unidadMedida)}. Deja ambos campos vacíos si el centro no usa este insumo.
+          </p>
+        </div>
         <Button type="submit" cargando={guardar.pendiente} disabled={modificados === 0} className="shrink-0">
           {guardar.pendiente ? null : <Save aria-hidden />}
           Guardar mínimos y máximos

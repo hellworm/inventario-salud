@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Check, KeyRound, Lock, Minus, Users } from "lucide-react";
-import { FiltroSelect, LimpiarFiltros } from "@/components/admin/filtros-url";
+import { BarraFiltros, FiltroBusqueda, FiltroSelect } from "@/components/admin/filtros-url";
 import { INFO_ROL, ROLES_ORDENADOS } from "@/components/admin/roles-info";
 import { AccionesUsuario, BotonNuevoUsuario, DistintivoYo, type OpcionCentro } from "@/components/admin/usuarios";
 import {
@@ -12,7 +12,6 @@ import {
   EmptyState,
   PageHeader,
   Pagination,
-  SearchInput,
   type Columna,
 } from "@/components/ui";
 import { formatearFechaHora, formatearRelativo } from "@/lib/fechas";
@@ -33,13 +32,14 @@ function columnas(usuarioActualId: string, centros: OpcionCentro[]): Columna<Fil
       clave: "usuario",
       encabezado: "Usuario",
       movil: "titulo",
+      className: "md:w-[30%]",
       celda: (u) => (
         <span className="block min-w-0">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-medium">
-            <span className="truncate">{u.nombre}</span>
+            <span className="break-words">{u.nombre}</span>
             {u.id === usuarioActualId ? <DistintivoYo /> : null}
           </span>
-          <span className="block truncate text-xs font-normal text-texto-tenue">{u.email}</span>
+          <span className="block text-xs font-normal break-all text-texto-tenue">{u.email}</span>
         </span>
       ),
     },
@@ -47,7 +47,6 @@ function columnas(usuarioActualId: string, centros: OpcionCentro[]): Columna<Fil
     {
       clave: "centros",
       encabezado: "Centros",
-      className: "max-w-72",
       celda: (u) =>
         u.rol === "ADMIN" ? (
           <span className="text-texto-suave">Toda la red</span>
@@ -60,33 +59,26 @@ function columnas(usuarioActualId: string, centros: OpcionCentro[]): Columna<Fil
         ),
     },
     {
-      clave: "acceso",
-      encabezado: "Último acceso",
-      celda: (u) =>
-        u.ultimoAcceso ? (
-          <span className="whitespace-nowrap text-texto-suave" title={formatearFechaHora(u.ultimoAcceso)}>
-            {formatearRelativo(u.ultimoAcceso)}
-          </span>
-        ) : (
-          <span className="whitespace-nowrap text-texto-tenue">Nunca ingresó</span>
-        ),
-    },
-    {
       clave: "estado",
       encabezado: "Estado",
       celda: (u) => (
-        <span className="flex flex-wrap gap-1.5">
-          <BadgeActivo activo={u.activo} />
-          {u.bloqueado ? (
-            <Badge tono="peligro" icono={Lock}>
-              Bloqueada
-            </Badge>
-          ) : null}
-          {u.activo && u.debeCambiarPassword ? (
-            <Badge tono="alerta" icono={KeyRound} title="Aún no cambia su contraseña temporal">
-              Clave temporal
-            </Badge>
-          ) : null}
+        <span className="block">
+          <span className="flex flex-wrap gap-1.5">
+            <BadgeActivo activo={u.activo} />
+            {u.bloqueado ? (
+              <Badge tono="peligro" icono={Lock}>
+                Bloqueada
+              </Badge>
+            ) : null}
+            {u.activo && u.debeCambiarPassword ? (
+              <Badge tono="alerta" icono={KeyRound} title="Aún no cambia su contraseña temporal">
+                Contraseña temporal
+              </Badge>
+            ) : null}
+          </span>
+          <span className="mt-1 block text-xs text-texto-suave max-md:hidden" title={u.ultimoAcceso ? formatearFechaHora(u.ultimoAcceso) : undefined}>
+            {u.ultimoAcceso ? `Ingresó ${formatearRelativo(u.ultimoAcceso)}` : "Nunca ingresó"}
+          </span>
         </span>
       ),
     },
@@ -123,7 +115,7 @@ function AyudaRoles() {
         <span className="text-sm font-normal text-marca-700 group-open:hidden">Ver</span>
         <span className="hidden text-sm font-normal text-marca-700 group-open:inline">Ocultar</span>
       </summary>
-      <div className="grid gap-4 border-t border-borde px-4 py-4 sm:px-5 md:grid-cols-3">
+      <div className="grid gap-4 border-t border-borde px-4 py-4 sm:px-5 lg:grid-cols-3">
         {ROLES_ORDENADOS.map((rol) => (
           <div key={rol}>
             <BadgeRol rol={rol} />
@@ -174,33 +166,17 @@ export default async function PaginaAdminUsuarios({ searchParams }: PageProps<"/
 
       <AyudaRoles />
 
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <SearchInput placeholder="Buscar por nombre o email…" label="Buscar usuario" className="lg:max-w-sm lg:flex-1" />
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:flex">
-          <FiltroSelect
-            parametro="rol"
-            label="Filtrar por rol"
-            todos="Todos los roles"
-            opciones={ROLES.map((r) => ({ value: r, label: NOMBRE_ROL[r] }))}
-            className="lg:w-44"
-          />
-          <FiltroSelect
-            parametro="centro"
-            label="Filtrar por centro"
-            todos="Todos los centros"
-            opciones={centros.map((c) => ({ value: c.id, label: c.nombre }))}
-            className="lg:w-60"
-          />
-          <FiltroSelect
-            parametro="estado"
-            label="Filtrar por estado"
-            todos="Activos e inactivos"
-            opciones={ESTADOS}
-            className="col-span-2 sm:col-span-1 lg:w-48"
-          />
-        </div>
-        <LimpiarFiltros parametros={["rol", "centro", "estado"]} />
-      </div>
+      <BarraFiltros parametros={["q", "rol", "centro", "estado"]}>
+        <FiltroBusqueda placeholder="Nombre o correo electrónico…" />
+        <FiltroSelect parametro="rol" etiqueta="Rol" todos="Todos" opciones={ROLES.map((r) => ({ value: r, label: NOMBRE_ROL[r] }))} />
+        <FiltroSelect
+          parametro="centro"
+          etiqueta="Centro"
+          todos="Todos"
+          opciones={centros.map((c) => ({ value: c.id, label: c.nombre }))}
+        />
+        <FiltroSelect parametro="estado" etiqueta="Estado" todos="Activos e inactivos" opciones={ESTADOS} />
+      </BarraFiltros>
 
       <Card relleno={false} className="overflow-hidden">
         <DataTable

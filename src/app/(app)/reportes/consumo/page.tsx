@@ -1,9 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CircleCheck, CircleSlash, Hourglass, TrendingDown, TriangleAlert, type LucideIcon } from "lucide-react";
-import { FiltroSelect } from "@/components/alertas/filtro-select";
-import { FiltroPeriodo } from "@/components/reportes/filtro-periodo";
-import { BotonExportar, CeldaInsumo, Cifras, FiltroCentro, NavReportes } from "@/components/reportes/piezas";
+import { BarraFiltros, FiltroBusqueda, FiltroCentro, FiltroPeriodo, FiltroSelect } from "@/components/admin/filtros-url";
+import {
+  AccionesReporte,
+  CantidadUnidad,
+  CeldaInsumo,
+  Cifras,
+  CLASE_ENCABEZADO_IMPRIMIBLE,
+  NavReportes,
+  VistaReporte,
+} from "@/components/reportes/piezas";
 import {
   Badge,
   Card,
@@ -11,14 +18,13 @@ import {
   EmptyState,
   PageHeader,
   Pagination,
-  SearchInput,
   type BadgeTono,
   type Columna,
 } from "@/components/ui";
 import { ETIQUETA_NIVEL_COBERTURA, nivelDeCobertura, type NivelCobertura } from "@/lib/abastecimiento";
-import { formatearDia } from "@/lib/fechas";
+import { formatearDia, formatearFechaHora } from "@/lib/fechas";
 import { leerFiltros } from "@/lib/filtros-reportes";
-import { formatearDecimal, formatearNumero, pluralizar } from "@/lib/formato";
+import { formatearDecimalFijo, formatearNumero, pluralizar } from "@/lib/formato";
 import { construirHref, resolverCentro } from "@/lib/parametros-url";
 import { contextoPagina } from "@/server/auth/sesion";
 import { listarCategorias, reporteConsumo, type FilaConsumo } from "@/server/servicios";
@@ -37,13 +43,13 @@ function Cobertura({ dias }: { dias: number | null }) {
   const { tono, icono } = NIVEL[nivel];
   return (
     <Badge tono={tono} icono={icono} title={ETIQUETA_NIVEL_COBERTURA[nivel]}>
-      {dias === null ? "Sin consumo" : dias >= 365 ? "Más de 1 año" : `${formatearDecimal(dias)} días`}
+      {dias === null ? "Sin consumo" : dias >= 365 ? "Más de 1 año" : `${formatearDecimalFijo(dias)} días`}
     </Badge>
   );
 }
 
 export default async function PaginaReporteConsumo({ searchParams }: PageProps<"/reportes/consumo">) {
-  const { actor, centroId: centroActivoId, centro, centros } = await contextoPagina("reportes:ver");
+  const { sesion, actor, centroId: centroActivoId, centro, centros } = await contextoPagina("reportes:ver");
   const f = leerFiltros(await searchParams);
   const centroId = resolverCentro(centroActivoId, centros, f.centro);
   const [reporte, categorias] = await Promise.all([
@@ -74,33 +80,30 @@ export default async function PaginaReporteConsumo({ searchParams }: PageProps<"
       clave: "insumo",
       encabezado: "Insumo",
       movil: "titulo",
+      className: "md:w-[32%]",
       celda: (c) => <CeldaInsumo nombre={c.nombre} codigo={c.codigo} extra={c.categoria} />,
     },
     {
       clave: "cobertura",
-      encabezado: "Cobertura estimada",
+      encabezado: "Cobertura",
       movil: "destacado",
       celda: (c) => <Cobertura dias={c.diasCobertura} />,
     },
     {
       clave: "consumo",
-      encabezado: "Consumo del período",
+      encabezado: "Consumo",
       alinear: "derecha",
-      celda: (c) => (
-        <span className="cifras whitespace-nowrap font-semibold">
-          {formatearNumero(c.consumo)} <span className="font-normal text-texto-tenue">{c.unidadMedida}</span>
-        </span>
-      ),
+      celda: (c) => <CantidadUnidad cantidad={c.consumo} unidad={c.unidadMedida} />,
     },
     {
       clave: "promedio",
-      encabezado: "Promedio diario",
+      encabezado: "Por día",
       alinear: "derecha",
-      celda: (c) => <span className="cifras">{c.consumo > 0 ? formatearDecimal(c.promedioDiario) : "—"}</span>,
+      celda: (c) => <span className="cifras whitespace-nowrap">{c.consumo > 0 ? formatearDecimalFijo(c.promedioDiario) : "—"}</span>,
     },
     {
       clave: "disponible",
-      encabezado: "Disponible hoy",
+      encabezado: "Disponible",
       alinear: "derecha",
       celda: (c) => <span className="cifras">{formatearNumero(c.disponible)}</span>,
     },
@@ -131,8 +134,13 @@ export default async function PaginaReporteConsumo({ searchParams }: PageProps<"
   ];
 
   return (
-    <>
+    <VistaReporte
+      contexto={`${alcance} · Consumo del ${formatearDia(periodo.desde)} al ${formatearDia(periodo.hasta)}`}
+      generadoPor={sesion.usuario.nombre}
+      generadoEl={formatearFechaHora(new Date())}
+    >
       <PageHeader
+        className={CLASE_ENCABEZADO_IMPRIMIBLE}
         titulo="Consumo y cobertura"
         descripcion={
           <>
@@ -140,33 +148,29 @@ export default async function PaginaReporteConsumo({ searchParams }: PageProps<"
           </>
         }
         volver={{ href: "/reportes", label: "Reportes" }}
-        acciones={<BotonExportar href={construirHref("/reportes/exportar/consumo", filtrosUrl)} />}
+        acciones={<AccionesReporte hrefCsv={construirHref("/reportes/exportar/consumo", filtrosUrl)} />}
       />
       <NavReportes activo="consumo" />
 
-      <div className="mb-4 flex flex-col gap-3">
+      <BarraFiltros parametros={["q", "categoria", "centro", "orden", "desde", "hasta"]}>
         <FiltroPeriodo desde={periodo.desde} hasta={periodo.hasta} />
-        <div className="grid gap-2 sm:grid-cols-2 lg:flex">
-          <SearchInput placeholder="Buscar insumo o código…" label="Buscar en consumo" className="sm:col-span-2 lg:w-80" />
-          <FiltroSelect
-            parametro="categoria"
-            etiqueta="Categoría"
-            todos="Todas las categorías"
-            opciones={categorias.map((c) => ({ value: c.id, label: c.nombre }))}
-            className="lg:w-64"
-          />
-          <FiltroCentro centroActivoId={centroActivoId} centros={centros} className="lg:w-64" />
-          <FiltroSelect
-            parametro="orden"
-            etiqueta="Orden"
-            opciones={[
-              { value: "cobertura", label: "Menor cobertura primero" },
-              { value: "consumo", label: "Mayor consumo primero" },
-            ]}
-            className="lg:w-60"
-          />
-        </div>
-      </div>
+        <FiltroBusqueda placeholder="Insumo o código…" />
+        <FiltroSelect
+          parametro="categoria"
+          etiqueta="Categoría"
+          todos="Todas"
+          opciones={categorias.map((c) => ({ value: c.id, label: c.nombre }))}
+        />
+        <FiltroCentro centroActivoId={centroActivoId} centros={centros} />
+        <FiltroSelect
+          parametro="orden"
+          etiqueta="Orden"
+          opciones={[
+            { value: "cobertura", label: "Menor cobertura primero" },
+            { value: "consumo", label: "Mayor consumo primero" },
+          ]}
+        />
+      </BarraFiltros>
 
       <Cifras
         cifras={[
@@ -194,12 +198,13 @@ export default async function PaginaReporteConsumo({ searchParams }: PageProps<"
           }
         />
       </Card>
-      <Pagination {...reporte} className="mt-4" />
+      <Pagination {...reporte} className="mt-4 print:hidden" />
 
       <p className="mt-4 max-w-3xl text-sm text-texto-suave">
         <strong className="font-semibold text-texto">Cómo se calcula:</strong> cobertura = stock disponible hoy (sin lotes vencidos) ÷
-        consumo promedio diario del período (retiros ÷ días transcurridos). Es una estimación: supone que el consumo se mantiene.
+        consumo promedio por día del período (retiros ÷ días transcurridos). Es una estimación: supone que el consumo se mantiene.
+        Promedio y stock disponible van en la unidad de medida de cada insumo.
       </p>
-    </>
+    </VistaReporte>
   );
 }

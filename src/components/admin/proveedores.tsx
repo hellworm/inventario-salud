@@ -20,6 +20,7 @@ import {
 import { formatearRut, validarRut } from "@/lib/chile/rut";
 import { esquemaProveedor, type EntradaProveedor } from "@/lib/esquemas/proveedores";
 import { ConfirmarActivo } from "./boton-cambiar-activo";
+import { useFocoAlCerrar } from "./use-foco-al-cerrar";
 import { texto, useValidacion } from "./use-validacion";
 
 export interface ProveedorEditable {
@@ -98,7 +99,7 @@ function DialogoProveedor({ proveedor, onCerrar }: { proveedor?: ProveedorEditab
             <Field label="Teléfono" opcional error={e.telefono} ayuda="Ej.: +56 9 8765 4321">
               <Input name="telefono" type="tel" defaultValue={proveedor?.telefono ?? ""} maxLength={30} autoComplete="off" />
             </Field>
-            <Field label="Email" opcional error={e.email}>
+            <Field label="Correo electrónico" opcional error={e.email}>
               <Input name="email" type="email" inputMode="email" defaultValue={proveedor?.email ?? ""} maxLength={254} autoComplete="off" />
             </Field>
           </div>
@@ -118,13 +119,26 @@ function DialogoProveedor({ proveedor, onCerrar }: { proveedor?: ProveedorEditab
 
 export function BotonNuevoProveedor() {
   const [abierto, setAbierto] = React.useState(false);
+  const foco = useFocoAlCerrar();
   return (
     <>
-      <Button onClick={() => setAbierto(true)}>
+      <Button
+        onClick={() => {
+          foco.recordar();
+          setAbierto(true);
+        }}
+      >
         <Plus aria-hidden />
         Nuevo proveedor
       </Button>
-      {abierto ? <DialogoProveedor onCerrar={() => setAbierto(false)} /> : null}
+      {abierto ? (
+        <DialogoProveedor
+          onCerrar={() => {
+            setAbierto(false);
+            foco.devolver();
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -132,8 +146,14 @@ export function BotonNuevoProveedor() {
 /** Menú de acciones por fila: editar y activar / desactivar. */
 export function AccionesProveedor({ proveedor }: { proveedor: ProveedorEditable }) {
   const [vista, setVista] = React.useState<"editar" | "estado" | null>(null);
+  const contenedor = React.useRef<HTMLSpanElement>(null);
+  const foco = useFocoAlCerrar(contenedor);
+  const cerrar = () => {
+    setVista(null);
+    foco.devolver();
+  };
   return (
-    <span className="inline-flex">
+    <span className="inline-flex" ref={contenedor}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="fantasma" size="icono" aria-label={`Acciones para ${proveedor.razonSocial}`}>
@@ -151,14 +171,14 @@ export function AccionesProveedor({ proveedor }: { proveedor: ProveedorEditable 
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      {vista === "editar" ? <DialogoProveedor proveedor={proveedor} onCerrar={() => setVista(null)} /> : null}
+      {vista === "editar" ? <DialogoProveedor proveedor={proveedor} onCerrar={cerrar} /> : null}
       <ConfirmarActivo
         entidad="proveedor"
         id={proveedor.id}
         nombre={proveedor.razonSocial}
         activo={proveedor.activo}
         open={vista === "estado"}
-        onOpenChange={(abierto) => setVista(abierto ? "estado" : null)}
+        onOpenChange={(abierto) => (abierto ? setVista("estado") : cerrar())}
       />
     </span>
   );

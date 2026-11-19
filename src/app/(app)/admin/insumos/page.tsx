@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarOff, PackagePlus, PackageSearch, Snowflake } from "lucide-react";
-import { FiltroSelect, LimpiarFiltros } from "@/components/admin/filtros-url";
+import { BarraFiltros, FiltroBusqueda, FiltroSelect } from "@/components/admin/filtros-url";
 import {
   Badge,
   BadgeActivo,
@@ -11,9 +11,9 @@ import {
   EmptyState,
   PageHeader,
   Pagination,
-  SearchInput,
   type Columna,
 } from "@/components/ui";
+import { DosLineas } from "@/components/reportes/piezas";
 import { pluralizar } from "@/lib/formato";
 import { contextoPagina } from "@/server/auth/sesion";
 import { listarCategorias, listarInsumosAdmin, type FilaInsumoAdmin } from "@/server/servicios";
@@ -25,18 +25,19 @@ const COLUMNAS: Columna<FilaInsumoAdmin>[] = [
     clave: "nombre",
     encabezado: "Insumo",
     movil: "titulo",
+    className: "md:w-[34%]",
     celda: (i) => (
-      <span className="block min-w-0">
-        <span className="block truncate font-medium">{i.nombre}</span>
-        <span className="cifras block truncate text-xs font-normal text-texto-tenue">
-          {i.codigo}
-          {i.presentacion ? ` · ${i.presentacion}` : ""}
-        </span>
-      </span>
+      <DosLineas
+        principal={<span className="font-medium">{i.nombre}</span>}
+        secundario={`${i.codigo}${i.presentacion ? ` · ${i.presentacion}` : ""}`}
+      />
     ),
   },
-  { clave: "categoria", encabezado: "Categoría", celda: (i) => i.categoria },
-  { clave: "unidad", encabezado: "Unidad", movil: "oculto", celda: (i) => <span className="capitalize">{i.unidadMedida}</span> },
+  {
+    clave: "categoria",
+    encabezado: "Categoría y unidad",
+    celda: (i) => <DosLineas principal={i.categoria} secundario={`Se cuenta por ${i.unidadMedida}`} />,
+  },
   {
     clave: "manejo",
     encabezado: "Manejo",
@@ -59,7 +60,7 @@ const COLUMNAS: Columna<FilaInsumoAdmin>[] = [
   },
   {
     clave: "parametros",
-    encabezado: "Mínimos definidos",
+    encabezado: "Mínimos",
     celda: (i) =>
       i.centrosConParametro > 0 ? (
         <span className="cifras">{pluralizar(i.centrosConParametro, "centro")}</span>
@@ -100,20 +101,16 @@ export default async function PaginaAdminInsumos({ searchParams }: PageProps<"/a
         }
       />
 
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
-        <SearchInput placeholder="Buscar por nombre, código o fabricante…" label="Buscar insumo" className="md:max-w-md md:flex-1" />
-        <div className="grid grid-cols-2 gap-3 md:flex">
-          <FiltroSelect
-            parametro="categoria"
-            label="Filtrar por categoría"
-            todos="Todas las categorías"
-            opciones={categorias.map((c) => ({ value: c.id, label: c.nombre }))}
-            className="md:w-56"
-          />
-          <FiltroSelect parametro="estado" label="Filtrar por estado" todos="Activos e inactivos" opciones={ESTADOS} className="md:w-48" />
-        </div>
-        <LimpiarFiltros parametros={["categoria", "estado"]} />
-      </div>
+      <BarraFiltros parametros={["q", "categoria", "estado"]}>
+        <FiltroBusqueda placeholder="Nombre, código o fabricante…" />
+        <FiltroSelect
+          parametro="categoria"
+          etiqueta="Categoría"
+          todos="Todas"
+          opciones={categorias.map((c) => ({ value: c.id, label: c.nombre }))}
+        />
+        <FiltroSelect parametro="estado" etiqueta="Estado" todos="Activos e inactivos" opciones={ESTADOS} />
+      </BarraFiltros>
 
       <Card relleno={false} className="overflow-hidden">
         <DataTable

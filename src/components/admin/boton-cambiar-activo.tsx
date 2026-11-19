@@ -7,6 +7,7 @@ import { establecerCentroActivoAccion, establecerUbicacionActivaAccion } from "@
 import { establecerProveedorActivoAccion } from "@/acciones/admin-proveedores";
 import { establecerUsuarioActivoAccion } from "@/acciones/admin-usuarios";
 import { Button, ConfirmDialog, toast, type ButtonSize, type ButtonVariant } from "@/components/ui";
+import { useFocoAlCerrar } from "./use-foco-al-cerrar";
 
 const ACCIONES = {
   insumo: establecerInsumoActivoAccion,
@@ -99,13 +100,29 @@ export function BotonCambiarActivo({
   ...props
 }: Omit<ConfirmarActivoProps, "open" | "onOpenChange"> & { variant?: ButtonVariant; size?: ButtonSize; className?: string }) {
   const [abierto, setAbierto] = React.useState(false);
+  const foco = useFocoAlCerrar();
   return (
     <>
-      <Button variant={variant ?? "secundario"} size={size} className={className} onClick={() => setAbierto(true)}>
+      <Button
+        variant={variant ?? "secundario"}
+        size={size}
+        className={className}
+        onClick={() => {
+          foco.recordar();
+          setAbierto(true);
+        }}
+      >
         {props.activo ? <CircleSlash aria-hidden /> : <CircleCheck aria-hidden />}
         {props.activo ? "Desactivar" : "Reactivar"}
       </Button>
-      <ConfirmarActivo {...props} open={abierto} onOpenChange={setAbierto} />
+      <ConfirmarActivo
+        {...props}
+        open={abierto}
+        onOpenChange={(valor) => {
+          setAbierto(valor);
+          if (!valor) foco.devolver();
+        }}
+      />
     </>
   );
 }

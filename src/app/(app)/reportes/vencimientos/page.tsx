@@ -1,8 +1,17 @@
 import type { Metadata } from "next";
 import { CalendarCheck2, CalendarX2, Trash2 } from "lucide-react";
-import { FiltroSelect } from "@/components/alertas/filtro-select";
-import { FiltroPeriodo } from "@/components/reportes/filtro-periodo";
-import { BotonExportar, CeldaInsumo, Cifras, FiltroCentro, NavReportes } from "@/components/reportes/piezas";
+import { BarraFiltros, FiltroBusqueda, FiltroCentro, FiltroPeriodo, FiltroSelect } from "@/components/admin/filtros-url";
+import {
+  AccionesReporte,
+  BotonExportar,
+  CantidadUnidad,
+  Cifras,
+  CLASE_ENCABEZADO_IMPRIMIBLE,
+  DosLineas,
+  NavReportes,
+  PaginacionNombrada,
+  VistaReporte,
+} from "@/components/reportes/piezas";
 import {
   Badge,
   BadgeEstadoVencimiento,
@@ -11,8 +20,6 @@ import {
   DataTable,
   EmptyState,
   PageHeader,
-  Pagination,
-  SearchInput,
   type Columna,
 } from "@/components/ui";
 import { describirVencimiento, formatearDia, formatearFechaHora } from "@/lib/fechas";
@@ -33,52 +40,50 @@ function columnasVencimientos(mostrarCentro: boolean): Columna<FilaExistencia>[]
   return [
     {
       clave: "insumo",
-      encabezado: "Insumo",
+      encabezado: "Insumo y lote",
       movil: "titulo",
-      celda: (f) => <CeldaInsumo nombre={f.nombre} codigo={f.codigo} extra={f.categoria} />,
+      className: "md:w-[30%]",
+      celda: (f) => <DosLineas principal={<span className="font-medium">{f.nombre}</span>} secundario={`${f.codigo} · Lote ${f.numeroLote}`} />,
     },
     {
       clave: "estado",
-      encabezado: "Días restantes",
+      encabezado: "Vencimiento",
       movil: "destacado",
-      celda: (f) =>
-        f.diasParaVencer !== null && f.diasParaVencer < 0 ? (
-          <Badge tono="peligro" icono={CalendarX2}>
-            {describirVencimiento(f.diasParaVencer)}
-          </Badge>
-        ) : (
-          <BadgeEstadoVencimiento estado="POR_VENCER" dias={f.diasParaVencer} />
-        ),
+      celda: (f) => (
+        <span className="inline-flex flex-col items-end gap-1 md:items-start">
+          {f.diasParaVencer !== null && f.diasParaVencer < 0 ? (
+            <Badge tono="peligro" icono={CalendarX2}>
+              {describirVencimiento(f.diasParaVencer)}
+            </Badge>
+          ) : (
+            <BadgeEstadoVencimiento estado="POR_VENCER" dias={f.diasParaVencer} />
+          )}
+          <span className="cifras text-xs whitespace-nowrap text-texto-suave">{formatearDia(f.fechaVencimiento)}</span>
+        </span>
+      ),
     },
-    { clave: "lote", encabezado: "Lote", celda: (f) => <span className="cifras whitespace-nowrap">{f.numeroLote}</span> },
     {
       clave: "ubicacion",
-      encabezado: mostrarCentro ? "Centro y ubicación" : "Ubicación",
-      celda: (f) => (mostrarCentro ? `${f.centro} · ${f.ubicacion}` : f.ubicacion),
-    },
-    {
-      clave: "vencimiento",
-      encabezado: "Vencimiento",
-      alinear: "derecha",
-      celda: (f) => <span className="cifras whitespace-nowrap">{formatearDia(f.fechaVencimiento)}</span>,
+      encabezado: "Ubicación",
+      celda: (f) => <DosLineas principal={f.ubicacion} secundario={mostrarCentro ? f.centro : undefined} />,
     },
     {
       clave: "cantidad",
       encabezado: "Cantidad",
       alinear: "derecha",
-      celda: (f) => (
-        <span className="cifras whitespace-nowrap font-semibold">
-          {formatearNumero(f.cantidad)} <span className="font-normal text-texto-tenue">{f.unidadMedida}</span>
-        </span>
-      ),
+      celda: (f) => <CantidadUnidad cantidad={f.cantidad} unidad={f.unidadMedida} />,
     },
     {
       clave: "valor",
-      encabezado: "Valor en riesgo",
+      encabezado: "En riesgo",
       alinear: "derecha",
       movil: "oculto",
       celda: (f) =>
-        f.valor === null ? <span className="text-texto-tenue">Sin costo</span> : <span className="cifras">{formatearCLP(f.valor)}</span>,
+        f.valor === null ? (
+          <span className="whitespace-nowrap text-texto-tenue">Sin costo</span>
+        ) : (
+          <span className="cifras whitespace-nowrap">{formatearCLP(f.valor)}</span>
+        ),
     },
   ];
 }
@@ -87,39 +92,40 @@ function columnasMermas(mostrarCentro: boolean): Columna<FilaReporteMovimiento>[
   return [
     {
       clave: "insumo",
-      encabezado: "Insumo",
+      encabezado: "Insumo y lote",
       movil: "titulo",
-      celda: (m) => <CeldaInsumo nombre={m.nombre} codigo={m.codigo} extra={`Lote ${m.numeroLote}`} />,
+      className: "md:w-[30%]",
+      celda: (m) => <DosLineas principal={<span className="font-medium">{m.nombre}</span>} secundario={`${m.codigo} · Lote ${m.numeroLote}`} />,
     },
     {
       clave: "cantidad",
       encabezado: "Cantidad",
       alinear: "derecha",
       movil: "destacado",
-      celda: (m) => (
-        <span className="cifras whitespace-nowrap font-semibold">
-          −{formatearNumero(m.cantidad)} <span className="font-normal text-texto-tenue">{m.unidadMedida}</span>
-        </span>
-      ),
+      celda: (m) => <CantidadUnidad cantidad={m.cantidad} unidad={m.unidadMedida} signo={-1} />,
     },
     { clave: "motivo", encabezado: "Motivo", celda: (m) => m.motivo ?? "Sin motivo" },
     {
       clave: "ubicacion",
-      encabezado: mostrarCentro ? "Centro y ubicación" : "Ubicación",
-      celda: (m) => (mostrarCentro ? `${m.centro} · ${m.ubicacion}` : m.ubicacion),
+      encabezado: "Ubicación",
+      celda: (m) => <DosLineas principal={m.ubicacion} secundario={mostrarCentro ? m.centro : undefined} />,
     },
-    { clave: "usuario", encabezado: "Usuario", movil: "oculto", celda: (m) => m.usuario },
     {
       clave: "fecha",
-      encabezado: "Fecha",
+      encabezado: "Fecha y usuario",
       alinear: "derecha",
-      celda: (m) => <span className="cifras whitespace-nowrap text-texto-suave">{formatearFechaHora(m.creadoEn)}</span>,
+      celda: (m) => (
+        <span className="block">
+          <span className="cifras block whitespace-nowrap text-texto-suave">{formatearFechaHora(m.creadoEn)}</span>
+          <span className="block text-xs text-texto-tenue max-md:hidden">{m.usuario}</span>
+        </span>
+      ),
     },
   ];
 }
 
 export default async function PaginaReporteVencimientos({ searchParams }: PageProps<"/reportes/vencimientos">) {
-  const { actor, centroId: centroActivoId, centro, centros } = await contextoPagina("reportes:ver");
+  const { sesion, actor, centroId: centroActivoId, centro, centros } = await contextoPagina("reportes:ver");
   const sp = await searchParams;
   const f = leerFiltros(sp);
   const centroId = resolverCentro(centroActivoId, centros, f.centro);
@@ -137,21 +143,53 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
   const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? "Toda la red";
   const mostrarCentro = centroId === null && centros.length > 1;
   const { periodo } = mermas;
-  const principalMotivo = mermas.porMotivo[0];
+  // Los insumos se cuentan en unidades de medida distintas: los motivos se comparan por número de bajas.
+  const motivos = [...mermas.porMotivo].sort((a, b) => b.movimientos - a.movimientos || a.motivo.localeCompare(b.motivo, "es"));
+  const principalMotivo = motivos[0];
+
+  const comunes = {
+    centro: centroActivoId ? undefined : (centroId ?? undefined),
+    q: f.texto,
+    dias: f.dias,
+    desde: f.desde,
+    hasta: f.hasta,
+  };
+  const hrefPagina = (parametro: "pagina" | "paginaMermas") => (n: number) =>
+    construirHref("/reportes/vencimientos", {
+      ...comunes,
+      pagina: parametro === "pagina" ? (n > 1 ? n : undefined) : vencimientos.pagina > 1 ? vencimientos.pagina : undefined,
+      paginaMermas: parametro === "paginaMermas" ? (n > 1 ? n : undefined) : mermas.pagina > 1 ? mermas.pagina : undefined,
+    });
 
   return (
-    <>
+    <VistaReporte
+      contexto={`${alcance} · Vencimientos a ${vencimientos.horizonte} días y mermas del ${formatearDia(periodo.desde)} al ${formatearDia(periodo.hasta)}`}
+      generadoPor={sesion.usuario.nombre}
+      generadoEl={formatearFechaHora(new Date())}
+    >
       <PageHeader
+        className={CLASE_ENCABEZADO_IMPRIMIBLE}
         titulo="Vencimientos y mermas"
         descripcion={<>{alcance} · Lo que está por perderse y lo que ya se dio de baja.</>}
         volver={{ href: "/reportes", label: "Reportes" }}
+        acciones={<AccionesReporte />}
       />
       <NavReportes activo="vencimientos" />
 
-      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:flex">
-        <SearchInput placeholder="Buscar insumo, código o lote…" label="Buscar en vencimientos y mermas" className="sm:col-span-2 lg:w-80" />
-        <FiltroCentro centroActivoId={centroActivoId} centros={centros} className="lg:w-64" />
-      </div>
+      <BarraFiltros parametros={["q", "centro", "dias", "desde", "hasta"]}>
+        <FiltroBusqueda placeholder="Insumo, código o lote…" />
+        <FiltroCentro centroActivoId={centroActivoId} centros={centros} />
+        <FiltroSelect
+          parametro="dias"
+          etiqueta="Vencimientos hasta"
+          opciones={[
+            { value: "90", label: "Próximos 90 días" },
+            { value: "60", label: "Próximos 60 días" },
+            { value: "30", label: "Próximos 30 días" },
+          ]}
+        />
+        <FiltroPeriodo de="Mermas" desde={periodo.desde} hasta={periodo.hasta} />
+      </BarraFiltros>
 
       <section aria-labelledby="titulo-vencimientos">
         <Card relleno={false} className="overflow-hidden">
@@ -160,31 +198,19 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
             titulo={<span id="titulo-vencimientos">Vencimientos próximos</span>}
             descripcion={`Lotes con stock vencidos o que vencen en ${vencimientos.horizonte} días o menos`}
             acciones={
-              <>
-                <FiltroSelect
-                  parametro="dias"
-                  etiqueta="Horizonte de vencimiento"
-                  opciones={[
-                    { value: "90", label: "Próximos 90 días" },
-                    { value: "60", label: "Próximos 60 días" },
-                    { value: "30", label: "Próximos 30 días" },
-                  ]}
-                  className="w-48"
-                />
+              <span className="print:hidden">
                 <BotonExportar
                   variante="secundario"
+                  de="vencimientos"
                   href={construirHref("/reportes/exportar/vencimientos", { centro: centroId, q: f.texto, dias: vencimientos.horizonte })}
-                >
-                  CSV
-                </BotonExportar>
-              </>
+                />
+              </span>
             }
           />
           <div className="px-4 sm:px-5">
             <Cifras
               cifras={[
                 { etiqueta: "Lotes por ubicación", valor: formatearNumero(vencimientos.totales.filas) },
-                { etiqueta: "Unidades", valor: formatearNumero(vencimientos.totales.unidades) },
                 { etiqueta: "Valor en riesgo", valor: formatearCLP(vencimientos.totales.valor) },
                 { etiqueta: "Sin costo registrado", valor: formatearNumero(vencimientos.totales.filasSinCosto) },
               ]}
@@ -207,7 +233,7 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
             }
           />
         </Card>
-        <Pagination {...vencimientos} className="mt-4" />
+        <PaginacionNombrada etiqueta="Paginación de vencimientos" {...vencimientos} hrefDe={hrefPagina("pagina")} className="mt-4" />
       </section>
 
       <section aria-labelledby="titulo-mermas" className="mt-8">
@@ -217,36 +243,32 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
             titulo={<span id="titulo-mermas">Mermas del período</span>}
             descripcion={`Bajas registradas del ${formatearDia(periodo.desde)} al ${formatearDia(periodo.hasta)}`}
             acciones={
-              <BotonExportar
-                variante="secundario"
-                href={construirHref("/reportes/exportar/mermas", { centro: centroId, q: f.texto, desde: periodo.desde, hasta: periodo.hasta })}
-              >
-                CSV
-              </BotonExportar>
+              <span className="print:hidden">
+                <BotonExportar
+                  variante="secundario"
+                  de="mermas"
+                  href={construirHref("/reportes/exportar/mermas", { centro: centroId, q: f.texto, desde: periodo.desde, hasta: periodo.hasta })}
+                />
+              </span>
             }
           />
-          <div className="px-4 pb-4 sm:px-5">
-            <FiltroPeriodo desde={periodo.desde} hasta={periodo.hasta} />
-          </div>
           <div className="px-4 sm:px-5">
             <Cifras
               cifras={[
                 { etiqueta: "Bajas registradas", valor: formatearNumero(mermas.total) },
-                { etiqueta: "Unidades dadas de baja", valor: formatearNumero(mermas.unidades) },
                 {
                   etiqueta: "Motivo principal",
                   valor: principalMotivo?.motivo ?? "—",
-                  detalle: principalMotivo ? `${formatearNumero(principalMotivo.unidades)} unidades` : undefined,
+                  detalle: principalMotivo ? pluralizar(principalMotivo.movimientos, "baja") : undefined,
                 },
-                { etiqueta: "Motivos distintos", valor: formatearNumero(mermas.porMotivo.length) },
+                { etiqueta: "Motivos distintos", valor: formatearNumero(motivos.length) },
               ]}
             />
-            {mermas.porMotivo.length > 1 ? (
-              <ul className="mb-4 flex flex-wrap gap-2 text-sm" aria-label="Unidades por motivo">
-                {mermas.porMotivo.map((m) => (
+            {motivos.length > 1 ? (
+              <ul className="mb-4 flex flex-wrap gap-2 text-sm" aria-label="Bajas por motivo">
+                {motivos.map((m) => (
                   <li key={m.motivo} className="rounded-full bg-superficie-2 px-3 py-1 ring-1 ring-borde ring-inset">
-                    {m.motivo}: <strong className="cifras font-semibold">{formatearNumero(m.unidades)}</strong>{" "}
-                    <span className="text-texto-tenue">({pluralizar(m.movimientos, "baja")})</span>
+                    {m.motivo}: <strong className="cifras font-semibold">{pluralizar(m.movimientos, "baja")}</strong>
                   </li>
                 ))}
               </ul>
@@ -263,8 +285,8 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
             }
           />
         </Card>
-        <Pagination {...mermas} parametro="paginaMermas" className="mt-4" />
+        <PaginacionNombrada etiqueta="Paginación de mermas" {...mermas} hrefDe={hrefPagina("paginaMermas")} className="mt-4" />
       </section>
-    </>
+    </VistaReporte>
   );
 }

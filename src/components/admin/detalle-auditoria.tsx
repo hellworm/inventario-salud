@@ -12,7 +12,9 @@ import {
   extraerParametros,
   tonoAccion,
   type DetalleAuditoria as Detalle,
+  type NombresAuditoria,
 } from "./auditoria-legible";
+import { useFocoAlCerrar } from "./use-foco-al-cerrar";
 
 export interface RegistroVisible {
   id: string;
@@ -23,6 +25,8 @@ export interface RegistroVisible {
   entidadId: string | null;
   detalle: Detalle;
   ip: string | null;
+  /** Nombres de los ids y códigos que menciona el detalle (centros, categorías, insumos). */
+  nombres?: NombresAuditoria;
 }
 
 function Seccion({ titulo, children }: { titulo: string; children: React.ReactNode }) {
@@ -35,8 +39,8 @@ function Seccion({ titulo, children }: { titulo: string; children: React.ReactNo
 }
 
 function Contenido({ registro }: { registro: RegistroVisible }) {
-  const datos = extraerDatos(registro.detalle);
-  const cambios = extraerCambios(registro.detalle);
+  const datos = extraerDatos(registro.detalle, registro.nombres);
+  const cambios = extraerCambios(registro.detalle, registro.nombres);
   const parametros = extraerParametros(registro.detalle);
 
   return (
@@ -117,7 +121,9 @@ function Contenido({ registro }: { registro: RegistroVisible }) {
       ) : null}
 
       <details className="mt-5 text-sm">
-        <summary className="inline-flex min-h-9 cursor-pointer items-center text-texto-suave hover:text-marca-700">Datos técnicos</summary>
+        <summary className="inline-flex min-h-11 cursor-pointer items-center text-texto-suave hover:text-marca-700">
+          Datos técnicos (para soporte)
+        </summary>
         <dl className="mt-2 space-y-1 text-xs text-texto-suave">
           <div className="flex gap-2">
             <dt>Código de acción:</dt>
@@ -141,19 +147,29 @@ function Contenido({ registro }: { registro: RegistroVisible }) {
 /** Botón "Ver detalle" de una fila de auditoría, con su diálogo de lectura. */
 export function BotonDetalleAuditoria({ registro }: { registro: RegistroVisible }) {
   const [abierto, setAbierto] = React.useState(false);
+  const foco = useFocoAlCerrar();
   return (
     <>
       <Button
         variant="fantasma"
         size="sm"
-        onClick={() => setAbierto(true)}
+        onClick={() => {
+          foco.recordar();
+          setAbierto(true);
+        }}
         aria-label={`Ver detalle: ${etiquetaAccion(registro.accion)}, ${formatearFechaHora(registro.creadoEn)}`}
       >
         <Eye aria-hidden />
         Ver
       </Button>
       {abierto ? (
-        <Dialog open onOpenChange={setAbierto}>
+        <Dialog
+          open
+          onOpenChange={(valor) => {
+            setAbierto(valor);
+            if (!valor) foco.devolver();
+          }}
+        >
           <DialogContent
             ancho="lg"
             titulo={

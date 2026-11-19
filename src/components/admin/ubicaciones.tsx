@@ -20,8 +20,9 @@ import {
 import { cn } from "@/lib/cn";
 import { esquemaUbicacion } from "@/lib/esquemas/centros";
 import { ETIQUETA_TIPO_UBICACION, TIPOS_UBICACION, type TipoUbicacion } from "@/lib/estados";
-import { formatearNumero, pluralizar } from "@/lib/formato";
+import { pluralizar } from "@/lib/formato";
 import { BotonCambiarActivo } from "./boton-cambiar-activo";
+import { useFocoAlCerrar } from "./use-foco-al-cerrar";
 import { texto, useValidacion } from "./use-validacion";
 
 export interface UbicacionEditable {
@@ -127,6 +128,11 @@ function DialogoUbicacion({
 /** Lista de ubicaciones de un centro con alta, edición y activar / desactivar. */
 export function GestorUbicaciones({ centroId, ubicaciones }: { centroId: string; ubicaciones: UbicacionEditable[] }) {
   const [dialogo, setDialogo] = React.useState<{ ubicacion?: UbicacionEditable } | null>(null);
+  const foco = useFocoAlCerrar();
+  const abrir = (ubicacion?: UbicacionEditable) => {
+    foco.recordar();
+    setDialogo({ ubicacion });
+  };
 
   return (
     <div>
@@ -135,7 +141,7 @@ export function GestorUbicaciones({ centroId, ubicaciones }: { centroId: string;
           <h2 className="text-base font-semibold tracking-tight text-texto">Ubicaciones</h2>
           <p className="mt-0.5 text-sm text-texto-suave">Bodegas, salas y refrigeradores donde se guarda el stock de este centro.</p>
         </div>
-        <Button variant="secundario" onClick={() => setDialogo({})}>
+        <Button variant="secundario" onClick={() => abrir()}>
           <Plus aria-hidden />
           Agregar ubicación
         </Button>
@@ -170,15 +176,13 @@ export function GestorUbicaciones({ centroId, ubicaciones }: { centroId: string;
                       {!u.activo ? <BadgeActivo activo={false} /> : null}
                     </p>
                     <p className="cifras mt-0.5 text-sm text-texto-suave">
-                      {u.existencias > 0
-                        ? `${formatearNumero(u.existencias)} unidades en ${pluralizar(u.lotesConStock, "lote")}`
-                        : "Sin existencias"}
+                      {u.lotesConStock > 0 ? `${pluralizar(u.lotesConStock, "lote")} con stock` : "Sin existencias"}
                       {u.descripcion ? ` · ${u.descripcion}` : ""}
                     </p>
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-2 [&>*]:flex-1 sm:[&>*]:flex-none">
-                  <Button variant="secundario" size="sm" onClick={() => setDialogo({ ubicacion: u })} aria-label={`Editar ${u.nombre}`}>
+                  <Button variant="secundario" size="sm" onClick={() => abrir(u)} aria-label={`Editar ${u.nombre}`}>
                     <Pencil aria-hidden />
                     Editar
                   </Button>
@@ -190,7 +194,7 @@ export function GestorUbicaciones({ centroId, ubicaciones }: { centroId: string;
                     size="sm"
                     aviso={
                       u.activo && u.existencias > 0
-                        ? `Hoy guarda ${formatearNumero(u.existencias)} unidades: tendrás que trasladarlas o darlas de baja antes.`
+                        ? `Hoy guarda stock de ${pluralizar(u.lotesConStock, "lote")}: tendrás que trasladarlo o darlo de baja antes.`
                         : undefined
                     }
                   />
@@ -201,7 +205,12 @@ export function GestorUbicaciones({ centroId, ubicaciones }: { centroId: string;
         </ul>
       )}
 
-      {dialogo ? <DialogoUbicacion centroId={centroId} ubicacion={dialogo.ubicacion} onCerrar={() => setDialogo(null)} /> : null}
+      {dialogo ? <DialogoUbicacion centroId={centroId} ubicacion={dialogo.ubicacion} 
+          onCerrar={() => {
+            setDialogo(null);
+            foco.devolver();
+          }}
+        /> : null}
     </div>
   );
 }
