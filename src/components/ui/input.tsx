@@ -9,6 +9,8 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
   inicio?: React.ReactNode;
   /** Ícono, unidad o botón a la derecha. */
   fin?: React.ReactNode;
+  /** Referencia al `<input>` (p. ej. para devolverle el foco). */
+  ref?: React.Ref<HTMLInputElement>;
 }
 
 /** Campo de texto. Dentro de `<Field>` toma id y aria automáticamente. */
