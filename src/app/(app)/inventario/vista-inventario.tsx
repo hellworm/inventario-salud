@@ -272,7 +272,7 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                             e.stopPropagation();
                             abrir(f.insumoId);
                           }}
-                          className="block max-w-full rounded-md text-left"
+                          className="block max-w-full rounded-md text-left pointer-coarse:min-h-11"
                         >
                           <span className="flex items-center gap-1.5">
                             <span className="truncate text-[0.9375rem] font-semibold text-texto">{f.nombre}</span>

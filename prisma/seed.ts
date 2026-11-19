@@ -648,9 +648,12 @@ async function sembrarHistorial(ref: Awaited<ReturnType<typeof sembrarReferencia
 }
 
 // ---------------------------------------------------------------------------
+/** Rechazo esperado (no es una falla del programa): se muestra solo el mensaje, sin traza de pila. */
+class SeedBloqueado extends Error {}
+
 async function main() {
   if (process.env.NODE_ENV === "production" && process.env.SEED_DEMO !== "1") {
-    throw new Error("El seed de demostración no se ejecuta en producción (usa SEED_DEMO=1 para forzarlo).");
+    throw new SeedBloqueado("El seed de demostración no se ejecuta en producción (usa SEED_DEMO=1 para forzarlo).");
   }
   const inicio = Date.now();
   console.log("Sembrando datos de referencia…");
@@ -682,7 +685,7 @@ async function main() {
 
 main()
   .catch((error) => {
-    console.error(error);
+    console.error(error instanceof SeedBloqueado ? `✖ ${error.message}` : error);
     process.exitCode = 1;
   })
   .finally(() => db.$disconnect());
