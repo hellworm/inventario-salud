@@ -40,8 +40,8 @@ export function StatCard({ etiqueta, valor, detalle, icono: Icono, tono = "neutr
       </div>
       <p className="cifras mt-1 text-[1.75rem] leading-9 font-semibold tracking-tight text-texto">{valor}</p>
       {detalle || href ? (
-        <p className="mt-1 flex items-center gap-1 text-sm text-texto-suave">
-          <span className="min-w-0 truncate">{detalle}</span>
+        <p className="mt-1 flex items-end gap-1 text-sm text-texto-suave">
+          <span className="min-w-0 leading-snug">{detalle}</span>
           {href ? (
             <ArrowRight className="ml-auto size-4 shrink-0 text-texto-tenue transition-transform group-hover:translate-x-0.5 group-hover:text-marca-700" aria-hidden />
           ) : null}

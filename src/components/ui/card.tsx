@@ -27,7 +27,7 @@ export function CardHeader({
   ...props
 }: Omit<DivProps, "title"> & { titulo?: React.ReactNode; descripcion?: React.ReactNode; acciones?: React.ReactNode }) {
   return (
-    <div className={cn("mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2", className)} {...props}>
+    <div className={cn("mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2", className)} {...props}>
       <div className="min-w-0">
         {titulo ? <CardTitle>{titulo}</CardTitle> : null}
         {descripcion ? <CardDescription>{descripcion}</CardDescription> : null}

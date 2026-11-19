@@ -44,6 +44,7 @@ const nextConfig: NextConfig = {
   // Todas las vistas dependen de la sesión y de stock en tiempo real: se
   // renderizan por solicitud. No se usa Cache Components (ver ARQUITECTURA).
   poweredByHeader: false,
+  devIndicators: false,
   serverExternalPackages: ["@node-rs/argon2"],
   turbopack: {
     rules: {

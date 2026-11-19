@@ -1,3 +1,7 @@
+# RedInsumos
+
+Lee `docs/ARQUITECTURA.md` antes de escribir código (ver también `CLAUDE.md`).
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know
