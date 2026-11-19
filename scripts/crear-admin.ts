@@ -26,6 +26,8 @@ import { registrarAuditoria } from "@/server/auditoria";
 import { normalizarEmail } from "@/server/auth/autenticacion";
 import { hashearPassword, validarPoliticaPassword } from "@/server/auth/password";
 import { db, enTransaccion } from "@/server/db";
+import { VIGENCIA_PASSWORD_TEMPORAL_MS } from "@/server/auth/constantes";
+import { liberarSujeto, sujetoDeEmail } from "@/server/limitador";
 import { ErrorDominio } from "@/server/errores";
 import { generarPasswordTemporal } from "@/server/servicios/usuarios";
 
@@ -112,7 +114,8 @@ function mostrarCredenciales(titulo: string, email: string, credencial: { passwo
   } else {
     console.log("    Contraseña temporal:  la que ingresaste por la entrada estándar.");
   }
-  console.log("  Al iniciar sesión, el sistema pedirá cambiarla por una definitiva.\n");
+  console.log("  Al iniciar sesión, el sistema pedirá cambiarla por una definitiva.");
+  console.log("  Vence en 72 horas: si no se usa a tiempo, repite el comando con --restablecer.\n");
 }
 
 async function main(): Promise<void> {
@@ -138,13 +141,20 @@ async function main(): Promise<void> {
 
   const credencial = await obtenerPassword(opciones);
   const passwordHash = await hashearPassword(credencial.password);
+  // La contraseña temporal vence a las 72 horas (como las que entrega un ADMIN).
+  const passwordTemporalExpira = new Date(Date.now() + VIGENCIA_PASSWORD_TEMPORAL_MS);
 
   if (existente) {
     await enTransaccion(async (tx) => {
       await tx.usuario.update({
         where: { id: existente.id },
-        data: { passwordHash, debeCambiarPassword: true, activo: true, intentosFallidos: 0, bloqueadoHasta: null },
+        data: {
+          passwordHash, debeCambiarPassword: true, passwordTemporalExpira, activo: true,
+          intentosFallidos: 0, bloqueadoHasta: null,
+        },
       });
+      // También los bloqueos por IP + email del limitador de intentos.
+      await liberarSujeto(sujetoDeEmail(opciones.email), tx, ["LOGIN_PAR", "LOGIN_CUENTA", "PASSWORD_ACTUAL"]);
       await tx.sesion.deleteMany({ where: { usuarioId: existente.id } });
       await registrarAuditoria(tx, null, {
         accion: "USUARIO_PASSWORD_RESTABLECIDA",
@@ -160,7 +170,10 @@ async function main(): Promise<void> {
   await enTransaccion(async (tx) => {
     // El email es único en la base: dos ejecuciones simultáneas no crean duplicados.
     const creado = await tx.usuario.create({
-      data: { nombre: opciones.nombre, email: opciones.email, rol: "ADMIN", passwordHash, debeCambiarPassword: true },
+      data: {
+        nombre: opciones.nombre, email: opciones.email, rol: "ADMIN", passwordHash,
+        debeCambiarPassword: true, passwordTemporalExpira,
+      },
       select: { id: true },
     });
     await registrarAuditoria(tx, null, {

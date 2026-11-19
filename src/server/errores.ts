@@ -18,6 +18,7 @@ export const CODIGOS_ERROR = [
   "PASSWORD_DEBIL",
   "PASSWORD_ACTUAL_INCORRECTA",
   "OPERACION_INVALIDA",
+  "DEMASIADOS_INTENTOS",
 ] as const;
 export type CodigoError = (typeof CODIGOS_ERROR)[number];
 

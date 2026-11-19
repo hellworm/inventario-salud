@@ -4,7 +4,7 @@ import { unstable_rethrow } from "next/navigation";
 import type { z } from "zod";
 import { puede, type Actor, type Permiso } from "@/lib/permisos";
 import type { ErroresCampo, ResultadoAccion, ResultadoError } from "@/lib/resultado";
-import { obtenerSesion, type Sesion } from "./auth/sesion";
+import { descartarCookieSesionInvalida, obtenerSesion, type Sesion } from "./auth/sesion";
 import { ErrorDominio } from "./errores";
 import { registrarError } from "./registro";
 import { erroresDeZod } from "./validacion";
@@ -64,6 +64,7 @@ export function accionSegura<E extends z.ZodType, S>(
     try {
       const sesion = await obtenerSesion();
       if (!sesion) {
+        await descartarCookieSesionInvalida();
         return { ok: false, codigo: "NO_AUTENTICADO", error: "Tu sesión expiró. Vuelve a iniciar sesión." };
       }
       if (sesion.usuario.debeCambiarPassword) {

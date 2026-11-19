@@ -343,6 +343,8 @@ async function sembrarReferencia() {
       activo: true,
       passwordHash: await hashearPassword(u.password),
       debeCambiarPassword: u.debeCambiarPassword ?? false,
+      // Cuenta de demostración: su contraseña temporal no vence (en producción, 72 h).
+      passwordTemporalExpira: null,
       intentosFallidos: 0,
       bloqueadoHasta: null,
     };

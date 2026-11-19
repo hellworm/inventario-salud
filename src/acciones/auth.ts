@@ -10,6 +10,7 @@ import { cambiarPassword } from "@/server/auth/autenticacion";
 import { CENTRO_TODOS, COOKIE_CENTRO } from "@/server/auth/constantes";
 import {
   cerrarSesionActual,
+  descartarCookieSesionInvalida,
   iniciarSesionConCookie,
   listarCentrosDelActor,
   obtenerSesion,
@@ -55,7 +56,10 @@ export async function cerrarSesionAccion(): Promise<void> {
 
 export async function cambiarPasswordAccion(_previo: EstadoFormulario, formData: FormData): Promise<EstadoFormulario> {
   const sesion = await obtenerSesion();
-  if (!sesion) redirect("/login");
+  if (!sesion) {
+    await descartarCookieSesionInvalida();
+    redirect("/login");
+  }
 
   const validado = esquemaCambiarPassword.safeParse({
     actual: formData.get("actual"),
@@ -82,11 +86,17 @@ export async function cambiarPasswordAccion(_previo: EstadoFormulario, formData:
 /**
  * Cambia el centro activo (persistido en cookie por 1 año). `centroId` puede
  * ser un id de centro o `"todos"` (solo para quien ve toda la red).
- * Valores no permitidos se ignoran.
+ * Valores no permitidos se ignoran. Exige sesión vigente y sin cambio de
+ * contraseña pendiente (igual que `accionSegura`).
  */
 export async function cambiarCentroActivoAccion(centroId: string): Promise<void> {
   const sesion = await obtenerSesion();
-  if (!sesion) redirect("/login");
+  if (!sesion) {
+    await descartarCookieSesionInvalida();
+    redirect("/login");
+  }
+  // Con cambio de contraseña pendiente no se permite ninguna otra acción.
+  if (sesion.usuario.debeCambiarPassword) redirect("/cambiar-password");
 
   let valor: string | null = null;
   if (centroId === CENTRO_TODOS) {
