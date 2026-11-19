@@ -3,6 +3,7 @@
 import * as React from "react";
 import {
   Check,
+  CircleAlert,
   CircleCheck,
   CircleSlash,
   Copy,
@@ -43,6 +44,7 @@ import { esquemaCrearUsuario, type EntradaCrearUsuario } from "@/lib/esquemas/us
 import { NOMBRE_ROL, type Rol } from "@/lib/permisos";
 import { ConfirmarActivo } from "./boton-cambiar-activo";
 import { INFO_ROL, ROLES_ORDENADOS } from "./roles-info";
+import { useFocoAlCerrar } from "./use-foco-al-cerrar";
 import { texto, useValidacion } from "./use-validacion";
 
 export interface OpcionCentro {
@@ -104,7 +106,7 @@ function DialogoPasswordTemporal({ datos, onCerrar }: { datos: PasswordEntregada
       >
         <div className="space-y-4">
           <dl className="text-sm">
-            <dt className="text-texto-tenue">Email para ingresar</dt>
+            <dt className="text-texto-tenue">Correo electrónico para ingresar</dt>
             <dd className="font-medium break-all text-texto">{datos.email}</dd>
           </dl>
           <div>
@@ -204,8 +206,9 @@ function SelectorRol({ valor, onCambiar, bloqueado, error }: { valor: Rol | ""; 
         })}
       </div>
       {error ? (
-        <p id={idError} className="mt-1.5 text-sm font-medium text-peligro-700">
-          {error}
+        <p id={idError} role="alert" className="mt-1.5 flex items-start gap-1.5 text-sm font-medium text-peligro-700">
+          <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          <span>{error}</span>
         </p>
       ) : null}
     </fieldset>
@@ -292,7 +295,7 @@ function DialogoUsuario({
             <Field label="Nombre y apellido" requerido error={e.nombre}>
               <Input name="nombre" defaultValue={usuario?.nombre} maxLength={100} autoComplete="off" autoFocus={!usuario} />
             </Field>
-            <Field label="Email" requerido error={e.email} ayuda="Lo usará para iniciar sesión.">
+            <Field label="Correo electrónico" requerido error={e.email} ayuda="Lo usará para iniciar sesión.">
               <Input
                 name="email"
                 type="email"
@@ -351,8 +354,9 @@ function DialogoUsuario({
                 {centrosVisibles.length === 0 ? <p className="py-3 text-sm text-texto-suave">No hay centros activos.</p> : null}
               </div>
               {e.centroIds ? (
-                <p role="alert" className="mt-1.5 text-sm font-medium text-peligro-700">
-                  {e.centroIds[0]}
+                <p role="alert" className="mt-1.5 flex items-start gap-1.5 text-sm font-medium text-peligro-700">
+                  <CircleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  <span>{e.centroIds[0]}</span>
                 </p>
               ) : null}
             </fieldset>
@@ -379,9 +383,15 @@ function DialogoUsuario({
 export function BotonNuevoUsuario({ centros }: { centros: OpcionCentro[] }) {
   const [abierto, setAbierto] = React.useState(false);
   const [password, setPassword] = React.useState<PasswordEntregada | null>(null);
+  const foco = useFocoAlCerrar();
   return (
     <>
-      <Button onClick={() => setAbierto(true)}>
+      <Button
+        onClick={() => {
+          foco.recordar();
+          setAbierto(true);
+        }}
+      >
         <UserPlus aria-hidden />
         Nuevo usuario
       </Button>
@@ -389,14 +399,25 @@ export function BotonNuevoUsuario({ centros }: { centros: OpcionCentro[] }) {
         <DialogoUsuario
           centros={centros}
           esYo={false}
-          onCerrar={() => setAbierto(false)}
+          onCerrar={() => {
+            setAbierto(false);
+            foco.devolver();
+          }}
           onPassword={(datos) => {
             setAbierto(false);
             setPassword(datos);
           }}
         />
       ) : null}
-      {password ? <DialogoPasswordTemporal datos={password} onCerrar={() => setPassword(null)} /> : null}
+      {password ? (
+        <DialogoPasswordTemporal
+          datos={password}
+          onCerrar={() => {
+            setPassword(null);
+            foco.devolver();
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -407,10 +428,19 @@ type Vista = "editar" | "estado" | "password" | "desbloquear" | null;
 export function AccionesUsuario({ usuario, centros, esYo }: { usuario: UsuarioEditable; centros: OpcionCentro[]; esYo: boolean }) {
   const [vista, setVista] = React.useState<Vista>(null);
   const [password, setPassword] = React.useState<PasswordEntregada | null>(null);
-  const alCambiar = (v: Exclude<Vista, null>) => (abierto: boolean) => setVista(abierto ? v : null);
+  const contenedor = React.useRef<HTMLSpanElement>(null);
+  const foco = useFocoAlCerrar(contenedor);
+  const cerrar = () => {
+    setVista(null);
+    foco.devolver();
+  };
+  const alCambiar = (v: Exclude<Vista, null>) => (abierto: boolean) => {
+    if (abierto) setVista(v);
+    else cerrar();
+  };
 
   return (
-    <span className="inline-flex">
+    <span className="inline-flex" ref={contenedor}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="fantasma" size="icono" aria-label={`Acciones para ${usuario.nombre}`}>
@@ -447,7 +477,7 @@ export function AccionesUsuario({ usuario, centros, esYo }: { usuario: UsuarioEd
       </DropdownMenu>
 
       {vista === "editar" ? (
-        <DialogoUsuario usuario={usuario} centros={centros} esYo={esYo} onCerrar={() => setVista(null)} onPassword={setPassword} />
+        <DialogoUsuario usuario={usuario} centros={centros} esYo={esYo} onCerrar={cerrar} onPassword={setPassword} />
       ) : null}
 
       <ConfirmarActivo
@@ -495,7 +525,15 @@ export function AccionesUsuario({ usuario, centros, esYo }: { usuario: UsuarioEd
         }}
       />
 
-      {password ? <DialogoPasswordTemporal datos={password} onCerrar={() => setPassword(null)} /> : null}
+      {password ? (
+        <DialogoPasswordTemporal
+          datos={password}
+          onCerrar={() => {
+            setPassword(null);
+            foco.devolver();
+          }}
+        />
+      ) : null}
     </span>
   );
 }

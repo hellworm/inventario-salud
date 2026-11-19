@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Truck } from "lucide-react";
-import { FiltroSelect } from "@/components/admin/filtros-url";
+import { BarraFiltros, FiltroBusqueda, FiltroSelect } from "@/components/admin/filtros-url";
 import { AccionesProveedor, BotonNuevoProveedor } from "@/components/admin/proveedores";
-import { BadgeActivo, Card, DataTable, EmptyState, PageHeader, Pagination, SearchInput, type Columna } from "@/components/ui";
+import { BadgeActivo, Card, DataTable, EmptyState, PageHeader, Pagination, type Columna } from "@/components/ui";
 import { formatearRut } from "@/lib/chile/rut";
 import { formatearNumero } from "@/lib/formato";
 import { contextoPagina } from "@/server/auth/sesion";
@@ -17,32 +17,36 @@ const COLUMNAS: Columna<FilaProveedor>[] = [
     movil: "titulo",
     celda: (p) => (
       <span className="block min-w-0">
-        <span className="block truncate font-medium">{p.razonSocial}</span>
+        <span className="block font-medium break-words">{p.razonSocial}</span>
         <span className="cifras block text-xs font-normal text-texto-tenue">{formatearRut(p.rut)}</span>
       </span>
     ),
   },
-  { clave: "contacto", encabezado: "Contacto", celda: (p) => p.contacto ?? <span className="text-texto-tenue">—</span> },
   {
-    clave: "telefono",
-    encabezado: "Teléfono",
+    clave: "contacto",
+    encabezado: "Contacto",
     celda: (p) =>
-      p.telefono ? (
-        <a href={`tel:${p.telefono.replace(/[^\d+]/g, "")}`} className="cifras relative z-10 whitespace-nowrap text-marca-700 underline-offset-4 hover:underline">
-          {p.telefono}
-        </a>
-      ) : (
-        <span className="text-texto-tenue">—</span>
-      ),
-  },
-  {
-    clave: "email",
-    encabezado: "Email",
-    celda: (p) =>
-      p.email ? (
-        <a href={`mailto:${p.email}`} className="relative z-10 text-marca-700 underline-offset-4 hover:underline">
-          {p.email}
-        </a>
+      p.contacto || p.telefono || p.email ? (
+        <span className="block min-w-0">
+          {p.contacto ? <span className="block break-words">{p.contacto}</span> : null}
+          {p.telefono ? (
+            <a
+              href={`tel:${p.telefono.replace(/[^\d+]/g, "")}`}
+              className="cifras relative z-10 flex items-center whitespace-nowrap text-marca-700 underline-offset-4 hover:underline max-md:min-h-11 pointer-coarse:min-h-11"
+            >
+              {p.telefono}
+            </a>
+          ) : null}
+          {p.email ? (
+            <a
+              href={`mailto:${p.email}`}
+              aria-label={`Correo electrónico: ${p.email}`}
+              className="relative z-10 flex items-center break-all text-marca-700 underline-offset-4 hover:underline max-md:min-h-11 pointer-coarse:min-h-11"
+            >
+              {p.email}
+            </a>
+          ) : null}
+        </span>
       ) : (
         <span className="text-texto-tenue">—</span>
       ),
@@ -90,10 +94,10 @@ export default async function PaginaAdminProveedores({ searchParams }: PageProps
         acciones={<BotonNuevoProveedor />}
       />
 
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <SearchInput placeholder="Buscar por razón social, RUT o contacto…" label="Buscar proveedor" className="sm:max-w-md sm:flex-1" />
-        <FiltroSelect parametro="estado" label="Filtrar por estado" todos="Activos e inactivos" opciones={ESTADOS} className="sm:w-52" />
-      </div>
+      <BarraFiltros parametros={["q", "estado"]}>
+        <FiltroBusqueda placeholder="Razón social, RUT o contacto…" />
+        <FiltroSelect parametro="estado" etiqueta="Estado" todos="Activos e inactivos" opciones={ESTADOS} />
+      </BarraFiltros>
 
       <Card relleno={false} className="overflow-hidden">
         <DataTable

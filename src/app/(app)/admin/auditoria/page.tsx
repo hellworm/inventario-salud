@@ -1,46 +1,54 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ScrollText, X } from "lucide-react";
-import { etiquetaAccion, etiquetaEntidad, resumenAuditoria, tonoAccion } from "@/components/admin/auditoria-legible";
+import {
+  etiquetaAccion,
+  etiquetaEntidad,
+  nombresDelDetalle,
+  resumenAuditoria,
+  tonoAccion,
+  type NombresAuditoria,
+} from "@/components/admin/auditoria-legible";
 import { BotonDetalleAuditoria } from "@/components/admin/detalle-auditoria";
-import { FiltroFecha, FiltroSelect, LimpiarFiltros } from "@/components/admin/filtros-url";
+import { BarraFiltros, FiltroFecha, FiltroSelect } from "@/components/admin/filtros-url";
 import { Alert, Badge, buttonClasses, Card, DataTable, EmptyState, PageHeader, Pagination, type Columna } from "@/components/ui";
 import { formatearFechaHora, hoyEnSantiago, parsearDia } from "@/lib/fechas";
 import { contextoPagina } from "@/server/auth/sesion";
-import { listarAuditoria, opcionesFiltroAuditoria, type FilaAuditoria } from "@/server/servicios";
+import {
+  buscarInsumos,
+  listarAuditoria,
+  listarCategorias,
+  opcionesFiltroAuditoria,
+  type FilaAuditoria,
+} from "@/server/servicios";
 
 export const metadata: Metadata = { title: "Auditoría" };
 
-const COLUMNAS: Columna<FilaAuditoria>[] = [
-  {
-    clave: "fecha",
-    encabezado: "Fecha y hora",
-    movil: "oculto",
-    className: "w-40",
-    celda: (r) => <span className="cifras whitespace-nowrap text-texto-suave">{formatearFechaHora(r.creadoEn)}</span>,
-  },
+/** Fila de auditoría con los nombres legibles que menciona su detalle. */
+type FilaLegible = FilaAuditoria & { nombres: NombresAuditoria };
+
+const COLUMNAS: Columna<FilaLegible>[] = [
   {
     clave: "accion",
-    encabezado: "Acción",
+    encabezado: "Acción y fecha",
     movil: "titulo",
     celda: (r) => (
       <span className="block min-w-0">
-        <Badge tono={tonoAccion(r.accion)} className="max-w-full">
-          <span className="truncate">{etiquetaAccion(r.accion)}</span>
+        <Badge tono={tonoAccion(r.accion)} className="max-w-full whitespace-normal">
+          {etiquetaAccion(r.accion)}
         </Badge>
-        <span className="cifras mt-1 block text-xs font-normal text-texto-suave md:hidden">{formatearFechaHora(r.creadoEn)}</span>
+        <span className="cifras mt-1 block text-xs font-normal whitespace-nowrap text-texto-suave">{formatearFechaHora(r.creadoEn)}</span>
       </span>
     ),
   },
   {
     clave: "resumen",
     encabezado: "Sobre qué",
-    className: "max-w-md",
     celda: (r) => {
-      const resumen = resumenAuditoria(r.accion, r.detalle);
+      const resumen = resumenAuditoria(r.accion, r.detalle, { entidadId: r.entidadId, nombres: r.nombres });
       return (
         <span className="block min-w-0">
-          <span className="block whitespace-normal text-texto md:truncate" title={resumen || undefined}>
+          <span className="block whitespace-normal text-texto break-words">
             {resumen || <span className="text-texto-tenue">—</span>}
           </span>
         </span>
@@ -69,6 +77,7 @@ const COLUMNAS: Columna<FilaAuditoria>[] = [
           entidadId: r.entidadId,
           detalle: r.detalle,
           ip: r.ip,
+          nombres: r.nombres,
         }}
       />
     ),
@@ -80,7 +89,7 @@ function parametro(valor: string | string[] | undefined): string | undefined {
 }
 
 export default async function PaginaAuditoria({ searchParams }: PageProps<"/admin/auditoria">) {
-  const { actor } = await contextoPagina("auditoria:ver");
+  const { actor, centros } = await contextoPagina("auditoria:ver");
   const sp = await searchParams;
   const filtros = {
     usuarioId: parametro(sp.usuario),
@@ -91,10 +100,22 @@ export default async function PaginaAuditoria({ searchParams }: PageProps<"/admi
     hasta: parsearDia(parametro(sp.hasta)) ?? undefined,
   };
   const rangoInvertido = Boolean(filtros.desde && filtros.hasta && filtros.desde > filtros.hasta);
-  const [registros, opciones] = await Promise.all([
+  const [registros, opciones, insumos, categorias] = await Promise.all([
     listarAuditoria(actor, { ...filtros, pagina: Number(sp.pagina) || 1 }),
     opcionesFiltroAuditoria(actor),
+    buscarInsumos(actor, { soloActivos: false, limite: 500 }),
+    listarCategorias(actor),
   ]);
+  // El detalle guarda códigos e ids: aquí se resuelven a nombres para mostrarlos.
+  const nombres: Record<string, string> = {};
+  for (const c of centros) nombres[c.id] = c.nombre;
+  for (const c of categorias) nombres[c.id] = c.nombre;
+  for (const u of opciones.usuarios) nombres[u.id] = u.nombre;
+  for (const i of insumos) {
+    nombres[i.id] = i.nombre;
+    nombres[`insumo:${i.codigo}`] = i.nombre;
+  }
+  const filas: FilaLegible[] = registros.items.map((r) => ({ ...r, nombres: nombresDelDetalle(r.detalle, nombres) }));
   const hayFiltros = Object.values(filtros).some(Boolean);
   const hoy = hoyEnSantiago();
 
@@ -110,58 +131,42 @@ export default async function PaginaAuditoria({ searchParams }: PageProps<"/admi
         descripcion="Registro de quién hizo qué y cuándo: ingresos al sistema, movimientos de stock y cambios de administración. Solo lectura."
       />
 
-      <Card className="mb-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <div>
-            <span className="mb-1 block text-xs font-medium text-texto-suave">Usuario</span>
-            <FiltroSelect
-              parametro="usuario"
-              label="Filtrar por usuario"
-              todos="Todos"
-              opciones={opciones.usuarios.map((u) => ({ value: u.id, label: u.activo ? u.nombre : `${u.nombre} (inactivo)` }))}
-            />
-          </div>
-          <div>
-            <span className="mb-1 block text-xs font-medium text-texto-suave">Acción</span>
-            <FiltroSelect
-              parametro="accion"
-              label="Filtrar por acción"
-              todos="Todas"
-              opciones={opciones.acciones
-                .map((a) => ({ value: a, label: etiquetaAccion(a) }))
-                .sort((a, b) => a.label.localeCompare(b.label, "es"))}
-            />
-          </div>
-          <div>
-            <span className="mb-1 block text-xs font-medium text-texto-suave">Tipo de registro</span>
-            <FiltroSelect
-              parametro="entidad"
-              label="Filtrar por tipo de registro"
-              todos="Todos"
-              opciones={opciones.entidades
-                .map((e) => ({ value: e, label: etiquetaEntidad(e) }))
-                .sort((a, b) => a.label.localeCompare(b.label, "es"))}
-            />
-          </div>
-          <FiltroFecha parametro="desde" label="Desde" max={filtros.hasta ?? hoy} />
-          <FiltroFecha parametro="hasta" label="Hasta" min={filtros.desde} max={hoy} />
-        </div>
-        {hayFiltros ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-borde pt-3">
-            {filtros.entidadId ? (
-              <Link
-                href={sinEntidadId.size > 0 ? `/admin/auditoria?${sinEntidadId.toString()}` : "/admin/auditoria"}
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-marca-50 px-3 text-sm font-medium text-marca-800 ring-1 ring-marca-200 ring-inset hover:bg-marca-100"
-              >
-                Historial de un solo registro
-                <X className="size-4" aria-hidden />
-                <span className="sr-only">(quitar filtro)</span>
-              </Link>
-            ) : null}
-            <LimpiarFiltros parametros={["usuario", "accion", "entidad", "entidadId", "desde", "hasta"]} />
-          </div>
+      <BarraFiltros parametros={["usuario", "accion", "entidad", "entidadId", "desde", "hasta"]}>
+        <FiltroSelect
+          parametro="usuario"
+          etiqueta="Usuario"
+          todos="Todos"
+          opciones={opciones.usuarios.map((u) => ({ value: u.id, label: u.activo ? u.nombre : `${u.nombre} (inactivo)` }))}
+        />
+        <FiltroSelect
+          parametro="accion"
+          etiqueta="Acción"
+          todos="Todas"
+          opciones={opciones.acciones
+            .map((a) => ({ value: a, label: etiquetaAccion(a) }))
+            .sort((a, b) => a.label.localeCompare(b.label, "es"))}
+        />
+        <FiltroSelect
+          parametro="entidad"
+          etiqueta="Tipo de registro"
+          todos="Todos"
+          opciones={opciones.entidades
+            .map((e) => ({ value: e, label: etiquetaEntidad(e) }))
+            .sort((a, b) => a.label.localeCompare(b.label, "es"))}
+        />
+        <FiltroFecha parametro="desde" etiqueta="Desde" max={filtros.hasta ?? hoy} />
+        <FiltroFecha parametro="hasta" etiqueta="Hasta" min={filtros.desde} max={hoy} />
+        {filtros.entidadId ? (
+          <Link
+            href={sinEntidadId.size > 0 ? `/admin/auditoria?${sinEntidadId.toString()}` : "/admin/auditoria"}
+            className="col-span-2 inline-flex min-h-11 items-center gap-1.5 justify-self-start rounded-full bg-marca-50 px-3 text-sm font-medium text-marca-800 ring-1 ring-marca-200 ring-inset hover:bg-marca-100"
+          >
+            Historial de un solo registro
+            <X className="size-4" aria-hidden />
+            <span className="sr-only">(quitar filtro)</span>
+          </Link>
         ) : null}
-      </Card>
+      </BarraFiltros>
 
       {rangoInvertido ? (
         <Alert tono="alerta" className="mb-4">
@@ -173,7 +178,7 @@ export default async function PaginaAuditoria({ searchParams }: PageProps<"/admi
         <DataTable
           titulo="Registro de auditoría"
           columnas={COLUMNAS}
-          filas={registros.items}
+          filas={filas}
           claveFila={(r) => r.id}
           vacio={
             <EmptyState

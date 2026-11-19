@@ -139,7 +139,7 @@ export function GraficoActividad({ dias }: { dias: readonly DiaActividad[] }) {
       </div>
 
       <details className="group mt-3 text-sm">
-        <summary className="inline-flex min-h-9 items-center rounded-md font-medium text-marca-700 underline-offset-4 hover:underline">
+        <summary className="inline-flex min-h-11 items-center rounded-md font-medium text-marca-700 underline-offset-4 hover:underline">
           <span className="group-open:hidden">Ver los datos como tabla</span>
           <span className="hidden group-open:inline">Ocultar la tabla</span>
         </summary>

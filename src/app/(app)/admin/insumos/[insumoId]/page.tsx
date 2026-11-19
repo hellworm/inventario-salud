@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -8,12 +9,27 @@ import { FormularioInsumo } from "@/components/admin/formulario-insumo";
 import { TablaParametros } from "@/components/admin/tabla-parametros";
 import { Alert, BadgeActivo, buttonClasses, Card, CardHeader, PageHeader } from "@/components/ui";
 import { formatearFechaHora } from "@/lib/fechas";
-import { formatearNumero } from "@/lib/formato";
-import { contextoPagina } from "@/server/auth/sesion";
+import type { Actor } from "@/lib/permisos";
+import { cantidadConUnidad } from "@/lib/unidades";
+import { contextoPagina, obtenerSesion } from "@/server/auth/sesion";
 import { esErrorDominio } from "@/server/errores";
 import { listarCategorias, obtenerInsumoAdmin, type InsumoAdmin } from "@/server/servicios";
 
-export const metadata: Metadata = { title: "Editar insumo" };
+/** Una sola lectura por solicitud: la comparten el título de la pestaña y la página. */
+const cargarInsumo = cache((actor: Actor, insumoId: string) => obtenerInsumoAdmin(actor, insumoId));
+
+/** Título de la pestaña con el nombre real del insumo (sin revelar nada a quien no puede verlo). */
+export async function generateMetadata({ params }: PageProps<"/admin/insumos/[insumoId]">): Promise<Metadata> {
+  const sesion = await obtenerSesion();
+  if (!sesion) return { title: "Editar insumo" };
+  try {
+    const { insumoId } = await params;
+    const insumo = await cargarInsumo(sesion.actor, insumoId);
+    return { title: `${insumo.nombre} · Editar insumo` };
+  } catch {
+    return { title: "Editar insumo" };
+  }
+}
 
 export default async function PaginaEditarInsumo({ params }: PageProps<"/admin/insumos/[insumoId]">) {
   const { actor } = await contextoPagina("catalogo:gestionar");
@@ -21,7 +37,7 @@ export default async function PaginaEditarInsumo({ params }: PageProps<"/admin/i
 
   let insumo: InsumoAdmin;
   try {
-    insumo = await obtenerInsumoAdmin(actor, insumoId);
+    insumo = await cargarInsumo(actor, insumoId);
   } catch (error) {
     if (esErrorDominio(error) && error.codigo === "NO_ENCONTRADO") notFound();
     throw error;
@@ -38,19 +54,17 @@ export default async function PaginaEditarInsumo({ params }: PageProps<"/admin/i
             <BadgeActivo activo={insumo.activo} />
             <span>
               {insumo.stockTotal > 0
-                ? `Stock en la red: ${formatearNumero(insumo.stockTotal)} (${insumo.unidadMedida})`
+                ? `Stock en la red: ${cantidadConUnidad(insumo.stockTotal, insumo.unidadMedida)}`
                 : "Sin stock en la red"}
             </span>
           </span>
         }
         volver={{ href: "/admin/insumos", label: "Insumos" }}
         acciones={
-          insumo.stockTotal > 0 ? (
-            <Link href={`/inventario/${insumo.id}`} className={buttonClasses({ variant: "secundario" })}>
-              <Boxes aria-hidden />
-              Ver en inventario
-            </Link>
-          ) : undefined
+          <Link href={`/inventario/${insumo.id}`} className={buttonClasses({ variant: "secundario" })}>
+            <Boxes aria-hidden />
+            Ver en inventario
+          </Link>
         }
       />
 
@@ -62,7 +76,11 @@ export default async function PaginaEditarInsumo({ params }: PageProps<"/admin/i
 
       <div className="space-y-4">
         <Card className="sm:p-6">
-          <CardHeader titulo="Datos del insumo" className="mb-5" />
+          <CardHeader
+            titulo="Datos del insumo"
+            descripcion="Se guardan con el botón «Guardar datos del insumo», aparte de los mínimos y máximos."
+            className="mb-5"
+          />
           <FormularioInsumo
             insumo={{
               id: insumo.id,
@@ -85,7 +103,7 @@ export default async function PaginaEditarInsumo({ params }: PageProps<"/admin/i
         <Card className="sm:p-6" id="parametros">
           <CardHeader
             titulo="Stock mínimo y máximo por centro"
-            descripcion="Cuando el stock disponible de un centro baja del mínimo, aparece en Alertas. El máximo es una referencia para no sobrestockear."
+            descripcion="Cuando el stock disponible de un centro baja del mínimo, aparece en Alertas. El máximo es una referencia para no sobrestockear. Esta sección se guarda con su propio botón."
           />
           <TablaParametros
             insumoId={insumo.id}
@@ -111,7 +129,7 @@ export default async function PaginaEditarInsumo({ params }: PageProps<"/admin/i
               activo={insumo.activo}
               aviso={
                 insumo.activo && insumo.stockTotal > 0
-                  ? `Aún hay ${formatearNumero(insumo.stockTotal)} ${insumo.unidadMedida} en stock: se podrán seguir retirando.`
+                  ? `Aún hay ${cantidadConUnidad(insumo.stockTotal, insumo.unidadMedida)} en stock: se podrán seguir retirando.`
                   : undefined
               }
             />

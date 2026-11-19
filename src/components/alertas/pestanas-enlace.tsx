@@ -1,3 +1,6 @@
+"use client";
+
+import * as React from "react";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { formatearNumero } from "@/lib/formato";
@@ -20,8 +23,10 @@ const TONO_CONTADOR = {
 
 /**
  * Pestañas basadas en enlaces: el estado vive en la URL (se puede compartir,
- * recargar y volver atrás) y no requieren JavaScript. Misma apariencia que
- * `Tabs` del UI kit.
+ * recargar y volver atrás). Misma apariencia que `Tabs` del UI kit.
+ *
+ * Cuando no caben (móvil) la fila se desplaza en horizontal: la pestaña activa
+ * se lleva a la vista y un degradado en el borde indica que hay más a ese lado.
  */
 export function PestanasEnlace({
   pestanas,
@@ -33,9 +38,47 @@ export function PestanasEnlace({
   etiqueta: string;
   className?: string;
 }) {
+  const lista = React.useRef<HTMLUListElement>(null);
+  const [bordes, setBordes] = React.useState({ izquierda: false, derecha: false });
+  const hrefActiva = pestanas.find((p) => p.activa)?.href;
+
+  const medir = React.useCallback(() => {
+    const ul = lista.current;
+    if (!ul) return;
+    const izquierda = ul.scrollLeft > 4;
+    const derecha = ul.scrollLeft + ul.clientWidth < ul.scrollWidth - 4;
+    setBordes((b) => (b.izquierda === izquierda && b.derecha === derecha ? b : { izquierda, derecha }));
+  }, []);
+
+  // Lleva la pestaña activa a la vista (solo desplaza la fila, nunca la página).
+  React.useEffect(() => {
+    const ul = lista.current;
+    const activa = ul?.querySelector<HTMLElement>("[aria-current='page']")?.parentElement;
+    if (ul && activa) {
+      const margen = 28;
+      const inicio = activa.offsetLeft - margen;
+      const fin = activa.offsetLeft + activa.offsetWidth + margen;
+      if (inicio < ul.scrollLeft) ul.scrollLeft = Math.max(0, inicio);
+      else if (fin > ul.scrollLeft + ul.clientWidth) ul.scrollLeft = fin - ul.clientWidth;
+    }
+    medir();
+  }, [hrefActiva, medir]);
+
+  React.useEffect(() => {
+    const ul = lista.current;
+    if (!ul) return;
+    const observador = new ResizeObserver(medir);
+    observador.observe(ul);
+    return () => observador.disconnect();
+  }, [medir]);
+
   return (
-    <nav aria-label={etiqueta} className={cn("print:hidden", className)}>
-      <ul className="relative -mb-px flex gap-1 overflow-x-auto border-b border-borde [scrollbar-width:none]">
+    <nav aria-label={etiqueta} className={cn("relative print:hidden", className)}>
+      <ul
+        ref={lista}
+        onScroll={medir}
+        className="relative -mb-px flex gap-1 overflow-x-auto border-b border-borde [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         {pestanas.map((p) => (
           <li key={p.href} className="shrink-0">
             <Link
@@ -65,6 +108,20 @@ export function PestanasEnlace({
           </li>
         ))}
       </ul>
+      <span
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-fondo to-transparent transition-opacity",
+          bordes.izquierda ? "opacity-100" : "opacity-0",
+        )}
+      />
+      <span
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-fondo to-transparent transition-opacity",
+          bordes.derecha ? "opacity-100" : "opacity-0",
+        )}
+      />
     </nav>
   );
 }

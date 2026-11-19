@@ -1,8 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarCheck2, CalendarX2, ClipboardList, PackageCheck } from "lucide-react";
-import { FiltroSelect } from "@/components/alertas/filtro-select";
+import { ArrowDownToLine, ArrowUpFromLine, CalendarCheck2, CalendarX2, ClipboardList, PackageCheck, Trash2 } from "lucide-react";
+import { BarraFiltros, FiltroBusqueda, FiltroCentro, FiltroSelect } from "@/components/admin/filtros-url";
+import {
+  CLASE_ACCION_FILA,
+  hrefDarDeBaja,
+  hrefIngresar,
+  hrefRetirar,
+  ubicacionesDeIngreso,
+  type UbicacionPorCentro,
+} from "@/components/alertas/acciones";
 import { PestanasEnlace, type PestanaEnlace } from "@/components/alertas/pestanas-enlace";
+import { CeldaInsumo, DosLineas } from "@/components/reportes/piezas";
 import {
   Alert,
   Badge,
@@ -14,7 +23,6 @@ import {
   EmptyState,
   PageHeader,
   Pagination,
-  SearchInput,
   type Columna,
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -22,10 +30,17 @@ import { describirVencimiento, formatearDia } from "@/lib/fechas";
 import { leerFiltros } from "@/lib/filtros-reportes";
 import { formatearNumero, pluralizar } from "@/lib/formato";
 import { construirHref, leerOpcion, resolverCentro } from "@/lib/parametros-url";
-import { puede } from "@/lib/permisos";
+import { puede, type Rol } from "@/lib/permisos";
 import { POR_PAGINA_DEFECTO } from "@/lib/resultado";
 import { contextoPagina } from "@/server/auth/sesion";
-import { listarCategorias, obtenerAlertas, type AlertaStock, type AlertaVencimiento } from "@/server/servicios";
+import { cantidadConUnidad, unidadSegun } from "@/lib/unidades";
+import {
+  listarCategorias,
+  listarUbicaciones,
+  obtenerAlertas,
+  type AlertaStock,
+  type AlertaVencimiento,
+} from "@/server/servicios";
 
 export const metadata: Metadata = { title: "Alertas" };
 
@@ -38,18 +53,6 @@ const ETIQUETA_TRAMO: Record<(typeof TRAMOS)[number], string> = {
   "60": "31 a 60 días",
   "90": "61 a 90 días",
 };
-
-function InsumoCelda({ nombre, codigo, extra }: { nombre: string; codigo: string; extra?: string }) {
-  return (
-    <span className="block min-w-0">
-      <span className="block truncate font-medium">{nombre}</span>
-      <span className="block truncate text-xs font-normal text-texto-tenue">
-        {codigo}
-        {extra ? ` · ${extra}` : ""}
-      </span>
-    </span>
-  );
-}
 
 /** Disponible frente al mínimo, con una barra proporcional (el texto lleva el dato exacto). */
 function DisponibleVsMinimo({ alerta }: { alerta: AlertaStock }) {
@@ -70,37 +73,45 @@ function DisponibleVsMinimo({ alerta }: { alerta: AlertaStock }) {
   );
 }
 
-function columnasStock(mostrarCentro: boolean): Columna<AlertaStock>[] {
+function columnasStock(mostrarCentro: boolean, ubicacionesIngreso: UbicacionPorCentro | null): Columna<AlertaStock>[] {
   return [
     {
       clave: "insumo",
       encabezado: "Insumo",
       movil: "titulo",
-      celda: (a) => <InsumoCelda nombre={a.nombre} codigo={a.codigo} extra={a.categoria} />,
+      className: "md:w-[38%]",
+      celda: (a) => <CeldaInsumo nombre={a.nombre} codigo={a.codigo} extra={mostrarCentro ? a.centro : a.categoria} />,
     },
-    { clave: "estado", encabezado: "Estado", movil: "destacado", celda: (a) => <BadgeEstadoStock estado={a.tipo} /> },
-    ...(mostrarCentro
-      ? [{ clave: "centro", encabezado: "Centro", celda: (a: AlertaStock) => a.centro } satisfies Columna<AlertaStock>]
-      : []),
+    // El estado es el de la pestaña: en escritorio no ocupa columna; en móvil identifica la tarjeta.
+    ...(ubicacionesIngreso
+      ? []
+      : [
+          {
+            clave: "estado",
+            encabezado: "Estado",
+            movil: "destacado",
+            celda: (a: AlertaStock) => <BadgeEstadoStock estado={a.tipo} />,
+          } satisfies Columna<AlertaStock>,
+        ]),
     {
       clave: "disponible",
-      encabezado: "Disponible / mínimo",
+      encabezado: "Disponible",
       alinear: "derecha",
       celda: (a) => <DisponibleVsMinimo alerta={a} />,
     },
     {
       clave: "faltante",
-      encabezado: "Falta reponer",
+      encabezado: "Falta",
       alinear: "derecha",
       celda: (a) => (
         <span className="cifras whitespace-nowrap font-semibold">
-          {formatearNumero(a.faltante)} <span className="font-normal text-texto-tenue">{a.unidadMedida}</span>
+          {formatearNumero(a.faltante)} <span className="font-normal text-texto-tenue">{unidadSegun(a.faltante, a.unidadMedida)}</span>
         </span>
       ),
     },
     {
       clave: "maximo",
-      encabezado: "Para el máximo",
+      encabezado: "Al máximo",
       alinear: "derecha",
       movil: "oculto",
       celda: (a) =>
@@ -112,35 +123,64 @@ function columnasStock(mostrarCentro: boolean): Columna<AlertaStock>[] {
           <span className="cifras whitespace-nowrap text-texto-suave">{formatearNumero(a.faltaParaMaximo)}</span>
         ),
     },
+    ...(ubicacionesIngreso
+      ? [
+          {
+            clave: "accion",
+            encabezado: "Acción",
+            alinear: "derecha",
+            movil: "destacado",
+            className: "w-px py-1.5",
+            celda: (a: AlertaStock) => (
+              <Link href={hrefIngresar(a, ubicacionesIngreso)} aria-label={`Ingresar ${a.nombre}`} className={CLASE_ACCION_FILA}>
+                <ArrowDownToLine aria-hidden />
+                Ingresar
+              </Link>
+            ),
+          } satisfies Columna<AlertaStock>,
+        ]
+      : []),
   ];
 }
 
-function columnasVencimiento(mostrarCentro: boolean): Columna<AlertaVencimiento>[] {
+function columnasVencimiento(
+  mostrarCentro: boolean,
+  vencidos: boolean,
+  permisos: { retirar: boolean; darDeBaja: boolean },
+): Columna<AlertaVencimiento>[] {
+  const conAccion = vencidos ? permisos.darDeBaja : permisos.retirar;
   return [
     {
       clave: "insumo",
       encabezado: "Insumo",
       movil: "titulo",
-      celda: (a) => <InsumoCelda nombre={a.nombre} codigo={a.codigo} />,
+      className: "md:w-[30%]",
+      celda: (a) => <CeldaInsumo nombre={a.nombre} codigo={a.codigo} extra={`Lote ${a.numeroLote}`} />,
     },
     {
       clave: "dias",
-      encabezado: "Días restantes",
+      encabezado: vencidos ? "Vencimiento" : "Días restantes",
       movil: "destacado",
-      celda: (a) =>
-        a.tipo === "VENCIDO" ? (
-          <Badge tono="peligro" icono={CalendarX2}>
-            {describirVencimiento(a.dias)}
-          </Badge>
-        ) : (
-          <BadgeEstadoVencimiento estado="POR_VENCER" dias={a.dias} />
-        ),
+      celda: (a) => (
+        <span className="inline-flex flex-col items-end gap-1 md:items-start">
+          {a.tipo === "VENCIDO" ? (
+            <Badge tono="peligro" icono={CalendarX2}>
+              {describirVencimiento(a.dias)}
+            </Badge>
+          ) : (
+            <BadgeEstadoVencimiento estado="POR_VENCER" dias={a.dias} />
+          )}
+          <span className="cifras text-xs whitespace-nowrap text-texto-suave">
+            <span className="sr-only">{vencidos ? "Venció el " : "Vence el "}</span>
+            {formatearDia(a.fechaVencimiento)}
+          </span>
+        </span>
+      ),
     },
-    { clave: "lote", encabezado: "Lote", celda: (a) => <span className="cifras whitespace-nowrap">{a.numeroLote}</span> },
     {
       clave: "ubicacion",
       encabezado: "Ubicación",
-      celda: (a) => (mostrarCentro ? `${a.centro} · ${a.ubicacion}` : a.ubicacion),
+      celda: (a) => <DosLineas principal={a.ubicacion} secundario={mostrarCentro ? a.centro : undefined} />,
     },
     {
       clave: "cantidad",
@@ -148,18 +188,60 @@ function columnasVencimiento(mostrarCentro: boolean): Columna<AlertaVencimiento>
       alinear: "derecha",
       celda: (a) => (
         <span className="cifras whitespace-nowrap font-semibold">
-          {formatearNumero(a.cantidad)} <span className="font-normal text-texto-tenue">{a.unidadMedida}</span>
+          {formatearNumero(a.cantidad)}{" "}
+          <span className="font-normal text-texto-tenue">{unidadSegun(a.cantidad, a.unidadMedida)}</span>
         </span>
       ),
     },
-    {
-      clave: "fecha",
-      encabezado: "Vencimiento",
-      alinear: "derecha",
-      celda: (a) => <span className="cifras whitespace-nowrap text-texto-suave">{formatearDia(a.fechaVencimiento)}</span>,
-    },
+    ...(conAccion
+      ? [
+          {
+            clave: "accion",
+            encabezado: "Acción",
+            alinear: "derecha",
+            movil: "destacado",
+            className: "w-px py-1.5",
+            celda: (a: AlertaVencimiento) =>
+              vencidos ? (
+                <Link
+                  href={hrefDarDeBaja(a)}
+                  aria-label={`Dar de baja ${cantidadConUnidad(a.cantidad, a.unidadMedida)} del lote ${a.numeroLote} de ${a.nombre}`}
+                  className={CLASE_ACCION_FILA}
+                >
+                  <Trash2 aria-hidden />
+                  Dar de baja
+                </Link>
+              ) : (
+                <Link
+                  href={hrefRetirar(a)}
+                  aria-label={`Retirar primero el lote ${a.numeroLote} de ${a.nombre}`}
+                  className={CLASE_ACCION_FILA}
+                >
+                  <ArrowUpFromLine aria-hidden />
+                  Retirar
+                </Link>
+              ),
+          } satisfies Columna<AlertaVencimiento>,
+        ]
+      : []),
   ];
 }
+
+/** Aviso de la pestaña "Vencidos": qué hacer con ellos según lo que el rol puede hacer. */
+const AVISO_VENCIDOS: Record<Rol, { titulo: string; texto: string }> = {
+  ADMIN: {
+    titulo: "El stock vencido no se puede retirar",
+    texto: "Sepáralo y dalo de baja como merma para que deje de figurar en el inventario: usa «Dar de baja» en cada lote.",
+  },
+  BODEGUERO: {
+    titulo: "El stock vencido no se puede retirar",
+    texto: "Sepáralos y avisa a tu administrador para darlos de baja.",
+  },
+  VISITANTE: {
+    titulo: "Lotes vencidos con stock",
+    texto: "Estos lotes cumplieron su fecha de vencimiento y aún figuran con stock. El sistema no permite retirarlos para su uso.",
+  },
+};
 
 function pagina<T>(items: readonly T[], numero: number) {
   const totalPaginas = Math.max(1, Math.ceil(items.length / POR_PAGINA_DEFECTO));
@@ -180,9 +262,11 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
   const centroId = resolverCentro(centroActivoId, centros, filtros.centro);
   const tramo = leerOpcion(sp, "tramo", TRAMOS);
 
-  const [alertas, categorias] = await Promise.all([
+  const puedeIngresar = puede(actor.rol, "movimientos:ingreso");
+  const [alertas, categorias, ubicaciones] = await Promise.all([
     obtenerAlertas(actor, { centroId, categoriaId: filtros.categoriaId, texto: filtros.texto }),
     listarCategorias(actor),
+    puedeIngresar ? listarUbicaciones(actor, { centroId: centroActivoId }) : [],
   ]);
   const { resumen } = alertas;
   const porVencerTotal = resumen.porVencer30 + resumen.porVencer60 + resumen.porVencer90;
@@ -209,7 +293,9 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
   const mostrarCentro = centroId === null && centros.length > 1;
   const hayFiltros = Boolean(filtros.texto || filtros.categoriaId || (!centroActivoId && centroId));
   const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? "Toda la red";
-  const puedeDarDeBaja = puede(actor.rol, "movimientos:merma");
+  const permisos = { retirar: puede(actor.rol, "movimientos:retiro"), darDeBaja: puede(actor.rol, "movimientos:merma") };
+  const ubicacionesIngreso = puedeIngresar ? ubicacionesDeIngreso(ubicaciones) : null;
+  const avisoVencidos = AVISO_VENCIDOS[actor.rol];
 
   const stock =
     pestana === "sin-stock"
@@ -239,7 +325,7 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
       icono={CalendarCheck2}
       titulo={pestana === "vencidos" ? "Sin lotes vencidos" : "Nada por vencer"}
       descripcion={
-        pestana === "vencidos" ? "No hay stock vencido que dar de baja." : "Ningún lote con stock vence en los próximos 90 días."
+        pestana === "vencidos" ? "No hay lotes vencidos con stock." : "Ningún lote con stock vence en los próximos 90 días."
       }
     />
   );
@@ -265,50 +351,31 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
         }
       />
 
-      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:flex lg:items-center">
-        <SearchInput
-          placeholder="Buscar insumo, código o lote…"
-          label="Buscar en las alertas"
-          className="sm:col-span-2 lg:w-80 lg:flex-none"
-        />
+      <BarraFiltros parametros={["q", "categoria", "centro"]}>
+        <FiltroBusqueda placeholder="Insumo, código o lote…" />
         <FiltroSelect
           parametro="categoria"
           etiqueta="Categoría"
-          todos="Todas las categorías"
+          todos="Todas"
           opciones={categorias.map((c) => ({ value: c.id, label: c.nombre }))}
-          className="lg:w-64"
         />
-        {!centroActivoId && centros.length > 1 ? (
-          <FiltroSelect
-            parametro="centro"
-            etiqueta="Centro"
-            todos="Todos los centros"
-            opciones={centros.map((c) => ({ value: c.id, label: c.nombre }))}
-            className="lg:w-64"
-          />
-        ) : null}
-        {hayFiltros ? (
-          <Link href={construirHref("/alertas", { tab: pestana })} className={buttonClasses({ variant: "fantasma", size: "sm" })}>
-            Limpiar filtros
-          </Link>
-        ) : null}
-      </div>
+        <FiltroCentro centroActivoId={centroActivoId} centros={centros} />
+      </BarraFiltros>
 
       <PestanasEnlace pestanas={pestanas} etiqueta="Tipos de alerta" />
 
       <div className="pt-4">
         {pestana === "vencidos" && vencimientos && vencimientos.length > 0 ? (
-          <Alert tono="peligro" titulo="El stock vencido no se puede retirar" className="mb-4">
-            {puedeDarDeBaja ? (
+          <Alert tono={actor.rol === "VISITANTE" ? "info" : "peligro"} titulo={avisoVencidos.titulo} className="mb-4">
+            {avisoVencidos.texto}
+            {permisos.darDeBaja && vencimientos.length === 1 && vencimientos[0] ? (
               <>
-                Sepáralo y regístralo como merma para que deje de figurar en el inventario.{" "}
-                <Link href="/movimientos/ajuste" className="font-semibold underline underline-offset-2">
-                  Registrar merma
+                {" "}
+                <Link href={hrefDarDeBaja(vencimientos[0])} className="font-semibold underline underline-offset-2">
+                  Dar de baja el lote {vencimientos[0].numeroLote}
                 </Link>
               </>
-            ) : (
-              "Sepáralo del resto y avisa a un administrador para que lo dé de baja como merma."
-            )}
+            ) : null}
           </Alert>
         ) : null}
 
@@ -325,7 +392,7 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
                   scroll={false}
                   aria-current={activo ? "true" : undefined}
                   className={cn(
-                    "inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors sm:min-h-9",
+                    "inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors md:min-h-9 md:pointer-coarse:min-h-11",
                     activo
                       ? "border-marca-600 bg-marca-50 text-marca-800"
                       : "border-borde-fuerte/70 bg-superficie text-texto-suave hover:border-borde-fuerte hover:text-texto",
@@ -347,7 +414,7 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
                 <Card relleno={false} className="overflow-hidden">
                   <DataTable
                     titulo={pestana === "sin-stock" ? "Insumos sin stock" : "Insumos bajo el mínimo"}
-                    columnas={columnasStock(mostrarCentro)}
+                    columnas={columnasStock(mostrarCentro, ubicacionesIngreso)}
                     filas={p.items}
                     claveFila={(a) => `${a.insumoId}:${a.centroId}`}
                     hrefFila={(a) => `/inventario/${a.insumoId}`}
@@ -366,7 +433,7 @@ export default async function PaginaAlertas({ searchParams }: PageProps<"/alerta
                 <Card relleno={false} className="overflow-hidden">
                   <DataTable
                     titulo={pestana === "vencidos" ? "Lotes vencidos con stock" : "Lotes por vencer"}
-                    columnas={columnasVencimiento(mostrarCentro)}
+                    columnas={columnasVencimiento(mostrarCentro, pestana === "vencidos", permisos)}
                     filas={p.items}
                     claveFila={(a) => `${a.loteId}:${a.ubicacionId}`}
                     hrefFila={(a) => `/inventario/${a.insumoId}`}

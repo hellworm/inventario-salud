@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CalendarClock, CalendarX2, ChevronRight, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { formatearNumero, pluralizar } from "@/lib/formato";
+import { pluralizar } from "@/lib/formato";
 import type { TramoVencimientoPanel } from "@/server/servicios";
 
 const TRAMO: Record<TramoVencimientoPanel["clave"], { etiqueta: string; href: string; barra: string; icono: LucideIcon; iconoColor: string }> = {
@@ -24,13 +24,12 @@ export function GraficoVencimientos({ tramos }: { tramos: readonly TramoVencimie
         const { etiqueta, href, barra, icono: Icono, iconoColor } = TRAMO[t.clave];
         return (
           <li key={t.clave}>
-            <Link href={href} className="group block rounded-lg px-2 py-2 hover:bg-marca-50/60">
+            <Link href={href} className="group block rounded-lg px-2 py-2.5 hover:bg-marca-50/60">
               <span className="flex items-center gap-2 text-sm">
                 <Icono className={cn("size-4 shrink-0", iconoColor)} aria-hidden />
                 <span className="min-w-0 flex-1 truncate font-medium">{etiqueta}</span>
                 <span className="cifras shrink-0 text-right">
                   <strong className="font-semibold">{pluralizar(t.lotes, "lote")}</strong>
-                  <span className="text-texto-suave"> · {formatearNumero(t.unidades)} u.</span>
                 </span>
                 <ChevronRight className="size-4 shrink-0 text-texto-tenue group-hover:text-marca-700" aria-hidden />
               </span>

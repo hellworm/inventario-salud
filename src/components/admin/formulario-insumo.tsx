@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Barcode, Save } from "lucide-react";
@@ -7,6 +8,7 @@ import { actualizarInsumoAccion, crearInsumoAccion } from "@/acciones/admin-cata
 import { Alert, Button, buttonClasses, Checkbox, Field, Input, Select, Textarea, useAccion } from "@/components/ui";
 import { esquemaInsumo, type EntradaInsumo } from "@/lib/esquemas/catalogo";
 import { UNIDADES_MEDIDA } from "@/lib/estados";
+import { AvisoCambiosSinGuardar, useCambiosSinGuardar } from "./use-cambios-sin-guardar";
 import { texto, useValidacion } from "./use-validacion";
 
 export interface ValoresInsumo {
@@ -22,6 +24,12 @@ export interface ValoresInsumo {
   codigoBarras: string | null;
   requiereCadenaFrio: boolean;
   controlaVencimiento: boolean;
+}
+
+/** Huella de los valores del formulario, para saber si hay cambios respecto de lo guardado. */
+function huella(formulario: HTMLFormElement): string {
+  const datos = new FormData(formulario);
+  return JSON.stringify([...datos.entries()].map(([clave, valor]) => [clave, typeof valor === "string" ? valor.trim() : ""]));
 }
 
 function Seccion({ titulo, descripcion, children }: { titulo: string; descripcion?: string; children: React.ReactNode }) {
@@ -51,7 +59,25 @@ export function FormularioInsumo({
     alExito: (r) => router.push(`/admin/insumos/${r.id}`),
     toastError: false,
   });
-  const actualizar = useAccion(actualizarInsumoAccion, { exito: "Cambios guardados", toastError: false });
+  const refFormulario = React.useRef<HTMLFormElement>(null);
+  const guardado = React.useRef<string | null>(null);
+  const [sucio, setSucio] = React.useState(false);
+  const actualizar = useAccion(actualizarInsumoAccion, {
+    exito: "Datos del insumo guardados",
+    toastError: false,
+    alExito: () => {
+      if (refFormulario.current) guardado.current = huella(refFormulario.current);
+      setSucio(false);
+    },
+  });
+  // Solo al editar: en "Nuevo insumo" hay un único formulario y un único botón.
+  useCambiosSinGuardar(Boolean(insumo) && sucio);
+  React.useEffect(() => {
+    if (refFormulario.current) guardado.current = huella(refFormulario.current);
+  }, []);
+  const revisarCambios = () => {
+    if (insumo && refFormulario.current && guardado.current !== null) setSucio(huella(refFormulario.current) !== guardado.current);
+  };
   const accion = insumo ? actualizar : crear;
   const validacion = useValidacion(esquemaInsumo, accion.erroresCampo);
   const e = validacion.errores;
@@ -83,14 +109,24 @@ export function FormularioInsumo({
   const hayErroresCampo = Object.keys(e).length > 0;
 
   return (
-    <form noValidate onSubmit={enviar} onChange={validacion.alCambiar} className="space-y-6">
+    <form
+      ref={refFormulario}
+      noValidate
+      onSubmit={enviar}
+      onChange={(evento) => {
+        validacion.alCambiar(evento);
+        revisarCambios();
+      }}
+      onInput={revisarCambios}
+      className="space-y-6"
+    >
       {accion.error && !hayErroresCampo ? <Alert tono="peligro">{accion.error}</Alert> : null}
       {hayErroresCampo ? (
         <Alert tono="peligro">Revisa los campos marcados antes de guardar.</Alert>
       ) : null}
 
       <Seccion titulo="Identificación" descripcion="Cómo se reconoce el insumo en toda la red.">
-        <Field label="Código (SKU)" requerido error={e.codigo} ayuda="Único en el catálogo. Ej.: JER-10">
+        <Field label="Código" requerido error={e.codigo} ayuda="Código interno del insumo. Único en el catálogo. Ej.: JER-10">
           <Input
             name="codigo"
             defaultValue={insumo?.codigo}
@@ -168,13 +204,18 @@ export function FormularioInsumo({
         </div>
       </Seccion>
 
-      <div className="flex flex-col-reverse gap-2 border-t border-borde pt-5 sm:flex-row sm:justify-end">
+      <div className="flex flex-col-reverse gap-2 border-t border-borde pt-5 sm:flex-row sm:items-center sm:justify-end">
+        {insumo ? (
+          <span className="sm:mr-auto">
+            <AvisoCambiosSinGuardar visible={sucio} detalle="datos del insumo" />
+          </span>
+        ) : null}
         <Link href="/admin/insumos" className={buttonClasses({ variant: "secundario" })}>
           {insumo ? "Volver al catálogo" : "Cancelar"}
         </Link>
         <Button type="submit" cargando={accion.pendiente}>
           <Save aria-hidden />
-          {insumo ? "Guardar cambios" : "Crear insumo"}
+          {insumo ? "Guardar datos del insumo" : "Crear insumo"}
         </Button>
       </div>
     </form>

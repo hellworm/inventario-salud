@@ -21,6 +21,15 @@ export interface Validacion<E extends z.ZodType> {
 }
 
 /**
+ * Los mensajes de validación terminan siempre en punto ("Selecciona un rol.")
+ * y usan el vocabulario de la interfaz ("correo electrónico", no "email").
+ */
+export function conPuntoFinal(mensaje: string): string {
+  const limpio = mensaje.trim().replace(/\be-?mail\b/gi, "correo electrónico");
+  return /[.!?…:]$/.test(limpio) || limpio === "" ? limpio : `${limpio}.`;
+}
+
+/**
  * Validación en línea para formularios de administración: valida con el
  * esquema zod isomórfico antes de enviar, combina los errores del servidor
  * (unicidad, reglas de negocio) y borra el error de un campo al editarlo.
@@ -73,7 +82,7 @@ export function useValidacion<E extends z.ZodType>(esquema: E, erroresServidor: 
   const errores = React.useMemo(() => {
     const combinados: ErroresCampo = {};
     for (const [campo, mensajes] of Object.entries({ ...erroresServidor, ...locales })) {
-      if (!editados.has(campo)) combinados[campo] = mensajes;
+      if (!editados.has(campo)) combinados[campo] = mensajes.map(conPuntoFinal);
     }
     return combinados;
   }, [erroresServidor, locales, editados]);

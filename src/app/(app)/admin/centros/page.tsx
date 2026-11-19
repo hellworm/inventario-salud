@@ -97,7 +97,7 @@ export default async function PaginaAdminCentros() {
                 <dl className="grid grid-cols-3 gap-3 border-t border-borde pt-4">
                   <Dato etiqueta="Ubicaciones" valor={formatearNumero(c.ubicacionesActivas)} />
                   <Dato etiqueta="Usuarios" valor={formatearNumero(c.usuariosAsignados)} />
-                  <Dato etiqueta="Unidades" valor={formatearNumero(c.existencias)} />
+                  <Dato etiqueta="Stock" valor={c.existencias > 0 ? "Con stock" : "Sin stock"} />
                 </dl>
                 </div>
               </Link>

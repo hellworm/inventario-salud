@@ -1,9 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { History, X } from "lucide-react";
-import { FiltroSelect } from "@/components/alertas/filtro-select";
-import { FiltroPeriodo } from "@/components/reportes/filtro-periodo";
-import { BotonExportar, CeldaInsumo, FiltroCentro, NavReportes } from "@/components/reportes/piezas";
+import { BarraFiltros, FiltroBusqueda, FiltroCentro, FiltroPeriodo, FiltroSelect } from "@/components/admin/filtros-url";
+import {
+  AccionesReporte,
+  CantidadUnidad,
+  CeldaInsumo,
+  CLASE_ENCABEZADO_IMPRIMIBLE,
+  DosLineas,
+  NavReportes,
+  VistaReporte,
+} from "@/components/reportes/piezas";
 import {
   BadgeTipoMovimiento,
   Card,
@@ -12,7 +19,6 @@ import {
   EmptyState,
   PageHeader,
   Pagination,
-  SearchInput,
   type Columna,
 } from "@/components/ui";
 import { ETIQUETA_TIPO_MOVIMIENTO, SIGNO_MOVIMIENTO, TIPOS_MOVIMIENTO } from "@/lib/estados";
@@ -29,45 +35,51 @@ function columnas(mostrarCentro: boolean): Columna<FilaReporteMovimiento>[] {
   return [
     {
       clave: "insumo",
-      encabezado: "Insumo",
+      encabezado: "Insumo y lote",
       movil: "titulo",
+      className: "md:w-[30%]",
       celda: (m) => <CeldaInsumo nombre={m.nombre} codigo={m.codigo} extra={`Lote ${m.numeroLote}`} />,
     },
-    { clave: "tipo", encabezado: "Tipo", movil: "destacado", celda: (m) => <BadgeTipoMovimiento tipo={m.tipo} /> },
     {
-      clave: "cantidad",
-      encabezado: "Cantidad",
-      alinear: "derecha",
+      clave: "tipo",
+      encabezado: "Tipo y motivo",
+      movil: "destacado",
       celda: (m) => (
-        <span className="cifras whitespace-nowrap font-semibold">
-          {SIGNO_MOVIMIENTO[m.tipo] > 0 ? "+" : "−"}
-          {formatearNumero(m.cantidad)} <span className="font-normal text-texto-tenue">{m.unidadMedida}</span>
+        <span className="inline-flex flex-col items-end gap-1 md:items-start">
+          <BadgeTipoMovimiento tipo={m.tipo} />
+          {m.motivo || m.documentoRef ? (
+            <span className="text-xs text-texto-suave break-words max-md:hidden">{m.motivo ?? m.documentoRef}</span>
+          ) : null}
         </span>
       ),
     },
     {
-      clave: "ubicacion",
-      encabezado: mostrarCentro ? "Centro y ubicación" : "Ubicación",
-      celda: (m) => (mostrarCentro ? `${m.centro} · ${m.ubicacion}` : m.ubicacion),
+      clave: "cantidad",
+      encabezado: "Cantidad",
+      alinear: "derecha",
+      celda: (m) => <CantidadUnidad cantidad={m.cantidad} unidad={m.unidadMedida} signo={SIGNO_MOVIMIENTO[m.tipo]} />,
     },
     {
-      clave: "detalle",
-      encabezado: "Motivo / documento",
-      movil: "oculto",
-      celda: (m) => m.motivo ?? m.documentoRef ?? <span className="text-texto-tenue">—</span>,
+      clave: "ubicacion",
+      encabezado: "Ubicación",
+      celda: (m) => <DosLineas principal={m.ubicacion} secundario={mostrarCentro ? m.centro : undefined} />,
     },
-    { clave: "usuario", encabezado: "Usuario", movil: "oculto", celda: (m) => m.usuario },
     {
       clave: "fecha",
-      encabezado: "Fecha",
+      encabezado: "Fecha y usuario",
       alinear: "derecha",
-      celda: (m) => <span className="cifras whitespace-nowrap text-texto-suave">{formatearFechaHora(m.creadoEn)}</span>,
+      celda: (m) => (
+        <DosLineas
+          principal={<span className="cifras whitespace-nowrap text-texto-suave">{formatearFechaHora(m.creadoEn)}</span>}
+          secundario={<span className="max-md:hidden">{m.usuario}</span>}
+        />
+      ),
     },
   ];
 }
 
 export default async function PaginaReporteMovimientos({ searchParams }: PageProps<"/reportes/movimientos">) {
-  const { actor, centroId: centroActivoId, centro, centros } = await contextoPagina("reportes:ver");
+  const { sesion, actor, centroId: centroActivoId, centro, centros } = await contextoPagina("reportes:ver");
   const f = leerFiltros(await searchParams);
   const centroId = resolverCentro(centroActivoId, centros, f.centro);
   const reporte = await reporteMovimientos(actor, {
@@ -89,41 +101,43 @@ export default async function PaginaReporteMovimientos({ searchParams }: PagePro
     desde: periodo.desde,
     hasta: periodo.hasta,
   };
-  const maximoUnidades = Math.max(1, ...reporte.porTipo.map((t) => t.unidades));
+  const maximoMovimientos = Math.max(1, ...reporte.porTipo.map((t) => t.movimientos));
 
   return (
-    <>
+    <VistaReporte
+      contexto={`${alcance} · Movimientos del ${formatearDia(periodo.desde)} al ${formatearDia(periodo.hasta)}`}
+      generadoPor={sesion.usuario.nombre}
+      generadoEl={formatearFechaHora(new Date())}
+    >
       <PageHeader
-        titulo="Movimientos"
+        className={CLASE_ENCABEZADO_IMPRIMIBLE}
+        titulo="Reporte de movimientos"
         descripcion={
           <>
             {alcance} · Del {formatearDia(periodo.desde)} al {formatearDia(periodo.hasta)} · {pluralizar(reporte.total, "movimiento")}
           </>
         }
         volver={{ href: "/reportes", label: "Reportes" }}
-        acciones={<BotonExportar href={construirHref("/reportes/exportar/movimientos", { ...filtrosUrl, centro: centroId })} />}
+        acciones={<AccionesReporte hrefCsv={construirHref("/reportes/exportar/movimientos", { ...filtrosUrl, centro: centroId })} />}
       />
       <NavReportes activo="movimientos" />
 
-      <div className="mb-4 flex flex-col gap-3">
+      <BarraFiltros parametros={["q", "tipo", "centro", "insumo", "desde", "hasta"]}>
         <FiltroPeriodo desde={periodo.desde} hasta={periodo.hasta} />
-        <div className="grid gap-2 sm:grid-cols-2 lg:flex">
-          <SearchInput placeholder="Buscar insumo, código, lote o documento…" label="Buscar en movimientos" className="sm:col-span-2 lg:w-96" />
-          <FiltroSelect
-            parametro="tipo"
-            etiqueta="Tipo de movimiento"
-            todos="Todos los tipos"
-            opciones={TIPOS_MOVIMIENTO.map((t) => ({ value: t, label: ETIQUETA_TIPO_MOVIMIENTO[t] }))}
-            className="lg:w-56"
-          />
-          <FiltroCentro centroActivoId={centroActivoId} centros={centros} className="lg:w-64" />
-        </div>
+        <FiltroBusqueda placeholder="Insumo, código, lote o documento…" />
+        <FiltroSelect
+          parametro="tipo"
+          etiqueta="Tipo de movimiento"
+          todos="Todos"
+          opciones={TIPOS_MOVIMIENTO.map((t) => ({ value: t, label: ETIQUETA_TIPO_MOVIMIENTO[t] }))}
+        />
+        <FiltroCentro centroActivoId={centroActivoId} centros={centros} />
         {reporte.insumo ? (
-          <p className="flex flex-wrap items-center gap-2 text-sm text-texto-suave">
+          <p className="col-span-2 flex w-full flex-wrap items-center gap-2 text-sm text-texto-suave">
             Solo movimientos de
             <Link
               href={construirHref("/reportes/movimientos", { ...filtrosUrl, insumo: undefined })}
-              className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-marca-200 bg-marca-50 py-1 pr-2 pl-3 font-medium text-marca-800 hover:border-marca-300"
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-marca-200 bg-marca-50 py-1 pr-2 pl-3 font-medium text-marca-800 hover:border-marca-300 md:min-h-9 md:pointer-coarse:min-h-11"
             >
               {reporte.insumo.nombre}
               <X className="size-4" aria-hidden />
@@ -131,18 +145,17 @@ export default async function PaginaReporteMovimientos({ searchParams }: PagePro
             </Link>
           </p>
         ) : null}
-      </div>
+      </BarraFiltros>
 
       {reporte.porTipo.length > 0 ? (
         <Card className="mb-4">
-          <CardHeader titulo="Resumen por tipo" descripcion="Unidades movidas en el período (las unidades de medida difieren entre insumos)" />
+          <CardHeader titulo="Resumen por tipo" descripcion="Cantidad de movimientos registrados en el período" />
           <table className="w-full text-sm">
-            <caption className="sr-only">Movimientos y unidades por tipo</caption>
+            <caption className="sr-only">Movimientos por tipo</caption>
             <thead className="sr-only">
               <tr>
                 <th scope="col">Tipo</th>
                 <th scope="col">Proporción</th>
-                <th scope="col">Unidades</th>
                 <th scope="col">Movimientos</th>
               </tr>
             </thead>
@@ -155,13 +168,12 @@ export default async function PaginaReporteMovimientos({ searchParams }: PagePro
                   <td className="hidden w-full py-1.5 sm:table-cell" aria-hidden>
                     <span
                       className="block h-2.5 min-w-[3px] rounded-r-[4px] bg-marca-500"
-                      style={{ width: `${(t.unidades / maximoUnidades) * 100}%` }}
+                      style={{ width: `${(t.movimientos / maximoMovimientos) * 100}%` }}
                     />
                   </td>
-                  <td className="cifras py-1.5 pl-3 text-right font-semibold whitespace-nowrap">{formatearNumero(t.unidades)} u.</td>
-                  <td className="cifras py-1.5 pl-4 text-right whitespace-nowrap text-texto-suave">
-                    {formatearNumero(t.movimientos)} <span className="sm:hidden">mov.</span>
-                    <span className="max-sm:hidden">{t.movimientos === 1 ? "movimiento" : "movimientos"}</span>
+                  <td className="cifras py-1.5 pl-4 text-right font-semibold whitespace-nowrap">
+                    {formatearNumero(t.movimientos)}{" "}
+                    <span className="font-normal text-texto-suave">{t.movimientos === 1 ? "movimiento" : "movimientos"}</span>
                   </td>
                 </tr>
               ))}
@@ -186,7 +198,7 @@ export default async function PaginaReporteMovimientos({ searchParams }: PagePro
           }
         />
       </Card>
-      <Pagination {...reporte} className="mt-4" />
-    </>
+      <Pagination {...reporte} className="mt-4 print:hidden" />
+    </VistaReporte>
   );
 }

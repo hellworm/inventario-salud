@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Download, PackageCheck } from "lucide-react";
 import { BotonImprimir } from "@/components/alertas/boton-imprimir";
-import { FiltroSelect } from "@/components/alertas/filtro-select";
+import { BarraFiltros, FiltroCentro, FiltroSelect } from "@/components/admin/filtros-url";
 import "@/components/alertas/impresion.css";
 import { BadgeEstadoStock, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui";
 import { formatearDia, formatearFechaHora } from "@/lib/fechas";
@@ -10,6 +10,7 @@ import { leerFiltros } from "@/lib/filtros-reportes";
 import { formatearNumero, pluralizar } from "@/lib/formato";
 import { construirHref, resolverCentro } from "@/lib/parametros-url";
 import { contextoPagina } from "@/server/auth/sesion";
+import { pluralUnidad, unidadSegun } from "@/lib/unidades";
 import { listaReposicion, listarCategorias, type AlertaStock } from "@/server/servicios";
 
 export const metadata: Metadata = { title: "Lista de reposición" };
@@ -25,13 +26,13 @@ function TablaReposicion({ items, titulo }: { items: AlertaStock[]; titulo: stri
           <caption className="sr-only">{titulo}</caption>
           <thead>
             <tr className="border-b border-borde bg-superficie-2 text-left text-xs tracking-wide text-texto-suave uppercase print:border-b-2 print:border-texto print:bg-transparent print:text-[8pt] print:text-texto">
-              <th scope="col" className="w-[36%] px-4 py-3 font-semibold print:px-1.5 print:py-1.5">Insumo</th>
+              <th scope="col" className="px-4 py-3 font-semibold xl:w-[36%] print:w-[36%] print:px-1.5 print:py-1.5">Insumo</th>
               <th scope="col" className="px-4 py-3 font-semibold print:px-1.5 print:py-1.5">Estado</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Disponible</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Mínimo</th>
-              <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Máximo</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold max-xl:hidden print:table-cell print:px-1.5 print:py-1.5">Máximo</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Falta mínimo</th>
-              <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Falta máximo</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold max-xl:hidden print:table-cell print:px-1.5 print:py-1.5">Falta máximo</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Sugerido</th>
               <th scope="col" className="hidden w-[22mm] px-1.5 py-1.5 text-right font-semibold print:table-cell">Pedido</th>
             </tr>
@@ -39,13 +40,14 @@ function TablaReposicion({ items, titulo }: { items: AlertaStock[]; titulo: stri
           <tbody className="divide-y divide-borde print:divide-borde-fuerte">
             {items.map((i) => (
               <tr key={`${i.insumoId}:${i.centroId}`}>
-                <th scope="row" className="px-4 py-3 text-left font-normal print:px-1.5 print:py-1.5">
-                  <Link href={`/inventario/${i.insumoId}`} className="font-medium text-texto hover:text-marca-700 print:no-underline">
-                    {i.nombre}
+                <th scope="row" className="px-4 text-left font-normal print:px-1.5">
+                  {/* Todo el bloque es el enlace: objetivo táctil de más de 44 px de alto. */}
+                  <Link href={`/inventario/${i.insumoId}`} className="group flex min-h-12 flex-col justify-center py-2 print:min-h-0 print:py-1.5 print:no-underline">
+                    <span className="font-medium text-texto group-hover:text-marca-700">{i.nombre}</span>
+                    <span className="text-xs text-texto-tenue print:text-[8pt] print:text-texto-suave">
+                      {i.codigo} · {i.categoria} · en {pluralUnidad(i.unidadMedida)}
+                    </span>
                   </Link>
-                  <span className="block text-xs text-texto-tenue print:text-[8pt] print:text-texto-suave">
-                    {i.codigo} · {i.categoria} · {i.unidadMedida}
-                  </span>
                 </th>
                 <td className="px-4 py-3 print:px-1.5 print:py-1.5">
                   <span className="print:hidden">
@@ -55,9 +57,9 @@ function TablaReposicion({ items, titulo }: { items: AlertaStock[]; titulo: stri
                 </td>
                 <td className="cifras px-4 py-3 text-right print:px-1.5 print:py-1.5">{numero(i.disponible)}</td>
                 <td className="cifras px-4 py-3 text-right print:px-1.5 print:py-1.5">{numero(i.stockMinimo)}</td>
-                <td className="cifras px-4 py-3 text-right text-texto-suave print:px-1.5 print:py-1.5 print:text-texto">{numero(i.stockMaximo)}</td>
+                <td className="cifras px-4 py-3 text-right text-texto-suave max-xl:hidden print:table-cell print:px-1.5 print:py-1.5 print:text-texto">{numero(i.stockMaximo)}</td>
                 <td className="cifras px-4 py-3 text-right print:px-1.5 print:py-1.5">{numero(i.faltante)}</td>
-                <td className="cifras px-4 py-3 text-right text-texto-suave print:px-1.5 print:py-1.5 print:text-texto">{numero(i.faltaParaMaximo)}</td>
+                <td className="cifras px-4 py-3 text-right text-texto-suave max-xl:hidden print:table-cell print:px-1.5 print:py-1.5 print:text-texto">{numero(i.faltaParaMaximo)}</td>
                 <td className="cifras px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">{numero(i.sugerido)}</td>
                 <td className="hidden px-1.5 py-1.5 print:table-cell">
                   <span className="block h-[7mm] rounded-sm border border-borde-fuerte" />
@@ -97,7 +99,7 @@ function TablaReposicion({ items, titulo }: { items: AlertaStock[]; titulo: stri
               <div>
                 <dt className="text-xs text-texto-tenue">Sugerido</dt>
                 <dd className="cifras font-semibold">
-                  {numero(i.sugerido)} <span className="font-normal text-texto-tenue">{i.unidadMedida}</span>
+                  {numero(i.sugerido)} <span className="font-normal text-texto-tenue">{unidadSegun(i.sugerido, i.unidadMedida)}</span>
                 </dd>
               </div>
             </dl>
@@ -127,8 +129,9 @@ export default async function PaginaReposicion({ searchParams }: PageProps<"/ale
 
   return (
     <div data-imprimible>
+      {/* Un solo <h1> en el documento: en la hoja impresa queda el título y se ocultan el enlace, la descripción y los botones. */}
       <PageHeader
-        className="print:hidden"
+        className="print:mb-1 print:[&_a]:hidden print:[&_p]:hidden print:[&>div:last-child]:hidden print:[&_h1]:text-[18pt] print:[&_h1]:leading-tight"
         titulo="Lista de reposición"
         descripcion={
           <>
@@ -148,38 +151,27 @@ export default async function PaginaReposicion({ searchParams }: PageProps<"/ale
         }
       />
 
-      {/* Encabezado del documento impreso */}
-      <header className="mb-5 hidden border-b-2 border-texto pb-3 print:block">
-        <p className="text-[9pt] font-semibold tracking-wide text-texto-suave uppercase">RedInsumos</p>
-        <h1 className="text-[18pt] leading-tight font-semibold">Lista de reposición</h1>
-        <p className="mt-1 text-[10pt]">
+      {/* Datos del documento impreso (en pantalla ya están en el encabezado y los filtros) */}
+      <div className="mb-5 hidden border-b-2 border-texto pb-3 print:block">
+        <p className="text-[10pt]">
           {alcance}
           {categoria ? ` · ${categoria}` : ""} · {resumen}
         </p>
         <p className="text-[9pt] text-texto-suave">
-          Generada el {formatearFechaHora(new Date())} por {sesion.usuario.nombre} · Stock disponible al {formatearDia(lista.dia)} (no
-          incluye lotes vencidos)
+          RedInsumos · Generada el {formatearFechaHora(new Date())} por {sesion.usuario.nombre} · Stock disponible al{" "}
+          {formatearDia(lista.dia)} (no incluye lotes vencidos)
         </p>
-      </header>
+      </div>
 
-      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:flex print:hidden">
+      <BarraFiltros parametros={["categoria", "centro"]}>
         <FiltroSelect
           parametro="categoria"
           etiqueta="Categoría"
-          todos="Todas las categorías"
+          todos="Todas"
           opciones={categorias.map((c) => ({ value: c.id, label: c.nombre }))}
-          className="lg:w-64"
         />
-        {!centroActivoId && centros.length > 1 ? (
-          <FiltroSelect
-            parametro="centro"
-            etiqueta="Centro"
-            todos="Todos los centros"
-            opciones={centros.map((c) => ({ value: c.id, label: c.nombre }))}
-            className="lg:w-64"
-          />
-        ) : null}
-      </div>
+        <FiltroCentro centroActivoId={centroActivoId} centros={centros} />
+      </BarraFiltros>
 
       {lista.grupos.length === 0 ? (
         <EmptyState
@@ -202,8 +194,8 @@ export default async function PaginaReposicion({ searchParams }: PageProps<"/ale
       )}
 
       <p className="mt-4 max-w-3xl text-sm text-texto-suave print:mt-5 print:text-[8.5pt]">
-        <strong className="font-semibold text-texto">Sugerido</strong>: unidades para llegar al stock máximo; si el insumo no tiene
-        máximo definido, las que faltan para el mínimo. Solo aparecen insumos con stock mínimo configurado en el centro.
+        <strong className="font-semibold text-texto">Sugerido</strong>: cantidad para llegar al stock máximo; si el insumo no tiene
+        máximo definido, la que falta para el mínimo. Cada cantidad va en la unidad de medida del insumo. Solo aparecen insumos con stock mínimo configurado en el centro.
       </p>
 
       {/* Firmas: solo en la hoja impresa */}

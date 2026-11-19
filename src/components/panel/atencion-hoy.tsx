@@ -1,10 +1,30 @@
 import * as React from "react";
 import Link from "next/link";
-import { CalendarClock, CalendarX2, ChevronRight, CircleCheck, PackageX, type LucideIcon } from "lucide-react";
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  CalendarClock,
+  CalendarX2,
+  ChevronRight,
+  CircleCheck,
+  PackageX,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
+import {
+  CLASE_ACCION_FILA,
+  hrefDarDeBaja,
+  hrefIngresar,
+  hrefRetirar,
+  type UbicacionPorCentro,
+} from "@/components/alertas/acciones";
 import { Card, CardHeader } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { describirVencimiento } from "@/lib/fechas";
 import { formatearNumero, pluralizar } from "@/lib/formato";
+import type { Rol } from "@/lib/permisos";
+import { puede } from "@/lib/permisos";
+import { cantidadConUnidad } from "@/lib/unidades";
 import type { AlertaStock, AlertaVencimiento, AtencionHoy as Atencion } from "@/server/servicios";
 
 type Tono = "peligro" | "alerta";
@@ -23,7 +43,6 @@ function Grupo({
   total,
   mostrados,
   hrefTodos,
-  accion,
   children,
 }: {
   orden: number;
@@ -34,13 +53,12 @@ function Grupo({
   total: number;
   mostrados: number;
   hrefTodos: string;
-  accion?: React.ReactNode;
   children: React.ReactNode;
 }) {
   if (total === 0) return null;
   return (
     <li>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-borde bg-superficie-2 px-4 py-2.5 sm:px-5">
+      <div className="flex items-center gap-x-3 border-t border-borde bg-superficie-2 px-4 py-2.5 sm:px-5">
         <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-lg", TONO[tono])}>
           <Icono className="size-4" aria-hidden />
         </span>
@@ -51,7 +69,6 @@ function Grupo({
           </h3>
           <p className="text-xs text-texto-suave">{ayuda}</p>
         </div>
-        {accion}
       </div>
       <ul className="divide-y divide-borde">{children}</ul>
       {total > mostrados ? (
@@ -67,46 +84,96 @@ function Grupo({
   );
 }
 
-function Fila({ href, titulo, detalle, valor, nota }: { href: string; titulo: string; detalle: string; valor: React.ReactNode; nota: string }) {
+interface Accion {
+  href: string;
+  texto: string;
+  /** Nombre accesible completo ("Ingresar Guante de nitrilo M"). */
+  etiqueta: string;
+  icono: LucideIcon;
+}
+
+/**
+ * Fila: el bloque de texto enlaza a la ficha del insumo y, si el rol puede
+ * resolver la alerta, un botón aparte lleva al formulario con el contexto.
+ */
+function Fila({
+  href,
+  titulo,
+  detalle,
+  valor,
+  nota,
+  accion,
+}: {
+  href: string;
+  titulo: string;
+  detalle: string;
+  valor: React.ReactNode;
+  nota: string;
+  accion?: Accion;
+}) {
   return (
-    <li>
-      <Link href={href} className="group flex min-h-14 items-center gap-3 px-4 py-2.5 hover:bg-marca-50/60 sm:px-5">
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[0.9375rem] font-medium group-hover:text-marca-800">{titulo}</span>
+    <li className="flex items-center gap-2 pr-3 hover:bg-marca-50/60 sm:pr-4">
+      {/* En móvil el valor baja a una segunda línea para no truncar el nombre del insumo. */}
+      <Link
+        href={href}
+        className="group flex min-h-14 min-w-0 flex-1 flex-col justify-center gap-x-3 py-2.5 pr-1 pl-4 sm:flex-row sm:items-center sm:justify-start sm:pl-5"
+      >
+        <span className="min-w-0 sm:flex-1">
+          <span className="block text-[0.9375rem] font-medium group-hover:text-marca-800 sm:truncate">{titulo}</span>
           <span className="block truncate text-xs text-texto-suave">{detalle}</span>
         </span>
-        <span className="shrink-0 text-right">
+        <span className="shrink-0 max-sm:mt-0.5 max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-2 sm:text-right">
           <span className="cifras block text-sm font-semibold">{valor}</span>
           <span className="block text-xs text-texto-suave">{nota}</span>
         </span>
-        <ChevronRight className="size-4 shrink-0 text-texto-tenue group-hover:text-marca-700" aria-hidden />
+        {accion ? null : (
+          <ChevronRight className="size-4 shrink-0 text-texto-tenue group-hover:text-marca-700 max-sm:hidden" aria-hidden />
+        )}
       </Link>
+      {accion ? (
+        <Link href={accion.href} aria-label={accion.etiqueta} className={cn(CLASE_ACCION_FILA, "min-h-11")}>
+          <accion.icono aria-hidden className="max-sm:hidden" />
+          {accion.texto}
+        </Link>
+      ) : null}
     </li>
   );
 }
 
 const fichaDe = (a: AlertaStock | AlertaVencimiento) => `/inventario/${a.insumoId}`;
 
+/** Qué hacer con los vencidos, según lo que el rol puede hacer. */
+const AYUDA_VENCIDOS: Record<Rol, string> = {
+  ADMIN: "Sepáralos y dalos de baja como merma.",
+  BODEGUERO: "Sepáralos y avisa a tu administrador para darlos de baja.",
+  VISITANTE: "Lotes con la fecha de vencimiento cumplida que aún figuran con stock.",
+};
+
 /**
  * "Qué requiere atención hoy": lista priorizada (1.º sin stock, 2.º vencidos
  * por dar de baja, 3.º lo que vence esta semana). Cada fila lleva a la ficha
- * del insumo; las acciones de escritura solo aparecen si el rol puede hacerlas.
+ * del insumo y, solo si el rol tiene el permiso, ofrece la acción que resuelve
+ * la alerta con el insumo, la ubicación y el lote ya elegidos.
  */
 export function AtencionHoy({
   atencion,
   mostrarCentro,
-  puedeIngresar,
-  puedeDarDeBaja,
+  rol,
+  ubicacionesIngreso,
   className,
 }: {
   atencion: Atencion;
   /** Muestra el centro en cada fila (vista "Toda la red"). */
   mostrarCentro: boolean;
-  puedeIngresar: boolean;
-  puedeDarDeBaja: boolean;
+  rol: Rol;
+  /** Ubicación propuesta por centro para el botón "Ingresar". */
+  ubicacionesIngreso: UbicacionPorCentro;
   className?: string;
 }) {
-  const enlaceAccion = "inline-flex min-h-9 shrink-0 items-center rounded-control border border-borde-fuerte/70 bg-superficie px-3 text-sm font-medium hover:border-borde-fuerte hover:bg-superficie-2";
+  const puedeIngresar = puede(rol, "movimientos:ingreso");
+  const puedeRetirar = puede(rol, "movimientos:retiro");
+  const puedeDarDeBaja = puede(rol, "movimientos:merma");
+  const soloLectura = !puedeIngresar && !puedeRetirar;
   const lugar = (centro: string, resto: string) => (mostrarCentro ? `${centro} · ${resto}` : resto);
 
   return (
@@ -133,19 +200,12 @@ export function AtencionHoy({
           <Grupo
             orden={1}
             titulo="Sin stock"
-            ayuda="No queda stock utilizable: reponer cuanto antes."
+            ayuda={soloLectura ? "No queda stock utilizable de estos insumos." : "No queda stock utilizable: reponer cuanto antes."}
             icono={PackageX}
             tono="peligro"
             total={atencion.sinStock.total}
             mostrados={atencion.sinStock.items.length}
             hrefTodos="/alertas?tab=sin-stock"
-            accion={
-              puedeIngresar ? (
-                <Link href="/movimientos/ingreso" className={enlaceAccion}>
-                  Registrar ingreso
-                </Link>
-              ) : null
-            }
           >
             {atencion.sinStock.items.map((a) => (
               <Fila
@@ -154,31 +214,25 @@ export function AtencionHoy({
                 titulo={a.nombre}
                 detalle={lugar(a.centro, `${a.codigo} · ${a.categoria}`)}
                 valor={`Faltan ${formatearNumero(a.faltante)}`}
-                nota={`mínimo ${formatearNumero(a.stockMinimo)} ${a.unidadMedida}`}
+                nota={`mínimo ${cantidadConUnidad(a.stockMinimo, a.unidadMedida)}`}
+                accion={
+                  puedeIngresar
+                    ? { href: hrefIngresar(a, ubicacionesIngreso), texto: "Ingresar", etiqueta: `Ingresar ${a.nombre}`, icono: ArrowDownToLine }
+                    : undefined
+                }
               />
             ))}
           </Grupo>
 
           <Grupo
             orden={2}
-            titulo="Vencidos por dar de baja"
-            ayuda={
-              puedeDarDeBaja
-                ? "Sepáralos y regístralos como merma."
-                : "Sepáralos y avisa a un administrador para darlos de baja."
-            }
+            titulo={soloLectura ? "Lotes vencidos" : "Vencidos por dar de baja"}
+            ayuda={AYUDA_VENCIDOS[rol]}
             icono={CalendarX2}
             tono="peligro"
             total={atencion.vencidos.total}
             mostrados={atencion.vencidos.items.length}
             hrefTodos="/alertas?tab=vencidos"
-            accion={
-              puedeDarDeBaja ? (
-                <Link href="/movimientos/ajuste" className={enlaceAccion}>
-                  Registrar merma
-                </Link>
-              ) : null
-            }
           >
             {atencion.vencidos.items.map((a) => (
               <Fila
@@ -186,8 +240,18 @@ export function AtencionHoy({
                 href={fichaDe(a)}
                 titulo={a.nombre}
                 detalle={lugar(a.centro, `${a.ubicacion} · Lote ${a.numeroLote}`)}
-                valor={`${formatearNumero(a.cantidad)} ${a.unidadMedida}`}
+                valor={cantidadConUnidad(a.cantidad, a.unidadMedida)}
                 nota={describirVencimiento(a.dias)}
+                accion={
+                  puedeDarDeBaja
+                    ? {
+                        href: hrefDarDeBaja(a),
+                        texto: "Dar de baja",
+                        etiqueta: `Dar de baja el lote ${a.numeroLote} de ${a.nombre}`,
+                        icono: Trash2,
+                      }
+                    : undefined
+                }
               />
             ))}
           </Grupo>
@@ -195,7 +259,7 @@ export function AtencionHoy({
           <Grupo
             orden={3}
             titulo="Vence esta semana"
-            ayuda="Úsalos primero para que no se pierdan."
+            ayuda={soloLectura ? "Lotes con stock que vencen en los próximos 7 días." : "Úsalos primero para que no se pierdan."}
             icono={CalendarClock}
             tono="alerta"
             total={atencion.venceEstaSemana.total}
@@ -208,8 +272,18 @@ export function AtencionHoy({
                 href={fichaDe(a)}
                 titulo={a.nombre}
                 detalle={lugar(a.centro, `${a.ubicacion} · Lote ${a.numeroLote}`)}
-                valor={`${formatearNumero(a.cantidad)} ${a.unidadMedida}`}
+                valor={cantidadConUnidad(a.cantidad, a.unidadMedida)}
                 nota={describirVencimiento(a.dias)}
+                accion={
+                  puedeRetirar
+                    ? {
+                        href: hrefRetirar(a),
+                        texto: "Retirar",
+                        etiqueta: `Retirar primero el lote ${a.numeroLote} de ${a.nombre}`,
+                        icono: ArrowUpFromLine,
+                      }
+                    : undefined
+                }
               />
             ))}
           </Grupo>

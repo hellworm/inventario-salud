@@ -1,9 +1,18 @@
 import type { Metadata } from "next";
 import { Boxes } from "lucide-react";
-import { FiltroSelect } from "@/components/alertas/filtro-select";
-import { BotonExportar, CeldaInsumo, Cifras, FiltroCentro, NavReportes } from "@/components/reportes/piezas";
-import { Card, DataTable, EmptyState, PageHeader, Pagination, SearchInput, type Columna } from "@/components/ui";
-import { formatearDia } from "@/lib/fechas";
+import { BarraFiltros, FiltroBusqueda, FiltroCentro, FiltroSelect } from "@/components/admin/filtros-url";
+import {
+  AccionesReporte,
+  CantidadUnidad,
+  CeldaInsumo,
+  Cifras,
+  DosLineas,
+  CLASE_ENCABEZADO_IMPRIMIBLE,
+  NavReportes,
+  VistaReporte,
+} from "@/components/reportes/piezas";
+import { Card, DataTable, EmptyState, PageHeader, Pagination, type Columna } from "@/components/ui";
+import { formatearDia, formatearFechaHora, hoyEnSantiago } from "@/lib/fechas";
 import { leerFiltros } from "@/lib/filtros-reportes";
 import { formatearCLP, formatearNumero, pluralizar } from "@/lib/formato";
 import { construirHref, resolverCentro } from "@/lib/parametros-url";
@@ -16,63 +25,56 @@ function columnas(mostrarCentro: boolean): Columna<FilaExistencia>[] {
   return [
     {
       clave: "insumo",
-      encabezado: "Insumo",
+      encabezado: "Insumo y lote",
       movil: "titulo",
-      celda: (f) => <CeldaInsumo nombre={f.nombre} codigo={f.codigo} extra={f.categoria} />,
+      className: "md:w-[30%]",
+      celda: (f) => <CeldaInsumo nombre={f.nombre} codigo={f.codigo} extra={`Lote ${f.numeroLote}`} />,
     },
     {
       clave: "ubicacion",
-      encabezado: mostrarCentro ? "Centro y ubicación" : "Ubicación",
-      celda: (f) => (mostrarCentro ? `${f.centro} · ${f.ubicacion}` : f.ubicacion),
+      encabezado: "Ubicación",
+      celda: (f) => <DosLineas principal={f.ubicacion} secundario={mostrarCentro ? f.centro : f.categoria} />,
     },
-    { clave: "lote", encabezado: "Lote", celda: (f) => <span className="cifras whitespace-nowrap">{f.numeroLote}</span> },
     {
       clave: "vencimiento",
       encabezado: "Vencimiento",
-      celda: (f) =>
-        f.fechaVencimiento ? (
-          <span className={f.diasParaVencer !== null && f.diasParaVencer < 0 ? "cifras font-medium text-peligro-700" : "cifras"}>
-            {formatearDia(f.fechaVencimiento)}
-            {f.diasParaVencer !== null && f.diasParaVencer < 0 ? " (vencido)" : ""}
-          </span>
-        ) : (
-          <span className="text-texto-tenue">Sin vencimiento</span>
-        ),
+      celda: (f) => {
+        if (!f.fechaVencimiento) return <span className="text-texto-tenue">Sin vencimiento</span>;
+        const vencido = f.diasParaVencer !== null && f.diasParaVencer < 0;
+        return (
+          <DosLineas
+            principal={<span className="cifras whitespace-nowrap">{formatearDia(f.fechaVencimiento)}</span>}
+            secundario={vencido ? <span className="font-semibold text-peligro-700">Vencido</span> : undefined}
+          />
+        );
+      },
     },
     {
       clave: "cantidad",
       encabezado: "Cantidad",
       alinear: "derecha",
       movil: "destacado",
-      celda: (f) => (
-        <span className="cifras whitespace-nowrap font-semibold">
-          {formatearNumero(f.cantidad)} <span className="font-normal text-texto-tenue">{f.unidadMedida}</span>
-        </span>
-      ),
-    },
-    {
-      clave: "costo",
-      encabezado: "Costo unitario",
-      alinear: "derecha",
-      movil: "oculto",
-      celda: (f) =>
-        f.costoUnitario === null ? (
-          <span className="text-texto-tenue">Sin costo</span>
-        ) : (
-          <span className="cifras">{formatearCLP(f.costoUnitario)}</span>
-        ),
+      celda: (f) => <CantidadUnidad cantidad={f.cantidad} unidad={f.unidadMedida} />,
     },
     {
       clave: "valor",
       encabezado: "Valor",
       alinear: "derecha",
-      celda: (f) => (f.valor === null ? <span className="text-texto-tenue">—</span> : <span className="cifras">{formatearCLP(f.valor)}</span>),
+      celda: (f) =>
+        f.valor === null || f.costoUnitario === null ? (
+          <span className="whitespace-nowrap text-texto-tenue">Sin costo</span>
+        ) : (
+          <DosLineas
+            principal={<span className="cifras whitespace-nowrap">{formatearCLP(f.valor)}</span>}
+            secundario={<span className="cifras whitespace-nowrap">{formatearCLP(f.costoUnitario)} c/u</span>}
+          />
+        ),
     },
   ];
 }
 
 export default async function PaginaReporteExistencias({ searchParams }: PageProps<"/reportes/existencias">) {
-  const { actor, centroId: centroActivoId, centro, centros } = await contextoPagina("reportes:ver");
+  const { sesion, actor, centroId: centroActivoId, centro, centros } = await contextoPagina("reportes:ver");
   const f = leerFiltros(await searchParams);
   const centroId = resolverCentro(centroActivoId, centros, f.centro);
   const [reporte, categorias] = await Promise.all([
@@ -83,34 +85,37 @@ export default async function PaginaReporteExistencias({ searchParams }: PagePro
   const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? "Toda la red";
 
   return (
-    <>
+    <VistaReporte
+      contexto={`${alcance} · Existencias al ${formatearDia(hoyEnSantiago())}`}
+      generadoPor={sesion.usuario.nombre}
+      generadoEl={formatearFechaHora(new Date())}
+    >
       <PageHeader
+        className={CLASE_ENCABEZADO_IMPRIMIBLE}
         titulo="Existencias"
         descripcion={<>{alcance} · Stock actual por centro, ubicación y lote, valorizado al costo de ingreso.</>}
         volver={{ href: "/reportes", label: "Reportes" }}
         acciones={
-          <BotonExportar href={construirHref("/reportes/exportar/existencias", { centro: centroId, categoria: f.categoriaId, q: f.texto })} />
+          <AccionesReporte hrefCsv={construirHref("/reportes/exportar/existencias", { centro: centroId, categoria: f.categoriaId, q: f.texto })} />
         }
       />
       <NavReportes activo="existencias" />
 
-      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:flex">
-        <SearchInput placeholder="Buscar insumo, código o lote…" label="Buscar en existencias" className="sm:col-span-2 lg:w-80" />
+      <BarraFiltros parametros={["q", "categoria", "centro"]}>
+        <FiltroBusqueda placeholder="Insumo, código o lote…" />
         <FiltroSelect
           parametro="categoria"
           etiqueta="Categoría"
-          todos="Todas las categorías"
+          todos="Todas"
           opciones={categorias.map((c) => ({ value: c.id, label: c.nombre }))}
-          className="lg:w-64"
         />
-        <FiltroCentro centroActivoId={centroActivoId} centros={centros} className="lg:w-64" />
-      </div>
+        <FiltroCentro centroActivoId={centroActivoId} centros={centros} />
+      </BarraFiltros>
 
       <Cifras
         cifras={[
           { etiqueta: "Valor del inventario", valor: formatearCLP(totales.valor), detalle: "Costo promedio de ingreso por lote" },
-          { etiqueta: "Unidades", valor: formatearNumero(totales.unidades), detalle: "Incluye lotes vencidos" },
-          { etiqueta: "Lotes por ubicación", valor: formatearNumero(totales.filas), detalle: "Filas del reporte" },
+          { etiqueta: "Lotes por ubicación", valor: formatearNumero(totales.filas), detalle: "Filas del reporte (incluye vencidos)" },
           {
             etiqueta: "Sin costo registrado",
             valor: formatearNumero(totales.filasSinCosto),
@@ -136,7 +141,7 @@ export default async function PaginaReporteExistencias({ searchParams }: PagePro
           }
         />
       </Card>
-      <Pagination {...reporte} className="mt-4" />
-    </>
+      <Pagination {...reporte} className="mt-4 print:hidden" />
+    </VistaReporte>
   );
 }

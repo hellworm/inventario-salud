@@ -70,7 +70,7 @@ export function AccionesPrincipales({ rol, className }: { rol: Rol; className?: 
               </span>
               <span className="min-w-0">
                 <span className="block text-base leading-tight font-semibold sm:text-lg">{titulo}</span>
-                <span className={cn("mt-0.5 hidden text-sm sm:block", i === 0 ? "text-white/85" : "text-texto-suave")}>{detalle}</span>
+                <span className={cn("mt-0.5 hidden text-sm sm:block", i === 0 ? "text-white" : "text-texto-suave")}>{detalle}</span>
               </span>
             </Link>
           </li>

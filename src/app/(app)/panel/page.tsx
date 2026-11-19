@@ -13,9 +13,11 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { AccesosRapidos, AccionesPrincipales } from "@/components/panel/accesos-rapidos";
+import { ubicacionesDeIngreso } from "@/components/alertas/acciones";
 import { AtencionHoy } from "@/components/panel/atencion-hoy";
 import { GraficoActividad, type DiaActividad } from "@/components/panel/grafico-actividad";
 import { GraficoVencimientos } from "@/components/panel/grafico-vencimientos";
+import { CantidadUnidad, DosLineas } from "@/components/reportes/piezas";
 import {
   Alert,
   BadgeTipoMovimiento,
@@ -32,47 +34,52 @@ import { cn } from "@/lib/cn";
 import { SIGNO_MOVIMIENTO } from "@/lib/estados";
 import { diaADate, formatearDia, formatearFechaHora, hoyEnSantiago } from "@/lib/fechas";
 import { formatearNumero, pluralizar } from "@/lib/formato";
-import { puede } from "@/lib/permisos";
+import { puede, type Rol } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
-import { resumenPanel, type ActividadDia, type FilaMovimiento, type ResumenCentro } from "@/server/servicios";
+import {
+  listarUbicaciones,
+  resumenPanel,
+  type ActividadDia,
+  type FilaMovimiento,
+  type ResumenCentro,
+} from "@/server/servicios";
 
 export const metadata: Metadata = { title: "Panel" };
 
-const COLUMNAS_MOVIMIENTOS: Columna<FilaMovimiento>[] = [
-  {
-    clave: "insumo",
-    encabezado: "Insumo",
-    movil: "titulo",
-    celda: (m) => (
-      <span className="block min-w-0">
-        <span className="block truncate font-medium">{m.insumoNombre}</span>
-        <span className="block truncate text-xs font-normal text-texto-tenue">
-          Lote {m.numeroLote} · {m.ubicacion}
-        </span>
-      </span>
-    ),
-  },
-  { clave: "tipo", encabezado: "Tipo", movil: "destacado", celda: (m) => <BadgeTipoMovimiento tipo={m.tipo} /> },
-  {
-    clave: "cantidad",
-    encabezado: "Cantidad",
-    alinear: "derecha",
-    celda: (m) => (
-      <span className="cifras font-semibold">
-        {SIGNO_MOVIMIENTO[m.tipo] > 0 ? "+" : "−"}
-        {formatearNumero(m.cantidad)} <span className="font-normal text-texto-tenue">{m.unidadMedida}</span>
-      </span>
-    ),
-  },
-  { clave: "centro", encabezado: "Centro", celda: (m) => m.centro },
-  { clave: "usuario", encabezado: "Usuario", movil: "oculto", celda: (m) => m.usuario },
-  {
-    clave: "fecha",
-    encabezado: "Fecha",
-    alinear: "derecha",
-    celda: (m) => <span className="cifras whitespace-nowrap text-texto-suave">{formatearFechaHora(m.creadoEn)}</span>,
-  },
-];
+function columnasMovimientos(mostrarCentro: boolean): Columna<FilaMovimiento>[] {
+  return [
+    {
+      clave: "insumo",
+      encabezado: "Insumo",
+      movil: "titulo",
+      className: "md:w-[36%]",
+      celda: (m) => (
+        <DosLineas principal={<span className="font-medium">{m.insumoNombre}</span>} secundario={`Lote ${m.numeroLote} · ${m.ubicacion}`} />
+      ),
+    },
+    { clave: "tipo", encabezado: "Tipo", movil: "destacado", celda: (m) => <BadgeTipoMovimiento tipo={m.tipo} /> },
+    {
+      clave: "cantidad",
+      encabezado: "Cantidad",
+      alinear: "derecha",
+      celda: (m) => <CantidadUnidad cantidad={m.cantidad} unidad={m.unidadMedida} signo={SIGNO_MOVIMIENTO[m.tipo]} />,
+    },
+    ...(mostrarCentro
+      ? [{ clave: "centro", encabezado: "Centro", celda: (m: FilaMovimiento) => m.centro } satisfies Columna<FilaMovimiento>]
+      : []),
+    {
+      clave: "fecha",
+      encabezado: "Fecha y usuario",
+      alinear: "derecha",
+      celda: (m) => (
+        <DosLineas
+          principal={<span className="cifras whitespace-nowrap text-texto-suave">{formatearFechaHora(m.creadoEn)}</span>}
+          secundario={<span className="max-md:hidden">{m.usuario}</span>}
+        />
+      ),
+    },
+  ];
+}
 
 const fmtDiaSemana = new Intl.DateTimeFormat("es-CL", { weekday: "long", timeZone: "UTC" });
 
@@ -99,7 +106,7 @@ function ConteoCentro({ valor, href, tono, etiqueta }: { valor: number; href: st
       href={href}
       aria-label={etiqueta}
       className={cn(
-        "cifras inline-flex min-h-8 min-w-9 items-center justify-center rounded-full px-2.5 text-sm font-semibold ring-1 ring-inset hover:ring-2",
+        "cifras relative inline-flex min-h-8 min-w-9 items-center justify-center rounded-full px-2.5 text-sm font-semibold ring-1 ring-inset after:absolute after:-inset-1.5 hover:ring-2",
         tono === "peligro" ? "bg-peligro-50 text-peligro-800 ring-peligro-600/25" : "bg-alerta-50 text-alerta-800 ring-alerta-500/40",
       )}
     >
@@ -152,13 +159,25 @@ const ESTADOS_INVENTARIO = [
   { estado: "VENCIDO", etiqueta: "Vencidos" },
 ] as const;
 
+/** Qué significa la tarjeta "Lotes vencidos" para cada rol (solo el administrador puede darlos de baja). */
+const DETALLE_VENCIDOS: Record<Rol, string> = {
+  ADMIN: "Dar de baja como merma",
+  BODEGUERO: "Sepáralos y avisa a tu administrador para darlos de baja",
+  VISITANTE: "Con stock físico aún registrado",
+};
+
 export default async function PaginaPanel({ searchParams }: PageProps<"/panel">) {
   const { sesion, actor, centroId, centro, centros } = await contextoPagina("panel:ver");
-  const [{ aviso }, resumen] = await Promise.all([searchParams, resumenPanel(actor, { centroId })]);
+  const [{ aviso }, resumen, ubicaciones] = await Promise.all([
+    searchParams,
+    resumenPanel(actor, { centroId }),
+    puede(actor.rol, "movimientos:ingreso") ? listarUbicaciones(actor, { centroId }) : [],
+  ]);
   const { alertas } = resumen;
   const nombre = sesion.usuario.nombre.split(" ")[0];
   const porVencerMasAdelante = alertas.porVencer60 + alertas.porVencer90;
   const esAdmin = actor.rol === "ADMIN";
+  const esVisitante = !puede(actor.rol, "movimientos:ingreso") && !puede(actor.rol, "movimientos:retiro");
   const puedeRegistrar = puede(actor.rol, "movimientos:ingreso") || puede(actor.rol, "movimientos:retiro");
   const totalMovimientos = resumen.actividad.reduce((s, d) => s + d.movimientos, 0);
 
@@ -200,7 +219,7 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
         <StatCard
           etiqueta="Sin stock"
           valor={formatearNumero(alertas.sinStock)}
-          detalle={alertas.sinStock === 0 ? "Todo con existencias" : "Requieren reposición"}
+          detalle={alertas.sinStock === 0 ? "Todo con existencias" : esVisitante ? "Sin stock utilizable" : "Requieren reposición"}
           icono={PackageX}
           tono={alertas.sinStock > 0 ? "peligro" : "exito"}
           href="/alertas?tab=sin-stock"
@@ -208,7 +227,7 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
         <StatCard
           etiqueta="Bajo el mínimo"
           valor={formatearNumero(alertas.bajoMinimo)}
-          detalle={alertas.bajoMinimo === 0 ? "Sobre el mínimo" : "Conviene reponer pronto"}
+          detalle={alertas.bajoMinimo === 0 ? "Sobre el mínimo" : esVisitante ? "Con stock, pero bajo su mínimo" : "Conviene reponer pronto"}
           icono={TriangleAlert}
           tono={alertas.bajoMinimo > 0 ? "alerta" : "exito"}
           href="/alertas?tab=bajo-minimo"
@@ -216,7 +235,7 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
         <StatCard
           etiqueta="Lotes vencidos"
           valor={formatearNumero(alertas.vencidos)}
-          detalle={alertas.vencidos === 0 ? "Sin vencidos en stock" : "Retirar y dar de baja"}
+          detalle={alertas.vencidos === 0 ? "Sin vencidos en stock" : DETALLE_VENCIDOS[actor.rol]}
           icono={CalendarX2}
           tono={alertas.vencidos > 0 ? "peligro" : "exito"}
           href="/alertas?tab=vencidos"
@@ -231,13 +250,13 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
         />
       </section>
 
-      <div className="mt-4 grid items-start gap-4 lg:grid-cols-3">
-        <div className="grid min-w-0 gap-4 lg:col-span-2">
+      <div className="mt-4 grid items-start gap-4 xl:grid-cols-3">
+        <div className="grid min-w-0 gap-4 xl:col-span-2">
         <AtencionHoy
           atencion={resumen.atencion}
           mostrarCentro={!centro && centros.length > 1}
-          puedeIngresar={puede(actor.rol, "movimientos:ingreso")}
-          puedeDarDeBaja={puede(actor.rol, "movimientos:merma")}
+          rol={actor.rol}
+          ubicacionesIngreso={ubicacionesDeIngreso(ubicaciones)}
         />
 
         {resumen.puedeVerMovimientos ? (
@@ -262,7 +281,7 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
                 <h2 className="text-base font-semibold tracking-tight">Tu acceso es de solo lectura</h2>
                 <p className="mt-1 max-w-prose text-[0.9375rem] text-texto-suave">
                   Puedes consultar qué hay en inventario, qué falta y qué está por vencer en tus centros, e imprimir o descargar la lista
-                  de reposición. Para registrar movimientos, pide a un administrador que cambie tu rol.
+                  de reposición. Tu rol no registra movimientos.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link href="/alertas" className={buttonClasses()}>
@@ -279,8 +298,8 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
 
         </div>
 
-        <div className="grid min-w-0 gap-4">
-          <Card>
+        <div className="grid min-w-0 gap-4 md:max-xl:grid-cols-2">
+          <Card className="min-w-0">
             <CardHeader
               titulo="Vencimientos"
               descripcion="Lotes con stock, por días restantes"
@@ -288,26 +307,20 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
             <GraficoVencimientos tramos={resumen.vencimientos} />
           </Card>
 
-          <Card>
+          <Card className="min-w-0">
             <CardHeader titulo="Existencias" descripcion={centro ? "Con stock en este centro" : "Con stock en toda la red"} />
             <div className="flex items-center gap-4">
               <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-marca-50 text-marca-700">
                 <Boxes className="size-6" aria-hidden />
               </span>
-              <div>
+              <div className="min-w-0">
                 <p className="cifras text-3xl font-semibold tracking-tight">{formatearNumero(resumen.insumosConStock)}</p>
-                <p className="text-sm whitespace-nowrap text-texto-suave">insumos</p>
+                <p className="text-sm text-texto-suave">{resumen.insumosConStock === 1 ? "insumo" : "insumos"}</p>
               </div>
-              <dl className="ml-auto grid shrink-0 grid-cols-2 gap-x-5 text-right text-sm">
-                <div>
-                  <dt className="text-texto-tenue">Lotes</dt>
-                  <dd className="cifras text-lg font-semibold">{formatearNumero(resumen.lotesConStock)}</dd>
-                </div>
-                <div>
-                  <dt className="text-texto-tenue">Unidades</dt>
-                  <dd className="cifras text-lg font-semibold">{formatearNumero(resumen.unidadesTotales)}</dd>
-                </div>
-              </dl>
+              <div className="ml-auto shrink-0 text-right">
+                <p className="cifras text-3xl font-semibold tracking-tight">{formatearNumero(resumen.lotesConStock)}</p>
+                <p className="text-sm text-texto-suave">{resumen.lotesConStock === 1 ? "lote" : "lotes"}</p>
+              </div>
             </div>
             <div className="mt-4 border-t border-borde pt-3">
               <p className="text-xs font-medium text-texto-suave">Ver en inventario</p>
@@ -316,7 +329,7 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
                   <li key={e.estado}>
                     <Link
                       href={`/inventario?estado=${e.estado}`}
-                      className="inline-flex min-h-9 items-center rounded-full border border-borde-fuerte/70 bg-superficie px-3 text-sm font-medium text-texto-suave hover:border-marca-400 hover:text-marca-800"
+                      className="inline-flex min-h-9 items-center rounded-full border border-borde-fuerte/70 bg-superficie px-3 text-sm max-md:min-h-11 pointer-coarse:min-h-11 font-medium text-texto-suave hover:border-marca-400 hover:text-marca-800"
                     >
                       {e.etiqueta}
                     </Link>
@@ -325,7 +338,7 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
                 <li>
                   <Link
                     href="/inventario"
-                    className="inline-flex min-h-9 items-center gap-0.5 rounded-full px-2 text-sm font-medium text-marca-700 underline-offset-4 hover:underline"
+                    className="inline-flex min-h-9 items-center gap-0.5 rounded-full px-2 text-sm max-md:min-h-11 pointer-coarse:min-h-11 font-medium text-marca-700 underline-offset-4 hover:underline"
                   >
                     Todo
                     <ChevronRight className="size-4" aria-hidden />
@@ -334,9 +347,9 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
               </ul>
             </div>
           </Card>
-          <Card>
-          <CardHeader titulo="Accesos rápidos" />
-          <AccesosRapidos rol={actor.rol} incluirRegistro={esAdmin} />
+          <Card className="min-w-0 md:max-xl:col-span-2">
+            <CardHeader titulo="Accesos rápidos" />
+            <AccesosRapidos rol={actor.rol} incluirRegistro={esAdmin} />
           </Card>
         </div>
       </div>
@@ -362,7 +375,7 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
           />
           <DataTable
             titulo="Últimos movimientos"
-            columnas={COLUMNAS_MOVIMIENTOS}
+            columnas={columnasMovimientos(!centro && centros.length > 1)}
             filas={resumen.ultimosMovimientos}
             claveFila={(m) => m.id}
             vacio={
