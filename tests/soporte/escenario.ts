@@ -8,11 +8,19 @@ import { expect } from "vitest";
 export async function limpiarBD(): Promise<void> {
   const url = process.env.DATABASE_URL ?? "";
   if (!/_test(\?|$)/.test(url)) throw new Error("Los tests solo pueden limpiar una base *_test");
-  await db.$executeRawUnsafe(`
-    TRUNCATE TABLE "registros_auditoria", "movimientos", "existencias", "lotes", "parametros_stock",
-      "proveedores", "insumos", "categorias", "sesiones", "usuarios_centros", "usuarios",
-      "ubicaciones", "centros" RESTART IDENTITY CASCADE
-  `);
+  // El libro mayor y la auditoría son inmutables (triggers contra UPDATE, DELETE
+  // y TRUNCATE). SOLO aquí, en la base de tests, se deshabilitan esos triggers
+  // durante la limpieza, dentro de una transacción que los vuelve a habilitar.
+  const INMUTABLES = ["movimientos", "registros_auditoria"];
+  await db.$transaction([
+    ...INMUTABLES.map((t) => db.$executeRawUnsafe(`ALTER TABLE "${t}" DISABLE TRIGGER USER`)),
+    db.$executeRawUnsafe(`
+      TRUNCATE TABLE "registros_auditoria", "movimientos", "existencias", "lotes", "parametros_stock",
+        "proveedores", "insumos", "categorias", "sesiones", "usuarios_centros", "usuarios",
+        "ubicaciones", "centros", "intentos_login" RESTART IDENTITY CASCADE
+    `),
+    ...INMUTABLES.map((t) => db.$executeRawUnsafe(`ALTER TABLE "${t}" ENABLE TRIGGER USER`)),
+  ]);
 }
 
 export interface Escenario {
