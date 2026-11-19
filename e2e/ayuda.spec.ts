@@ -7,6 +7,7 @@ const TAREAS = {
   alertas: "Ver qué falta o está por vencer",
   escanear: "Ingresar un producto escaneando su código",
   proveedores: "Ver los proveedores y dónde comprar",
+  proveedorInsumo: "Definir o cambiar el proveedor de un insumo",
   ingreso: "Registrar un ingreso (llegan insumos)",
   retiro: "Registrar un retiro (salen insumos para su uso)",
   historial: "Revisar lo registrado",
@@ -15,7 +16,7 @@ const TAREAS = {
   vencimiento: "Corregir el vencimiento de un lote",
 } as const;
 
-const TODO_ADMIN = ["buscar", "alertas", "escanear", "proveedores", "ingreso", "retiro", "historial", "traslado", "ajuste", "vencimiento"] as const;
+const TODO_ADMIN = ["buscar", "alertas", "escanear", "proveedores", "proveedorInsumo", "ingreso", "retiro", "historial", "traslado", "ajuste", "vencimiento"] as const;
 const POR_ROL: Record<Exclude<Rol, "valpo" | "cerro">, { etiqueta: string; ve: readonly (keyof typeof TAREAS)[] }> = {
   visita: { etiqueta: "Visitante", ve: ["buscar", "alertas", "proveedores"] },
   bodega: { etiqueta: "Bodeguero", ve: ["buscar", "alertas", "escanear", "proveedores", "ingreso", "retiro", "historial"] },
