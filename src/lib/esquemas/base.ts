@@ -183,9 +183,6 @@ export const zEmail = z
   .toLowerCase()
   .pipe(z.email("Ingresa un correo electrónico válido.").max(254));
 
-/** Página (≥ 1) para listados; valores inválidos caen en 1. */
-export const zPagina = z.coerce.number<number | string | undefined>().int().min(1).catch(1);
-
 /**
  * Genera una clave de idempotencia (UUID v4) en el navegador o en el servidor.
  * `crypto.randomUUID` solo existe en contextos seguros (HTTPS o localhost); si

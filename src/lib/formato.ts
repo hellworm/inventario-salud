@@ -48,12 +48,6 @@ export function formatearPorcentaje(valor: number | null | undefined): string {
   return fmtPorcentaje.format(valor);
 }
 
-/** Cantidad con su unidad de medida: (3, "caja") → "3 caja". */
-export function formatearCantidad(cantidad: number, unidadMedida?: string | null): string {
-  const n = formatearNumero(cantidad);
-  return unidadMedida ? `${n} ${unidadMedida}` : n;
-}
-
 /** "1 lote" / "3 lotes" */
 export function pluralizar(cantidad: number, singular: string, plural?: string): string {
   return `${formatearNumero(cantidad)} ${cantidad === 1 ? singular : (plural ?? `${singular}s`)}`;
