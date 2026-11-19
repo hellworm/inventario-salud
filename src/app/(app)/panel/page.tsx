@@ -331,9 +331,10 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
                 titulo="Proveedores"
                 descripcion="Dónde comprar y a quién llamar"
                 acciones={
-                  directorio.total > directorio.items.length ? (
+                  // Siempre visible: es la entrada al directorio completo (con buscador) para los cuatro roles.
+                  directorio.total > 0 ? (
                     <Link href="/proveedores" className={buttonClasses({ variant: "fantasma", size: "sm" })}>
-                      Ver todos ({formatearNumero(directorio.total)})
+                      Ver todos{directorio.total > directorio.items.length ? ` (${formatearNumero(directorio.total)})` : ""}
                     </Link>
                   ) : undefined
                 }

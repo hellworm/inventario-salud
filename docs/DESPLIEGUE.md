@@ -175,6 +175,32 @@ Dos cuidados:
 Para comprobarlo: inicia sesión y mira **Administración → Auditoría**; el registro "Inicio de
 sesión" debe mostrar tu IP pública (no `172.x` ni `127.0.0.1`).
 
+#### Proxies o túneles que cambian el dominio: `SERVER_ACTIONS_ORIGENES`
+
+Los formularios (incluido el inicio de sesión) se envían como *Server Actions*, y Next rechaza
+las que llegan con una cabecera `Origin` distinta del host de la solicitud (`X-Forwarded-Host` o,
+si no viene, `Host`): es su protección contra CSRF. Con Caddy, Nginx (`proxy_set_header Host
+$host;`) o cualquier proxy que **reenvíe el host público**, funciona sin configurar nada.
+
+Si la aplicación queda detrás de un proxy o túnel que **no** reenvía el host público (algunas
+vistas previas o túneles de desarrollo entregan `Host: localhost:3000`), el síntoma es que la
+página de ingreso carga pero al presionar **Ingresar** aparece un error genérico y el registro del
+servidor dice `Invalid Server Actions request`. Lo correcto es configurar el proxy para que envíe
+`X-Forwarded-Host`. Si no se puede, declara el dominio público **al compilar**:
+
+```bash
+SERVER_ACTIONS_ORIGENES="mi-vista-previa.ejemplo.dev" npm run build
+npm start -- -p 3000
+```
+
+- Acepta varios hosts separados por coma (sin `https://`; admite `*.dominio`). Queda fijado en el
+  build: cambiarlo requiere compilar de nuevo.
+- Sin la variable no se admite ningún origen adicional. **No la uses en producción** salvo que tu
+  proxy no pueda reenviar el host; nunca pongas un dominio que no controles.
+- Otros límites detrás de un túnel: la cookie de sesión es `Secure` (el navegador debe ver HTTPS o
+  `localhost`) y la aplicación **no se puede mostrar dentro de un `<iframe>`** (`frame-ancestors
+  'none'`): ábrela en una pestaña propia.
+
 ### 2.4 Comandos del día a día
 
 ```bash
@@ -243,6 +269,7 @@ muestra, por ejemplo:
 | `DATABASE_URL` | Sí | Aplicación y scripts | Conexión a PostgreSQL. Con Docker Compose se arma sola a partir de `POSTGRES_*`. |
 | `SESION_HORAS` | No | Aplicación | Horas de inactividad antes de cerrar la sesión (1–168; por defecto 12). |
 | `TRUST_PROXY` | Recomendada | Aplicación | Cantidad de proxies inversos de confianza delante de la aplicación (0–10; por defecto 0; Compose la fija en 1). Ver [§2.3](#la-ip-real-de-cada-persona-trust_proxy). |
+| `SERVER_ACTIONS_ORIGENES` | No | `npm run build` | Solo si un proxy o túnel no reenvía el host público: hosts adicionales admitidos como origen de los formularios. Se fija al compilar. Ver [§2.3](#proxies-o-túneles-que-cambian-el-dominio-server_actions_origenes). |
 | `APP_DB_USER`, `APP_DB_PASSWORD` | No | `docker-compose.yml` | Rol de base de datos con privilegios mínimos para la aplicación. Ver [§6.1](#61-endurecimiento-recomendado-de-la-base-de-datos). |
 | `POSTGRES_PASSWORD` | Sí (Compose) | `docker-compose.yml` | Clave de la base. Larga, aleatoria, solo letras y números. |
 | `POSTGRES_USER`, `POSTGRES_DB` | No | `docker-compose.yml` | Usuario y nombre de la base (por defecto `redinsumos`). |

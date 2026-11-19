@@ -138,7 +138,7 @@ describe("proveedores: sitio web, directorio y permisos", () => {
     await establecerProveedorActivo(e.admin, idDos, true);
   });
 
-  it("los tres roles leen el directorio; solo el administrador gestiona", async () => {
+  it("administrador de la red, bodeguero y visitante leen el directorio; solo quien gestiona proveedores los modifica", async () => {
     for (const actor of [e.admin, e.bodeguero, e.visitante]) {
       expect((await listarDirectorioProveedores(actor)).total).toBe(2);
     }

@@ -41,7 +41,27 @@ const cabecerasSeguridad = [
       ]),
 ];
 
+/**
+ * Orígenes adicionales admitidos para las Server Actions (opcional).
+ *
+ * Next rechaza una Server Action cuya cabecera `Origin` no coincide con el
+ * host de la solicitud (`X-Forwarded-Host` o `Host`): es su protección CSRF.
+ * Un proxy inverso bien configurado reenvía el host público y no hace falta
+ * nada. Solo si la aplicación queda detrás de un proxy o túnel que NO lo
+ * reenvía (p. ej. una vista previa con otro dominio), se declaran aquí los
+ * hosts públicos exactos, separados por coma, AL COMPILAR (`npm run build`):
+ *
+ *   SERVER_ACTIONS_ORIGENES="vista-previa.ejemplo.cl" npm run build
+ *
+ * Sin la variable no se admite ningún origen adicional (lo normal en producción).
+ */
+const origenesServerActions = (process.env.SERVER_ACTIONS_ORIGENES ?? "")
+  .split(",")
+  .map((o) => o.trim().toLowerCase())
+  .filter((o) => /^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:\d{1,5})?$/.test(o));
+
 const nextConfig: NextConfig = {
+  ...(origenesServerActions.length > 0 ? { experimental: { serverActions: { allowedOrigins: origenesServerActions } } } : {}),
   // Todas las vistas dependen de la sesión y de stock en tiempo real: se
   // renderizan por solicitud. No se usa Cache Components (ver ARQUITECTURA).
   // Build autocontenido en `.next/standalone` (lo usa el Dockerfile).

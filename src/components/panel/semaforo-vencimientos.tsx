@@ -192,7 +192,7 @@ export function SemaforoVencimientos({
               hrefFila={(l) => `/inventario/${l.insumoId}`}
             />
             <div className="flex flex-wrap items-center gap-2 border-t border-borde px-4 py-2.5 sm:px-5">
-              <Link href="/alertas?tab=rojo" className={buttonClasses({ variant: "enlace" })}>
+              <Link href="/alertas?tab=rojo" className={cn(buttonClasses({ variant: "enlace" }), "pointer-coarse:!min-h-11 max-md:!min-h-11")}>
                 Ver todos los lotes en rojo
                 <ArrowRight aria-hidden />
               </Link>

@@ -582,6 +582,16 @@ Convenciones:
 - **Coherencia:** panel (`resumenSemaforo`) = pestañas de `/alertas` (`resumen.vencidos|rojo|amarillo`)
   = `/inventario?semaforo=` (n.º de insumos) = reportes de existencias y vencimientos con
   `?semaforo=` (n.º de lotes). `tests/semaforo.test.ts` y `e2e/coherencia.spec.ts` lo verifican.
+- **Alcance:** todos los servicios del semáforo (`resumenSemaforo`, `lotesPorColor`, panel,
+  alertas, inventario, reportes y exportaciones) filtran con `alcanceDeCentros`, así que cada
+  institución ve solo su semáforo y la red ve la suma. En el panel de ADMIN_RED,
+  `resumenPorInstitucion` reparte el mismo desglose por centro (`ResumenPanel.porCentro`: sin
+  stock, bajo mínimo, vencidos, rojo, amarillo) entre las instituciones.
+  `tests/aislamiento-semaforo-proveedores.test.ts` comprueba el aislamiento (también del orden
+  "por uso" del directorio de proveedores y de la búsqueda por código del escáner).
+- **Orden del panel:** botón Escanear (celular/tablet) y acciones del bodeguero → indicadores (qué
+  falta) → "La red por institución" (solo ADMIN_RED en "Toda la red") → semáforo y productos en
+  rojo → atención de hoy y actividad, con proveedores y accesos rápidos al costado.
 - **URLs antiguas:** `/inventario?estado=POR_VENCER|VENCIDO` redirige a `?semaforo=rojo,amarillo` /
   `?semaforo=vencido`; `/alertas?tab=por-vencer` abre la pestaña Rojo; el antiguo `?dias=30|60|90`
   de los reportes se ignora.
@@ -856,7 +866,7 @@ Fuera del kit, piezas compartidas por las pantallas:
 | `@/components/movimientos/formulario` | `useExistenciasInsumo(insumoId, centroId)` (existencias en vivo vía `existenciasInsumoAccion`), `PanelExistencias`, `Confirmacion` (props `centro`: centro REAL del movimiento según el servidor; `repetido`: avisa "Este movimiento ya estaba registrado; no se duplicó."), `CifrasConfirmacion`, `enfocarPrimerError`, `erroresDeEsquema`, `unirErrores`, `AnuncioErrores`, `ResumenErrores`, `AYUDA_SIN_PACIENTES` (ayuda de todo campo de nota o motivo libre). |
 | `AvisoCambioCentro` (`@/components/movimientos/aviso-cambio-centro`) | En las cuatro páginas de formulario: al volver a la pestaña refresca los datos del servidor y, si el centro activo cambió en otra pestaña, lo avisa. |
 | `BotonCorregirVencimiento` (`@/components/inventario/corregir-vencimiento`) | Diálogo de corrección del vencimiento de un lote (solo administradores). |
-| `ResumenInstituciones` (`@/components/panel/resumen-instituciones`) | "La red por institución" del panel de ADMIN_RED en "Toda la red": una tarjeta por institución (centros, sin stock, bajo mínimo, vencidos, por vencer); `/panel?institucion=<id>` despliega sus centros y cada conteo enlaza a `/alertas?tab=…&centro=…`. |
+| `ResumenInstituciones` (`@/components/panel/resumen-instituciones`) | "La red por institución" del panel de ADMIN_RED en "Toda la red": una tarjeta por institución (centros, sin stock, bajo mínimo y el semáforo en lotes: vencidos, rojo y amarillo, con la forma de cada color); `/panel?institucion=<id>` despliega sus centros y cada conteo enlaza a `/alertas?tab=…&centro=…`. |
 | `AvisoCatalogoCompartido` (`@/components/admin/aviso-catalogo-compartido`) | Aviso al ADMIN de institución: el catálogo es de toda la red (crea, no modifica). |
 | `@/components/movimientos/campos` | `CampoCantidad`, `SelectUbicacion`, `SelectorLote`, `OpcionesTarjeta`, `Grupo`, `Sugerencias`, `ubicacionPorDefecto`, `leerCantidad`. |
 | `useParametrosUrl()` (`@/components/inventario/parametros-url`) | Estado en la URL para filtros y paneles: `{ params, urlCon(cambios, { conservarPagina? }), filtrar(cambios), pendiente, iniciar, router }`. `filtrar` reemplaza la entrada del historial, vuelve a la página 1 y no salta al inicio. `enfocarFila(id)` devuelve el foco a la fila (`data-fila`) que abrió un panel. |
@@ -1061,7 +1071,7 @@ permite conectarla con un rol de base de datos de privilegios mínimos (`APP_DB_
 | Lector | `src/components/escaner/lector.ts` | `BarcodeDetector` nativo si reconoce todos los formatos (Chrome en Android); si no, **`zxing-wasm`** (ZXing C++ en WebAssembly: Safari/iOS, Firefox, escritorio). Formatos: EAN-13, EAN-8, UPC-A/E, Code 128 (GS1-128), DataMatrix (GS1) y QR. El `.wasm` lo empaqueta Next como estático propio con hash (`new URL(…, import.meta.url)` → `/_next/static/media/`): **sin CDN**. |
 | Diálogo | `src/components/escaner/dialogo-escaner.tsx` | Pantalla completa en celular. Cámara trasera (`facingMode: environment`), marco guía, linterna si el dispositivo la ofrece (`torch`), vibración + pitido + marca visual al leer, y **siempre** "Escribir el código" (también para lectores USB/Bluetooth). Estados con explicación: sin permiso, sin cámara, contexto no seguro (HTTP), cámara ocupada, lector no disponible. Libera la cámara al cerrar, al leer, al desmontar y al pasar a segundo plano. |
 | Botón | `BotonEscanear` (`components/escaner/boton-escanear.tsx`) | Carga el diálogo con `next/dynamic` (nada del escáner pesa en el resto de la app). Sin `alLeer` navega a `/movimientos/escanear`. `BotonEscanearInsumo` busca el insumo y lo entrega (formulario de retiro). |
-| Página | `/movimientos/escanear` (permiso `movimientos:ingreso`) | Con `?codigo=` busca **en el servidor** (`buscarInsumoPorCodigo`): una coincidencia activa → `redirect` a `/movimientos/ingreso?insumo=…&lote=…&vence=…&fab=…&escaneado=1`; si no, "No reconocemos este código": buscar el insumo a mano y continuar; con `catalogo:gestionar`, además "Asociar este código a ese insumo" (`asociarCodigoBarrasAccion`, auditado) o crear el insumo con el código puesto (`/admin/insumos/nuevo?codigoBarras=`). Al bodeguero se le indica pedirlo a su administrador, sin bloquear el ingreso. |
+| Página | `/movimientos/escanear` (permiso `movimientos:ingreso`) | Con `?codigo=` busca **en el servidor** (`buscarInsumoPorCodigo`): una coincidencia activa → `redirect` a `/movimientos/ingreso?insumo=…&lote=…&vence=…&fab=…&escaneado=1`; si no, "No reconocemos este código": buscar el insumo a mano y continuar; con `catalogo:gestionar` (solo ADMIN_RED: modifica el catálogo compartido), además "Asociar este código a ese insumo" (`asociarCodigoBarrasAccion`, auditado); con `catalogo:crear` (ADMIN_RED y ADMIN), "Crear insumo con este código" (`/admin/insumos/nuevo?codigoBarras=`). Al ADMIN de institución se le indica que para asociarlo a un insumo existente contacte al administrador de la red; al bodeguero, que lo pida a su administrador. Nada de esto bloquea el ingreso. El mismo producto no puede quedar en dos insumos: crear, editar y asociar comparan todas las formas del GTIN (`variantesGtin`). |
 | Rutas | `src/lib/escaneo.ts` | `hrefEscaneo(textoLeido)` interpreta en el cliente y arma parámetros simples (`codigo`, `lote`, `vence`, `fab`); el servidor valida cada uno (`limpiarTexto`, `normalizarNumeroLote`, `diaParam`). |
 
 Dónde aparece: botón grande **Escanear** del panel (bajo `xl`: celular y tablet), ítem **Escanear**

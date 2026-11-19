@@ -300,7 +300,7 @@ test.describe("Administrador de la red: ve el total", () => {
     const cerro = tarjetas.filter({ hasText: INSTITUCIONES.cerro });
     await expect(andes).toContainText("2 centros");
     await expect(cerro).toContainText("1 centro");
-    for (const etiqueta of ["Sin stock", "Bajo mínimo", "Vencidos", "Por vencer"]) await expect(andes).toContainText(etiqueta);
+    for (const etiqueta of ["Sin stock", "Bajo mínimo", "Vencidos", "Rojo", "Amarillo"]) await expect(andes).toContainText(etiqueta);
 
     // Elegir una institución filtra el detalle a SUS centros.
     await andes.click();

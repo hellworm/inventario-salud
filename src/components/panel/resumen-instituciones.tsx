@@ -83,9 +83,9 @@ export function ResumenInstituciones({
     <Card id={ANCLA} className={cn("scroll-mt-20", className)} data-resumen-instituciones>
       <CardHeader
         titulo="La red por institución"
-        descripcion={`${pluralizar(instituciones.length, "institución", "instituciones")} · ${pluralizar(centros, "centro activo", "centros activos")}. Qué falta y el semáforo de vencimientos (lotes) de cada una. Elige una para ver sus centros.`}
+        descripcion={`${pluralizar(instituciones.length, "institución", "instituciones")} · ${pluralizar(centros, "centro activo", "centros activos")}. Qué falta y qué vence (lotes) en cada una; toca una para ver sus centros.`}
       />
-      <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Instituciones de la red">
+      <ul className={cn("grid gap-3 sm:grid-cols-2", instituciones.length > 2 && "xl:grid-cols-3")} aria-label="Instituciones de la red">
         {instituciones.map((i) => {
           const elegida = seleccionada?.institucionId === i.institucionId;
           const alertas = totalAlertas(i);
@@ -121,7 +121,7 @@ export function ResumenInstituciones({
                 </span>
                 <span className="mt-3 grid grid-cols-5 gap-1 border-t border-borde pt-3">
                   {INDICADORES.map((ind) => (
-                    <span key={ind.clave} className="flex min-w-0 flex-col items-center gap-1 text-center">
+                    <span key={ind.clave} data-indicador={ind.clave} className="flex min-w-0 flex-col items-center gap-1 text-center">
                       <Cifra valor={i[ind.clave]} tono={ind.tono} />
                       <EtiquetaIndicador ind={ind} />
                     </span>
@@ -185,7 +185,7 @@ export function ResumenInstituciones({
                               <EtiquetaIndicador ind={ind} />
                             </>
                           );
-                          const clase = "flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-md text-center";
+                          const clase = "flex min-h-11 min-w-0 flex-col items-center justify-start gap-1 rounded-md py-1 text-center";
                           return valor === 0 ? (
                             <span key={ind.clave} className={clase}>
                               {contenido}

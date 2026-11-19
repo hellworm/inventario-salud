@@ -2,9 +2,11 @@ import type { Page } from "@playwright/test";
 import { rutValido, sufijo, type Rol } from "./soporte/entorno";
 import { expect, test } from "./soporte/fixtures";
 
-/** Pantalla principal: semáforo de vencimientos y proveedores, para los tres roles. */
+/** Pantalla principal: semáforo de vencimientos y proveedores, para los cuatro roles. */
 
-const ROLES: Exclude<Rol, "valpo">[] = ["admin", "bodega", "visita"];
+const ROLES: Exclude<Rol, "valpo" | "cerro">[] = ["admin", "andes", "bodega", "visita"];
+/** Roles con `proveedores:gestionar`: ven "Editar" y "Administrar proveedores". */
+const GESTIONAN: readonly Rol[] = ["admin", "andes"];
 
 /** Abre /proveedores buscando un proveedor y devuelve su fila del directorio. */
 async function filaDeProveedor(pagina: Page, razonSocial: string) {
@@ -124,7 +126,7 @@ test.describe("Panel: semáforo de vencimientos", () => {
 });
 
 test.describe("Panel: proveedores", () => {
-  test("@movil los tres roles ven los proveedores con «Ir a comprar», y el detalle se despliega con el teclado", async ({ abrirComo }) => {
+  test("@movil los cuatro roles ven los proveedores con «Ir a comprar», y el detalle se despliega con el teclado", async ({ abrirComo }) => {
     // El administrador crea un proveedor con sitio web (escrito sin https://) y otro sin sitio.
     const admin = await abrirComo("admin");
     const s = sufijo().toLowerCase();
@@ -152,7 +154,7 @@ test.describe("Panel: proveedores", () => {
 
     for (const rol of ROLES) {
       const pagina = await abrirComo(rol);
-      // En el panel, la sección existe para los tres roles.
+      // En el panel, la sección existe para los cuatro roles.
       await pagina.goto("/panel");
       const principal = pagina.getByRole("main");
       await expect(principal.getByRole("heading", { name: "Proveedores", exact: true })).toBeVisible();
@@ -179,7 +181,7 @@ test.describe("Panel: proveedores", () => {
       await expect(fila).toContainText("Contacto: Paula Henríquez");
       await expect(fila).toContainText(`RUT: ${conSitio.rut.conPuntos}`);
       // "Editar" solo para quien puede gestionar proveedores.
-      if (rol === "admin") {
+      if (GESTIONAN.includes(rol)) {
         await expect(fila.getByRole("link", { name: /Editar/ })).toHaveAttribute("href", /^\/admin\/proveedores\?q=/);
       } else {
         await expect(fila.getByRole("link", { name: /Editar/ })).toHaveCount(0);

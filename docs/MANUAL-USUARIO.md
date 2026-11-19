@@ -42,7 +42,8 @@ debes usar **dentro de 72 horas** (después vence y hay que pedir otra).
   tablet horizontal se reduce a una columna de íconos (el botón de abajo lo abre completo); en el
   teléfono queda abajo, con el resto en **Menú**.
 - **Selector de centro** (arriba): si trabajas en más de un centro, elige cuál quieres ver. Los
-  administradores pueden elegir además **Toda la red**.
+  administradores pueden elegir además todos sus centros a la vez: **Toda mi institución** (o
+  **Toda la red**, el administrador de la red).
 - **Tu nombre** (arriba a la derecha): **Cambiar contraseña**, **Ayuda** y **Salir**.
 
 Cierra la sesión al terminar si el equipo es compartido. Por seguridad, se cierra sola tras varias
@@ -200,10 +201,12 @@ Si algo no resulta:
   números que aparecen bajo las barras. Un lector de códigos conectado al computador (USB o
   Bluetooth) funciona igual: haz clic en ese campo y dispara el lector.
 - **«No reconocemos este código»:** ningún insumo del catálogo lo tiene registrado. Busca el insumo
-  por su nombre y continúa con el ingreso (el lote y el vencimiento leídos se conservan). Pide a tu
-  administrador que registre el código en el insumo para que la próxima vez se reconozca; el
-  administrador puede hacerlo ahí mismo con **Asociar este código a ese insumo**, o crear un insumo
-  nuevo con el código ya puesto.
+  por su nombre y continúa con el ingreso (el lote y el vencimiento leídos se conservan). Para que
+  la próxima vez se reconozca: el **administrador de la red** puede asociarlo ahí mismo con
+  **Asociar este código a ese insumo**; el **administrador de institución** puede **Crear insumo
+  con este código** si el insumo aún no existe, pero para asociarlo a uno que ya existe debe pedirlo
+  al administrador de la red (el catálogo es compartido por todas las instituciones). El bodeguero
+  lo pide a su administrador.
 - **«Falta el permiso para usar la cámara»:** toca el candado junto a la dirección del sitio (en
   iPhone, «aA»), deja la cámara en *Permitir* y vuelve a intentarlo.
 - **«La cámara necesita una conexión segura»:** el sitio no se abrió con HTTPS. Avisa a quien
@@ -363,8 +366,6 @@ usuario desactivado deja de usarse pero sus registros se conservan.
 
 ### Usuarios
 
-![Usuarios](capturas/11-usuarios.png)
-
 - **Roles que puedes asignar:** **Administrador de institución** (otro administrador de tu
   institución; ve todos sus centros), **Bodeguero** y **Visitante** (solo los centros que les
   marques, siempre de tu institución). No puedes crear administradores de la red ni usuarios de
@@ -416,10 +417,13 @@ pero en **todas** las instituciones, y además:
 ### Ver el complejo total — *Panel*
 
 Con **Toda la red** seleccionada arriba, el Panel muestra **La red por institución**: una tarjeta
-por institución con su número de centros y cuántos insumos tiene sin stock, bajo el mínimo, y
-cuántos lotes vencidos y por vencer. Haz clic en una institución para ver el detalle de sus
-centros; cada número lleva a las Alertas de ese centro. El selector de centro agrupa los centros
-por institución.
+por institución con su número de centros, cuántos insumos tiene sin stock y bajo el mínimo, y su
+**semáforo de vencimientos**: cuántos lotes vencidos, en rojo y en amarillo. Haz clic en una
+institución para ver el detalle de sus centros; cada número lleva a las Alertas de ese centro, en
+la pestaña que corresponde. Más abajo sigue el semáforo de toda la red, con los productos en rojo.
+El selector de centro agrupa los centros por institución.
+
+![Instituciones](capturas/11-instituciones.png)
 
 ### Instituciones
 

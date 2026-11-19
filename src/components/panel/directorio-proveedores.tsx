@@ -62,7 +62,7 @@ export function DirectorioProveedores({
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block text-[0.9375rem] leading-snug font-medium text-texto">{p.razonSocial}</span>
-                  <span className="block text-xs break-all text-texto-suave">
+                  <span className="block truncate text-xs text-texto-suave" title={dominio || undefined}>
                     {dominio || "Sin sitio web"}
                     <span className="sr-only">. Ver teléfono, correo y contacto</span>
                   </span>
