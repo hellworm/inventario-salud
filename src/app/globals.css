@@ -1,26 +1,140 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * Tokens de diseño de RedInsumos.
+ * - `marca-*`: escala del color primario (teal / azul petróleo).
+ * - Tokens semánticos (fondo, superficie, borde, texto…): usar SIEMPRE estos
+ *   en vez de grises sueltos; así un futuro modo oscuro solo redefine variables.
+ * - Estados: exito (verde), alerta (ámbar), peligro (rojo), info (azul).
+ */
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-marca-50: #eefafa;
+  --color-marca-100: #d6f1f2;
+  --color-marca-200: #b0e2e4;
+  --color-marca-300: #7bcbd0;
+  --color-marca-400: #45abb3;
+  --color-marca-500: #288f98;
+  --color-marca-600: #1a7480;
+  --color-marca-700: #185e69;
+  --color-marca-800: #184d56;
+  --color-marca-900: #173f48;
+  --color-marca-950: #0a2930;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  --color-fondo: var(--ri-fondo);
+  --color-superficie: var(--ri-superficie);
+  --color-superficie-2: var(--ri-superficie-2);
+  --color-borde: var(--ri-borde);
+  --color-borde-fuerte: var(--ri-borde-fuerte);
+  --color-texto: var(--ri-texto);
+  --color-texto-suave: var(--ri-texto-suave);
+  --color-texto-tenue: var(--ri-texto-tenue);
+
+  --color-exito-50: #ecfdf5;
+  --color-exito-100: #d1fae5;
+  --color-exito-600: #059669;
+  --color-exito-700: #047857;
+  --color-exito-800: #065f46;
+  --color-alerta-50: #fffbeb;
+  --color-alerta-100: #fef3c7;
+  --color-alerta-500: #f59e0b;
+  --color-alerta-700: #b45309;
+  --color-alerta-800: #92400e;
+  --color-peligro-50: #fef2f2;
+  --color-peligro-100: #fee2e2;
+  --color-peligro-600: #dc2626;
+  --color-peligro-700: #b91c1c;
+  --color-peligro-800: #991b1b;
+  --color-info-50: #f0f9ff;
+  --color-info-100: #e0f2fe;
+  --color-info-700: #0369a1;
+  --color-info-800: #075985;
+
+  --radius-control: 0.625rem;
+  --radius-tarjeta: 0.875rem;
+
+  --shadow-tarjeta: 0 1px 2px rgb(15 35 45 / 0.05), 0 1px 3px rgb(15 35 45 / 0.04);
+  --shadow-flotante: 0 12px 32px -8px rgb(15 35 45 / 0.22), 0 4px 10px -4px rgb(15 35 45 / 0.1);
+
+  --animate-aparecer: aparecer 160ms ease-out;
+  --animate-subir: subir 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-entrar-derecha: entrar-derecha 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-entrar-izquierda: entrar-izquierda 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-entrar-abajo: entrar-abajo 260ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes aparecer {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes subir {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes entrar-derecha {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+  @keyframes entrar-izquierda {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+  @keyframes entrar-abajo {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+:root {
+  --ri-fondo: #f4f7f8;
+  --ri-superficie: #ffffff;
+  --ri-superficie-2: #f8fafb;
+  --ri-borde: #dfe6e9;
+  --ri-borde-fuerte: #b9c6cc;
+  --ri-texto: #10242b;
+  --ri-texto-suave: #46606a;
+  --ri-texto-tenue: #64808a;
+  color-scheme: light;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background: var(--ri-fondo);
+    color: var(--ri-texto);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01";
+  }
+  /* Foco visible y consistente en todo elemento interactivo. */
+  :focus-visible {
+    outline: 2px solid var(--color-marca-600);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--color-marca-200);
+  }
+  h1, h2, h3, h4 {
+    text-wrap: balance;
+  }
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]), summary, label[for], select {
+    cursor: pointer;
+  }
+}
+
+@utility cifras {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -19,7 +19,7 @@ import type { Actor, Permiso } from "@/lib/permisos";
 import { registrarAuditoria } from "../auditoria";
 import { verificarPermiso } from "../autorizacion";
 import { enTransaccion, type Tx } from "../db";
-import { ErrorDominio, noEncontrado } from "../errores";
+import { ErrorDominio } from "../errores";
 import { validar } from "../validacion";
 
 /**
