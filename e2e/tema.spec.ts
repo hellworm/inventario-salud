@@ -85,7 +85,10 @@ test.describe("Tema de la interfaz", () => {
       const dias = ((cookie?.expires ?? 0) - Date.now() / 1000) / 86_400;
       expect(dias).toBeGreaterThan(360);
       expect(dias).toBeLessThanOrEqual(366);
-      await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#12161a");
+      // El servidor vuelve a renderizar con la cookie: un solo theme-color, el del tema oscuro.
+      await expect
+        .poll(() => page.locator('meta[name="theme-color"]').evaluateAll((metas) => metas.map((m) => m.getAttribute("content"))))
+        .toEqual(["#12161a"]);
 
       // Persiste al recargar: lo aplica el servidor en el primer HTML.
       await page.keyboard.press("Escape");
@@ -228,6 +231,7 @@ test.describe("Tema de la interfaz", () => {
 
       // Estados de stock y verde, en el inventario.
       await admin.goto("/inventario");
+      await expect(admin.locator("main tbody span.rounded-full:has(svg)").nth(5)).toBeVisible();
       const filas = await contrastes(admin, "main tbody span.rounded-full:has(svg)");
       expect(filas.length).toBeGreaterThan(5);
       for (const { texto, ratio } of filas) expect(ratio, `contraste de «${texto}» en tema ${tema}`).toBeGreaterThanOrEqual(4.5);
