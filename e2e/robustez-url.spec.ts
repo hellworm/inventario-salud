@@ -64,7 +64,10 @@ test.describe("Robustez ante parámetros de URL inválidos", () => {
     // Un panel o detalle pedido por URL con un id inexistente se informa sin romper el listado.
     await page.goto("/inventario?ver=no-existe");
     await expect(page.getByRole("dialog")).toContainText("No encontramos este insumo");
-    await debeCargar(page, "/movimientos?mov=no-existe");
+    const movimiento = await page.goto("/movimientos?mov=no-existe");
+    expect(movimiento?.status()).toBeLessThan(500);
+    await expect(page.getByRole("dialog").or(page.getByRole("heading", { level: 1, name: "Movimientos" })).first()).toBeVisible();
+    await expect(page.getByText("Algo salió mal")).toHaveCount(0);
     // Formularios con insumo inexistente: parten sin insumo preseleccionado.
     await page.goto("/movimientos/retiro?insumo=no-existe&ubicacion=no-existe&lote=no-existe");
     await expect(page.getByRole("combobox", { name: "Insumo" })).toBeVisible();

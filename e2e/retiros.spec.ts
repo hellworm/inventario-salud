@@ -148,4 +148,30 @@ test.describe("Retiros de stock", () => {
     await elegirUbicacion(admin, "Desde la ubicación", UBICACIONES.nunoaSala2);
     await expect(admin.getByRole("link", { name: "Dar de baja ahora" })).toHaveAttribute("href", /\/movimientos\/ajuste\?tipo=merma/);
   });
+
+  test("dos retiros simultáneos no pueden sacar más de lo que hay", async ({ abrirComo }) => {
+    const admin = await abrirComo("admin");
+    const insumo = await crearInsumo(admin);
+    await registrarIngreso(admin, { insumo, ubicacion: BODEGA, lote: `CC-${insumo.sufijo}`, vence: diaSantiago(90), cantidad: 4 });
+    const bodeguero = await abrirComo("bodega");
+
+    // Ambos ven 4 disponibles y piden 3 al mismo tiempo.
+    for (const pagina of [admin, bodeguero]) {
+      await abrirRetiro(pagina, insumo, BODEGA);
+      await pagina.getByRole("textbox", { name: "Cantidad a retirar" }).fill("3");
+    }
+    await Promise.all([
+      admin.getByRole("button", { name: "Registrar retiro" }).click(),
+      bodeguero.getByRole("button", { name: "Registrar retiro" }).click(),
+    ]);
+    const resultado = async (pagina: Page) => {
+      const exito = pagina.getByRole("heading", { name: "Retiro registrado" });
+      const rechazo = pagina.getByRole("form", { name: "Registrar retiro" }).getByText(/Stock insuficiente|Solo hay 1 caja/);
+      await expect(exito.or(rechazo).first()).toBeVisible();
+      return (await exito.isVisible()) ? "ok" : "rechazado";
+    };
+    const resultados = [await resultado(admin), await resultado(bodeguero)].sort();
+    expect(resultados).toEqual(["ok", "rechazado"]);
+    expect(await disponibleEnFicha(admin, insumo)).toBe(1);
+  });
 });

@@ -199,4 +199,62 @@ test.describe("Administración de usuarios", () => {
     await iniciarSesion(intruso, usuario.email, nuevaTemporal);
     await expect(intruso).toHaveURL(/\/cambiar-password$/);
   });
+
+  test("cambiar el rol y los centros de un usuario rige de inmediato para su sesión abierta", async ({ page, abrirAnonimo }) => {
+    const usuario = await crearUsuario(page, "Bodeguero");
+    const sesionUsuario = await abrirAnonimo();
+    await primerIngreso(sesionUsuario, usuario, `Definitiva.${sufijo()}.9`);
+    await sesionUsuario.goto("/movimientos/retiro");
+    await expect(sesionUsuario.getByRole("heading", { level: 1, name: "Registrar retiro" })).toBeVisible();
+
+    // El administrador lo pasa a Visitante de Valparaíso.
+    const fila = await filaDeUsuario(page, usuario);
+    await fila.getByRole("button", { name: `Acciones para ${usuario.nombre}` }).click();
+    await page.getByRole("menuitem", { name: "Editar datos, rol y centros" }).click();
+    const dialogo = page.getByRole("dialog", { name: "Editar usuario" });
+    await dialogo.getByRole("radio", { name: /^Visitante/ }).check({ force: true });
+    await dialogo.getByRole("checkbox", { name: CENTROS.nunoa }).uncheck({ force: true });
+    await dialogo.getByRole("checkbox", { name: CENTROS.valpo }).check({ force: true });
+    await dialogo.getByRole("button", { name: "Guardar cambios" }).click();
+    await expect(dialogo).toBeHidden();
+    const actualizada = page.getByRole("row").filter({ hasText: usuario.email });
+    await expect(actualizada).toContainText("Visitante");
+    await expect(actualizada).toContainText(CENTROS.valpo);
+
+    // Su sesión anterior ya no puede retirar: o se cerró, o quedó sin permiso.
+    await sesionUsuario.goto("/movimientos/retiro");
+    await expect(sesionUsuario).toHaveURL(/\/(login|sin-permiso)/);
+    if (sesionUsuario.url().includes("/login")) {
+      await sesionUsuario.getByLabel("Correo electrónico").fill(usuario.email);
+    }
+    await expect(sesionUsuario.getByRole("heading", { name: "Registrar retiro" })).toHaveCount(0);
+  });
+
+  test("cambiar la propia contraseña cierra las demás sesiones del usuario", async ({ page, abrirAnonimo }) => {
+    const usuario = await crearUsuario(page, "Visitante");
+    const primera = `Primera.${sufijo()}.9`;
+    const segunda = `Segunda.${sufijo()}.9`;
+    const equipoA = await abrirAnonimo();
+    await primerIngreso(equipoA, usuario, primera);
+    const equipoB = await abrirAnonimo();
+    await iniciarSesion(equipoB, usuario.email, primera);
+    await expect(equipoB).toHaveURL(/\/panel$/);
+
+    await equipoA.getByRole("button", { name: /Menú de usuario/ }).click();
+    await equipoA.getByRole("menuitem", { name: "Cambiar contraseña" }).click();
+    await expect(equipoA).toHaveURL(/\/cambiar-password$/);
+    await equipoA.getByLabel("Contraseña actual").fill(primera);
+    await equipoA.getByLabel("Nueva contraseña", { exact: true }).fill(segunda);
+    await equipoA.getByLabel("Repite la nueva contraseña").fill(segunda);
+    await equipoA.getByRole("button", { name: "Guardar nueva contraseña" }).click();
+    await expect(equipoA).toHaveURL(/\/panel/);
+
+    // El otro equipo pierde la sesión; el que hizo el cambio la conserva.
+    await equipoB.goto("/inventario");
+    await expect(equipoB).toHaveURL(/\/login/);
+    await equipoA.goto("/inventario");
+    await expect(equipoA.getByRole("heading", { level: 1, name: "Inventario" })).toBeVisible();
+    await iniciarSesion(equipoB, usuario.email, primera);
+    await expect(equipoB.getByRole("alert").filter({ hasText: ERROR_CREDENCIALES })).toBeVisible();
+  });
 });
