@@ -422,6 +422,46 @@ export function BotonNuevoUsuario({ centros }: { centros: OpcionCentro[] }) {
   );
 }
 
+/**
+ * Acción directa en la fila cuando la contraseña temporal venció: la persona
+ * no puede entrar hasta que un administrador genere otra.
+ */
+export function BotonRestablecerVencida({ usuario }: { usuario: { id: string; nombre: string } }) {
+  const [abierto, setAbierto] = React.useState(false);
+  const [password, setPassword] = React.useState<PasswordEntregada | null>(null);
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="secundario"
+        onClick={() => setAbierto(true)}
+        aria-label={`Restablecer la contraseña de ${usuario.nombre}`}
+      >
+        <KeyRound aria-hidden />
+        Restablecer
+      </Button>
+      <ConfirmDialog
+        open={abierto}
+        onOpenChange={setAbierto}
+        titulo="¿Restablecer la contraseña?"
+        descripcion={
+          <>
+            La contraseña temporal de <strong className="font-semibold text-texto">{usuario.nombre}</strong> venció sin usarse. Se
+            generará una nueva, válida por 72 horas.
+          </>
+        }
+        textoConfirmar="Restablecer"
+        onConfirmar={async () => {
+          const r = await restablecerPasswordUsuarioAccion({ id: usuario.id });
+          if (r.ok) setPassword({ ...r.datos, motivo: "restablecida" });
+          else toast.error("No se pudo restablecer", r.error);
+        }}
+      />
+      {password ? <DialogoPasswordTemporal datos={password} onCerrar={() => setPassword(null)} /> : null}
+    </>
+  );
+}
+
 type Vista = "editar" | "estado" | "password" | "desbloquear" | null;
 
 /** Menú de acciones por usuario. */

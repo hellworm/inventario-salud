@@ -6,9 +6,11 @@ import { NOMBRE_ROL } from "@/lib/permisos";
 
 /**
  * Traducción del registro de auditoría a lenguaje de usuario: nombres de
- * acciones, entidades y campos, y formato de valores. Todo tiene un respaldo
- * genérico, así que una acción o un campo nuevos se ven razonables aunque no
- * estén listados (p. ej. `LOTE_ACTUALIZADO` → "Lote actualizado").
+ * acciones, entidades y campos, y formato de valores. Toda acción que el código
+ * escribe con `registrarAuditoria` debe tener su etiqueta en `ETIQUETA_ACCION`
+ * (lo comprueba `tests/utilidades.test.ts` leyendo el código fuente). El
+ * respaldo genérico (`CATEGORIA_FUSIONADA` → "Categoría fusionada") existe solo
+ * para registros antiguos o de versiones futuras.
  */
 
 export type ValorJson = string | number | boolean | null | ValorJson[] | { [clave: string]: ValorJson };
@@ -25,16 +27,18 @@ export type NombresAuditoria = Readonly<Record<string, string>>;
 const ETIQUETA_ACCION: Readonly<Record<string, string>> = {
   LOGIN_OK: "Inicio de sesión",
   LOGIN_FALLIDO: "Intento de ingreso fallido",
-  LOGIN_BLOQUEADO: "Ingreso rechazado (cuenta bloqueada)",
+  LOGIN_BLOQUEADO: "Ingreso rechazado por bloqueo",
+  LOGIN_FALLIDO_AGREGADO: "Intentos de ingreso fallidos (resumen)",
   LOGOUT: "Cierre de sesión",
   PASSWORD_CAMBIADA: "Cambió su contraseña",
+  PASSWORD_CAMBIO_BLOQUEADO: "Cambio de contraseña bloqueado por intentos fallidos",
   MOVIMIENTO_INGRESO: "Ingreso de stock",
   MOVIMIENTO_RETIRO: "Retiro de stock",
   MOVIMIENTO_AJUSTE: "Ajuste de stock",
   MOVIMIENTO_MERMA: "Merma",
   MOVIMIENTO_TRASLADO: "Traslado",
   LOTE_CREADO: "Lote creado",
-  LOTE_ACTUALIZADO: "Lote modificado",
+  LOTE_ACTUALIZADO: "Vencimiento de lote corregido",
   INSUMO_CREADO: "Insumo creado",
   INSUMO_ACTUALIZADO: "Insumo modificado",
   INSUMO_ACTIVADO: "Insumo reactivado",
@@ -152,6 +156,12 @@ const ETIQUETA_CAMPO: Readonly<Record<string, string>> = {
   bloqueadoHasta: "Bloqueada hasta",
   minutos: "Minutos de bloqueo",
   ip: "Dirección IP",
+  omitidos: "Intentos no registrados uno a uno",
+  ventanaSegundos: "Período resumido (segundos)",
+  // Corrección de lotes
+  unidadesAfectadas: "Unidades en stock afectadas",
+  ubicacionesAfectadas: "Ubicaciones con stock afectadas",
+  truncada: "Archivo incompleto (tope de filas)",
 };
 
 /** Palabras que el respaldo genérico debe escribir con tilde, eñe o en español. */
@@ -205,7 +215,14 @@ const VALORES_CONOCIDOS: Readonly<Record<string, string>> = {
   LOTE: "Lote elegido a mano",
   POSITIVO: "Aumenta el stock (+)",
   NEGATIVO: "Disminuye el stock (−)",
+  CORRECCION: "Corrección de un administrador",
   email_desconocido: "El correo no corresponde a ningún usuario",
+  limite_ip: "Demasiados intentos desde la misma dirección IP",
+  limite_ip_email: "Demasiados intentos fallidos con esta cuenta desde la misma dirección IP",
+  limite_cuenta: "Demasiados intentos fallidos con esta cuenta",
+  bloqueo_cuenta: "La cuenta está bloqueada temporalmente por intentos fallidos",
+  password_temporal_vencida: "La contraseña temporal venció (hay que restablecerla)",
+  intentos_password_actual: "Demasiados intentos con la contraseña actual equivocada",
   password_incorrecta: "Contraseña incorrecta",
   usuario_inactivo: "El usuario está desactivado",
   cuenta_bloqueada: "La cuenta está bloqueada",
@@ -241,6 +258,11 @@ function aPalabras(clave: string): string {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
+/** ¿La acción tiene etiqueta propia (no cae en el respaldo genérico)? */
+export function tieneEtiquetaPropia(accion: string): boolean {
+  return Object.hasOwn(ETIQUETA_ACCION, accion);
+}
+
 export function etiquetaAccion(accion: string): string {
   return ETIQUETA_ACCION[accion] ?? aPalabras(accion);
 }
@@ -254,7 +276,7 @@ export function etiquetaCampo(campo: string): string {
 }
 
 export function tonoAccion(accion: string): TonoAccion {
-  if (/^LOGIN_(FALLIDO|BLOQUEADO)$/.test(accion)) return "alerta";
+  if (/^LOGIN_(FALLIDO|BLOQUEADO|FALLIDO_AGREGADO)$/.test(accion) || accion === "PASSWORD_CAMBIO_BLOQUEADO") return "alerta";
   if (/^(LOGIN_OK|LOGOUT)$/.test(accion)) return "neutro";
   if (/_(DESACTIVAD[OA]|ELIMINAD[OA])$/.test(accion) || accion === "MOVIMIENTO_MERMA") return "peligro";
   if (/_(CREAD[OA]|ACTIVAD[OA])$/.test(accion) || accion === "MOVIMIENTO_INGRESO") return "exito";

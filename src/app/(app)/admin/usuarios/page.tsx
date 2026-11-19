@@ -2,7 +2,13 @@ import type { Metadata } from "next";
 import { Check, KeyRound, Lock, Minus, Users } from "lucide-react";
 import { BarraFiltros, FiltroBusqueda, FiltroSelect } from "@/components/admin/filtros-url";
 import { INFO_ROL, ROLES_ORDENADOS } from "@/components/admin/roles-info";
-import { AccionesUsuario, BotonNuevoUsuario, DistintivoYo, type OpcionCentro } from "@/components/admin/usuarios";
+import {
+  AccionesUsuario,
+  BotonNuevoUsuario,
+  BotonRestablecerVencida,
+  DistintivoYo,
+  type OpcionCentro,
+} from "@/components/admin/usuarios";
 import {
   Badge,
   BadgeActivo,
@@ -14,10 +20,11 @@ import {
   Pagination,
   type Columna,
 } from "@/components/ui";
-import { formatearFechaHora, formatearRelativo } from "@/lib/fechas";
+import { formatearFecha, formatearFechaHora, formatearRelativo } from "@/lib/fechas";
 import { NOMBRE_ROL, ROLES, type Rol } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { listarCentrosAdmin, listarUsuarios, type FilaUsuario } from "@/server/servicios";
+import { paginaParam, textoParam } from "@/lib/parametros";
 
 export const metadata: Metadata = { title: "Usuarios" };
 
@@ -70,12 +77,28 @@ function columnas(usuarioActualId: string, centros: OpcionCentro[]): Columna<Fil
                 Bloqueada
               </Badge>
             ) : null}
-            {u.activo && u.debeCambiarPassword ? (
+            {u.activo && u.debeCambiarPassword && !u.passwordTemporalVencida ? (
               <Badge tono="alerta" icono={KeyRound} title="Aún no cambia su contraseña temporal">
                 Contraseña temporal
               </Badge>
             ) : null}
+            {u.activo && u.passwordTemporalVencida ? (
+              <Badge tono="peligro" icono={KeyRound}>
+                Contraseña temporal vencida
+              </Badge>
+            ) : null}
           </span>
+          {u.activo && u.debeCambiarPassword && u.passwordTemporalExpira && !u.passwordTemporalVencida ? (
+            <span className="mt-1 block text-xs text-texto-suave" data-password-temporal="vigente">
+              Contraseña temporal vence el <span className="cifras">{formatearFecha(u.passwordTemporalExpira)}</span>
+            </span>
+          ) : null}
+          {u.activo && u.passwordTemporalVencida ? (
+            <span className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-peligro-800" data-password-temporal="vencida">
+              No puede ingresar hasta restablecerla.
+              {u.id !== usuarioActualId ? <BotonRestablecerVencida usuario={{ id: u.id, nombre: u.nombre }} /> : null}
+            </span>
+          ) : null}
           <span className="mt-1 block text-xs text-texto-suave max-md:hidden" title={u.ultimoAcceso ? formatearFechaHora(u.ultimoAcceso) : undefined}>
             {u.ultimoAcceso ? `Ingresó ${formatearRelativo(u.ultimoAcceso)}` : "Nunca ingresó"}
           </span>
@@ -144,13 +167,13 @@ function AyudaRoles() {
 export default async function PaginaAdminUsuarios({ searchParams }: PageProps<"/admin/usuarios">) {
   const { actor } = await contextoPagina("usuarios:gestionar");
   const sp = await searchParams;
-  const texto = typeof sp.q === "string" ? sp.q : undefined;
+  const texto = textoParam(sp.q) ?? undefined;
   const rol = ROLES.find((r) => r === sp.rol) as Rol | undefined;
   const estado = sp.estado === "activos" || sp.estado === "inactivos" ? sp.estado : undefined;
-  const centroId = typeof sp.centro === "string" ? sp.centro : undefined;
+  const centroId = textoParam(sp.centro) ?? undefined;
 
   const [usuarios, centrosRed] = await Promise.all([
-    listarUsuarios(actor, { texto, rol, estado, centroId, pagina: Number(sp.pagina) || 1 }),
+    listarUsuarios(actor, { texto, rol, estado, centroId, pagina: paginaParam(sp.pagina) }),
     listarCentrosAdmin(actor),
   ]);
   const centros: OpcionCentro[] = centrosRed.map((c) => ({ id: c.id, nombre: c.nombre, activo: c.activo }));
