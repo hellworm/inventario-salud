@@ -328,7 +328,10 @@ test.describe("Administrador de la red: ve el total", () => {
     // "Quitar filtro" vuelve al resumen completo; un id inventado se ignora.
     await red.goto("/panel?institucion=no-existe");
     await expect(resumen.locator("[data-detalle-institucion]")).toHaveCount(0);
-    await expect(tarjetas).toHaveCount(await tarjetas.count());
+    // (Antes comparaba el conteo consigo mismo, leído mientras la página aún cargaba.)
+    await expect(andes).toHaveCount(1);
+    await expect(cerro).toHaveCount(1);
+    await expect(andes).not.toHaveAttribute("aria-current", "true");
   });
 
   test("selector de centro agrupado por institución; centros, usuarios y auditoría de toda la red", async ({ abrirComo }) => {
