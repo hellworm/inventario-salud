@@ -3,6 +3,7 @@ import { BOM_UTF8, filaCsv } from "@/lib/csv";
 import type { Actor } from "@/lib/permisos";
 import { obtenerSesion } from "./auth/sesion";
 import { ErrorDominio, type CodigoError } from "./errores";
+import { registrarError } from "./registro";
 import type { ExportacionCsv } from "./servicios/exportaciones";
 
 const ESTADO_HTTP: Partial<Record<CodigoError, number>> = {
@@ -43,7 +44,7 @@ function cuerpoCsv(exportacion: ExportacionCsv): ReadableStream<Uint8Array> {
         }
         controlador.enqueue(codificador.encode(parte));
       } catch (error) {
-        console.error("[exportacion] error al generar el CSV:", error);
+        registrarError("exportacion", "Error al generar el CSV.", error);
         controlador.error(error);
       }
     },
@@ -73,7 +74,7 @@ export async function responderCsv(preparar: (actor: Actor) => Promise<Exportaci
     if (error instanceof ErrorDominio) {
       return respuestaTexto(ESTADO_HTTP[error.codigo] ?? 400, error.message);
     }
-    console.error("[exportacion] error inesperado:", error);
+    registrarError("exportacion", "Error inesperado al preparar la exportación.", error);
     return respuestaTexto(500, "Ocurrió un error inesperado. Intenta nuevamente.");
   }
   return new Response(cuerpoCsv(exportacion), {

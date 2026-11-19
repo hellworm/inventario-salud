@@ -532,3 +532,21 @@ persona. Variables en `.env` (ver `.env.example`): `DATABASE_URL`, `DATABASE_URL
 - **Deuda — modo oscuro:** los tokens semánticos están preparados (`:root` en `globals.css`), sin
   tema oscuro definido.
 - Comunas: `REGIONES` trae las principales por región, no el listado oficial completo.
+
+## 14. Operación y despliegue
+
+Guías: [`DESPLIEGUE.md`](DESPLIEGUE.md) (instalación y actualización), [`OPERACION.md`](OPERACION.md)
+(tareas rutinarias y problemas) y [`PRIVACIDAD.md`](PRIVACIDAD.md). Piezas técnicas:
+
+| Pieza | Dónde | Notas |
+|---|---|---|
+| Imagen de producción | `Dockerfile`, `docker-compose.yml`, `Caddyfile` | `output: "standalone"` en `next.config.ts`. Etapas `app` (servidor, usuario `node`) y `herramientas` (Prisma CLI + `scripts/`). Compose migra con `prisma migrate deploy` antes de iniciar la app. |
+| Salud | `GET /api/salud` → `src/server/salud.ts` | Público (está en `RUTAS_PUBLICAS` de `proxy.ts`). 200 si la BD responde, 503 si no. |
+| Configuración | `src/server/entorno.ts` | `validarEntorno()` (zod) corre en `src/instrumentation.ts` al iniciar el servidor y al inicio de cada script; no corre en `next build`. Una variable nueva se agrega al esquema, a `.env.example` y a la tabla de `DESPLIEGUE.md`. |
+| Registro (logs) | `src/server/registro.ts` | `registrarError(contexto, mensaje, error, datos?)`: JSON por línea en producción, con contraseñas, tokens y credenciales de URL ocultos. Úsalo en vez de `console.error` en código de servidor. `onRequestError` (instrumentation) registra los errores que captura Next. |
+| Scripts | `scripts/` | `admin:crear`, `sesiones:limpiar` (tsx, importan `./preparar-entorno` primero), `respaldo.sh` y `restaurar.sh` (bash + cliente PostgreSQL). |
+| CI | `.github/workflows/ci.yml` | Migraciones, tipos, lint, pruebas, build e imagen Docker. |
+
+La deuda "limpieza de sesiones vencidas" de §13 queda cubierta por `npm run sesiones:limpiar`
+(servicio `mantenimiento` de Compose o cron). `npm run db:seed` es solo para demostración y se niega
+a correr con `NODE_ENV=production` salvo `SEED_DEMO=1`.

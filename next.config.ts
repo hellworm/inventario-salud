@@ -43,6 +43,9 @@ const cabecerasSeguridad = [
 const nextConfig: NextConfig = {
   // Todas las vistas dependen de la sesión y de stock en tiempo real: se
   // renderizan por solicitud. No se usa Cache Components (ver ARQUITECTURA).
+  // Build autocontenido en `.next/standalone` (lo usa el Dockerfile).
+  output: "standalone",
+  outputFileTracingRoot: import.meta.dirname,
   poweredByHeader: false,
   devIndicators: false,
   serverExternalPackages: ["@node-rs/argon2"],
