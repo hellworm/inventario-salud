@@ -28,7 +28,10 @@ export interface VistaEscanearProps {
   ubicacion: string | null;
   coincidencias: (InsumoOpcion & { activo: boolean })[];
   insumosIniciales: InsumoOpcion[];
+  /** `catalogo:gestionar` (administrador de la red): puede asociar el código a un insumo existente. */
   puedeGestionarCatalogo: boolean;
+  /** `catalogo:crear` (también el administrador de institución): puede crear un insumo con el código. */
+  puedeCrearInsumo: boolean;
   codigoGuardable: boolean;
 }
 
@@ -131,6 +134,7 @@ export function VistaEscanear({
   coincidencias,
   insumosIniciales,
   puedeGestionarCatalogo,
+  puedeCrearInsumo,
   codigoGuardable,
 }: VistaEscanearProps) {
   const router = useRouter();
@@ -190,7 +194,11 @@ export function VistaEscanear({
         {activos.length === 0 ? (
           <p className="mt-3 text-sm text-texto-suave">
             Un insumo inactivo no admite ingresos.{" "}
-            {puedeGestionarCatalogo ? "Reactívalo en Administración › Insumos." : "Pide a tu administrador que lo reactive."}
+            {puedeGestionarCatalogo
+              ? "Reactívalo en Administración › Insumos."
+              : puedeCrearInsumo
+                ? "Pide al administrador de la red que lo reactive."
+                : "Pide a tu administrador que lo reactive."}
           </p>
         ) : null}
         <BotonEscanear ubicacion={ubicacion} className={buttonClasses({ variant: "secundario" }) + " mt-5"}>
@@ -260,6 +268,13 @@ export function VistaEscanear({
             Este código tiene caracteres que el catálogo no admite como código de barras, así que no se puede asociar a un insumo. Puedes
             continuar con el ingreso.
           </Alert>
+        ) : puedeCrearInsumo ? (
+          // Administrador de institución: crea insumos, pero no modifica los que ya existen (catálogo compartido).
+          <Alert tono="info" titulo="Para que se reconozca la próxima vez" data-aviso-asociar>
+            Para asociarlo a un insumo existente, contacta al administrador de la red: el catálogo es compartido por todas las
+            instituciones.{codigoGuardable ? " Si el insumo aún no existe, puedes crearlo con este código." : ""} Mientras tanto puedes
+            continuar con el ingreso.
+          </Alert>
         ) : (
           <Alert tono="info" titulo="Para que se reconozca la próxima vez">
             Pide a tu administrador que registre este código en el insumo. Mientras tanto puedes continuar con el ingreso.
@@ -280,7 +295,7 @@ export function VistaEscanear({
           <ScanBarcode aria-hidden />
           Escanear otro
         </BotonEscanear>
-        {puedeAsociar ? (
+        {puedeCrearInsumo && codigoGuardable ? (
           <Link
             href={construirHref("/admin/insumos/nuevo", { codigoBarras: codigo.codigo })}
             className={buttonClasses({ variant: "fantasma", size: "lg" })}

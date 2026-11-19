@@ -70,6 +70,7 @@ export default async function PaginaEscanear({ searchParams }: PageProps<"/movim
         coincidencias={busqueda?.coincidencias ?? []}
         insumosIniciales={insumosIniciales}
         puedeGestionarCatalogo={puede(actor.rol, "catalogo:gestionar")}
+        puedeCrearInsumo={puede(actor.rol, "catalogo:crear")}
         // Solo se puede guardar en el insumo un código con los caracteres que admite el catálogo.
         codigoGuardable={codigo !== null && codigo.codigo.length <= 64 && RE_CODIGO_BARRAS.test(codigo.codigo)}
       />

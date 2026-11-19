@@ -45,12 +45,12 @@ const QUE_PUEDE: Record<Rol, { resumen: string; puntos: string[] }> = {
   ADMIN: {
     resumen: "Tienes acceso completo a tu institución: todos sus centros, usuarios y reportes. No ves nada de otras instituciones.",
     puntos: [
-      "Todo lo de un bodeguero, en cualquier centro de tu institución o en “Toda mi institución”.",
+      "Todo lo de un bodeguero (incluido escanear para ingresar), en cualquier centro de tu institución o en “Toda mi institución”.",
       "Trasladar stock entre ubicaciones o centros de tu institución, corregirlo con ajustes y dar de baja mermas.",
       "Corregir la fecha de vencimiento de un lote que se digitó mal.",
       "Ver reportes y descargarlos para Excel.",
       "Administrar los centros, ubicaciones y usuarios de tu institución, los proveedores, y revisar la auditoría de tu institución.",
-      "Crear insumos nuevos y definir los mínimos y máximos de tus centros. Los insumos y categorías que ya existen son compartidos por toda la red: para modificarlos contacta al administrador de la red.",
+      "Crear insumos nuevos (también desde el escáner, con el código leído) y definir los mínimos y máximos de tus centros. Los insumos y categorías que ya existen son compartidos por toda la red: para modificarlos o asociarles un código de barras contacta al administrador de la red.",
     ],
   },
   ADMIN_RED: {
@@ -58,8 +58,8 @@ const QUE_PUEDE: Record<Rol, { resumen: string; puntos: string[] }> = {
     puntos: [
       "Todo lo de un administrador de institución, en cualquier centro o en “Toda la red”.",
       "Crear instituciones y a su primer administrador; desactivar las que dejan de operar.",
-      "Ver en el Panel el resumen de toda la red por institución.",
-      "Editar, desactivar o eliminar insumos y categorías del catálogo compartido.",
+      "Ver en el Panel el resumen de toda la red por institución: qué falta y el semáforo de vencimientos de cada una y de cada centro.",
+      "Editar, desactivar o eliminar insumos y categorías del catálogo compartido, y asociar un código de barras escaneado a un insumo que ya existe.",
       "Administrar centros y usuarios de cualquier institución, y revisar la auditoría de toda la red.",
     ],
   },
@@ -119,7 +119,7 @@ const TAREAS: Tarea[] = [
     ],
     notas: [
       "¿La cámara no lee? Usa «Escribir el código» y copia los números que aparecen bajo las barras. También sirve un lector de códigos conectado al computador.",
-      "Si aparece «No reconocemos este código», busca el insumo por su nombre y continúa: no se pierde el lote ni el vencimiento leídos. Un administrador puede asociar el código al insumo para que la próxima vez se reconozca.",
+      "Si aparece «No reconocemos este código», busca el insumo por su nombre y continúa: no se pierde el lote ni el vencimiento leídos. El administrador de la red puede asociar el código a un insumo que ya existe para que la próxima vez se reconozca; si el insumo aún no existe, un administrador de institución puede crearlo con ese código.",
       "Si negaste el permiso de la cámara, actívalo desde el candado junto a la dirección del sitio (en iPhone, «aA») y vuelve a intentarlo.",
       "Dentro de los formularios de ingreso y de retiro también hay un botón Escanear junto al buscador de insumos.",
     ],
@@ -135,7 +135,7 @@ const TAREAS: Tarea[] = [
       <><strong>Ir a comprar</strong> abre el sitio web del proveedor en otra pestaña (verás su dirección bajo el nombre).</>,
       <>Toca el nombre de un proveedor para desplegar su <strong>teléfono</strong>, su <strong>correo</strong>, la persona de contacto y el RUT. Desde el celular, tocar el teléfono inicia la llamada.</>,
     ],
-    notas: ["Un administrador mantiene los proveedores (incluido el sitio web) en Administración › Proveedores."],
+    notas: ["Los proveedores son compartidos por toda la red. Los administradores (de la red o de una institución) los mantienen, incluido el sitio web, en Administración › Proveedores."],
   },
   {
     id: "ingreso",
