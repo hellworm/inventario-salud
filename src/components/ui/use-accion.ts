@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import type { ErroresCampo, ResultadoAccion } from "@/lib/resultado";
+import { avisarSesionVencida, esSesionVencida, MENSAJE_SESION_VENCIDA } from "./sesion-vencida";
 import { toast } from "./toast";
 
 export interface OpcionesUseAccion<S> {
@@ -27,7 +28,9 @@ export interface EstadoAccion<E, S> {
 
 /**
  * Ejecuta una Server Action creada con `accionSegura` manejando estado
- * pendiente, errores por campo y toasts.
+ * pendiente, errores por campo y toasts. Si el servidor responde que ya no hay
+ * sesión (`NO_AUTENTICADO`), avisa "Tu sesión venció" y redirige a
+ * `/login?destino=<ruta actual>`.
  *
  * ```tsx
  * const ingreso = useAccion(registrarIngresoAccion, {
@@ -67,6 +70,11 @@ export function useAccion<E, S>(
       if (resultado.ok) {
         if (o.exito) toast.exito(typeof o.exito === "function" ? o.exito(resultado.datos) : o.exito);
         o.alExito?.(resultado.datos);
+      } else if (esSesionVencida(resultado)) {
+        // Sin sesión: se avisa una sola vez y se vuelve al login conservando la ruta.
+        resultado = { ...resultado, error: MENSAJE_SESION_VENCIDA };
+        setError(MENSAJE_SESION_VENCIDA);
+        avisarSesionVencida();
       } else {
         setError(resultado.error);
         setErroresCampo(resultado.erroresCampo ?? {});

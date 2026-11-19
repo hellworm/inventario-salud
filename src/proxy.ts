@@ -10,6 +10,10 @@ import { COOKIE_SESION, PATRON_TOKEN_SESION } from "@/server/auth/constantes";
  *    inactividad se controla en el servidor (BD). Una cookie con un token que
  *    ya no vale nunca se prolonga; además, las Server Actions la borran al
  *    detectarla (`descartarCookieSesionInvalida`);
+ *  - las Server Actions (cabecera `next-action`) NO se redirigen: un 307 a
+ *    /login haría que el formulario viera un error de red. Pasan al servidor,
+ *    donde `accionSegura` responde `NO_AUTENTICADO` y el cliente avisa "Tu
+ *    sesión venció" y lleva al login (`useAccion`);
  *  - genera la Content-Security-Policy con un nonce por solicitud.
  *
  * La validación real de la sesión (BD) y de los permisos ocurre en los
@@ -55,8 +59,11 @@ export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.getRandomValues(new Uint8Array(18))).toString("base64");
   const csp = construirCsp(nonce);
 
+  // Las Server Actions validan la sesión por sí mismas y responden un resultado legible.
+  const esAccion = request.method === "POST" && request.headers.has("next-action");
+
   let respuesta: NextResponse;
-  if (!token && !esPublica) {
+  if (!token && !esPublica && !esAccion) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";

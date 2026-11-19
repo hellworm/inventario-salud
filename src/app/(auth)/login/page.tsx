@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { Alert } from "@/components/ui";
 import { obtenerSesion } from "@/server/auth/sesion";
 import { FormularioLogin } from "./formulario-login";
 
@@ -15,7 +16,7 @@ export default async function PaginaLogin({ searchParams }: PageProps<"/login">)
   const sesion = await obtenerSesion();
   if (sesion) redirect(sesion.usuario.debeCambiarPassword ? "/cambiar-password" : "/panel");
 
-  const { destino } = await searchParams;
+  const { destino, motivo } = await searchParams;
   const mostrarDemo = process.env.NODE_ENV !== "production";
 
   return (
@@ -24,6 +25,11 @@ export default async function PaginaLogin({ searchParams }: PageProps<"/login">)
       <p className="mt-1.5 mb-7 text-[0.9375rem] text-texto-suave">
         Usa el correo y la contraseña que te entregó la administración de tu centro.
       </p>
+      {motivo === "sesion" ? (
+        <Alert tono="info" className="mb-5">
+          Tu sesión venció. Ingresa de nuevo y volverás a la pantalla donde estabas.
+        </Alert>
+      ) : null}
       <FormularioLogin destino={typeof destino === "string" ? destino : undefined} />
       <p className="mt-6 text-sm text-texto-suave">
         ¿Olvidaste tu contraseña? Pide a un administrador de la red que la restablezca.
