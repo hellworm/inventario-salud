@@ -8,9 +8,14 @@
  * centro (`stock`) para que la confirmación diga "ahora hay 54". Es una
  * lectura posterior a la transacción: si fallara, el movimiento ya quedó
  * registrado y `stock` llega en `null` (nunca se informa un error falso).
+ *
+ * Todas aceptan `claveIdempotencia` (UUID opcional generado por el formulario
+ * al montarse): si se reenvía la misma clave se devuelve el resultado ya
+ * registrado, con `repetido: true`, sin duplicar el movimiento.
  */
 import {
   esquemaAjuste,
+  esquemaCorregirVencimientoLote,
   esquemaIngreso,
   esquemaMerma,
   esquemaRetiro,
@@ -20,6 +25,7 @@ import type { Actor } from "@/lib/permisos";
 import { accionSegura } from "@/server/accion-segura";
 import { registrarError } from "@/server/registro";
 import {
+  corregirVencimientoLote,
   detalleInsumo,
   registrarAjuste,
   registrarIngreso,
@@ -101,4 +107,15 @@ export const registrarMermaAccion = accionSegura(
 export const registrarTrasladoAccion = accionSegura(
   { esquema: esquemaTraslado, permiso: "movimientos:traslado" },
   ({ actor, datos }) => registrarTraslado(actor, datos),
+);
+
+/**
+ * Corrige la fecha de vencimiento de un lote (solo ADMIN; auditado como
+ * LOTE_ACTUALIZADO). Entrada: `{ loteId, fechaVencimiento?, motivo }`;
+ * `fechaVencimiento` vacío deja el lote sin fecha. Devuelve
+ * `{ loteId, numeroLote, fechaVencimientoAnterior, fechaVencimiento, cambiado }`.
+ */
+export const corregirVencimientoLoteAccion = accionSegura(
+  { esquema: esquemaCorregirVencimientoLote, permiso: "movimientos:ajuste" },
+  ({ actor, datos }) => corregirVencimientoLote(actor, datos),
 );

@@ -32,6 +32,7 @@ import { esquemaRetiro } from "@/lib/esquemas/movimientos";
 import { planificarFefo } from "@/lib/fefo";
 import { formatearDia } from "@/lib/fechas";
 import { formatearNumero } from "@/lib/formato";
+import { nuevaClaveIdempotencia } from "@/lib/esquemas/base";
 import type { ErroresCampo } from "@/lib/resultado";
 import { cantidadConUnidad, unidadSegun } from "@/lib/unidades";
 
@@ -79,6 +80,8 @@ export function FormularioRetiro({
   const [intentado, setIntentado] = React.useState(false);
   const [confirmado, setConfirmado] = React.useState<RetiroConfirmado | null>(null);
   const [ronda, setRonda] = React.useState(0);
+  // Clave de idempotencia: un doble envío o un reintento no duplica el movimiento.
+  const [claveIdempotencia, setClaveIdempotencia] = React.useState(nuevaClaveIdempotencia);
 
   const existencias = useExistenciasInsumo(insumo?.id ?? null, centroId);
   const retiro = useAccion(registrarRetiroAccion, { toastError: false });
@@ -148,13 +151,14 @@ export function FormularioRetiro({
       enfocarPrimerError(refFormulario.current);
       return;
     }
-    const r = await retiro.ejecutar(valores);
+    const r = await retiro.ejecutar({ ...valores, claveIdempotencia });
     existencias.recargar();
     if (!r.ok) {
       setIntentado(true);
       enfocarPrimerError(refFormulario.current);
       return;
     }
+    setClaveIdempotencia(nuevaClaveIdempotencia());
     setConfirmado({
       insumo,
       ubicacion,
@@ -165,6 +169,7 @@ export function FormularioRetiro({
   };
 
   const registrarOtro = () => {
+    setClaveIdempotencia(nuevaClaveIdempotencia());
     setInsumo(null);
     setModo("FEFO");
     setLoteElegido("");

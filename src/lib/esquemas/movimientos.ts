@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   zCantidad,
+  zClaveIdempotencia,
   zDiaOpcional,
   zId,
   zIdOpcional,
@@ -27,6 +28,7 @@ export const esquemaIngreso = z.object({
   documentoRef: zTextoOpcional(80),
   costoUnitario: zMontoOpcional,
   nota: zTextoOpcional(500),
+  claveIdempotencia: zClaveIdempotencia,
 });
 export type EntradaIngreso = z.input<typeof esquemaIngreso>;
 export type DatosIngreso = z.output<typeof esquemaIngreso>;
@@ -41,6 +43,7 @@ export const esquemaRetiro = z.object({
   motivo: zTextoOpcional(200),
   documentoRef: zTextoOpcional(80),
   nota: zTextoOpcional(500),
+  claveIdempotencia: zClaveIdempotencia,
 });
 export type EntradaRetiro = z.input<typeof esquemaRetiro>;
 export type DatosRetiro = z.output<typeof esquemaRetiro>;
@@ -52,6 +55,7 @@ export const esquemaAjuste = z.object({
   cantidad: zCantidad,
   motivo: zTexto(200, "El motivo del ajuste es obligatorio"),
   nota: zTextoOpcional(500),
+  claveIdempotencia: zClaveIdempotencia,
 });
 export type EntradaAjuste = z.input<typeof esquemaAjuste>;
 export type DatosAjuste = z.output<typeof esquemaAjuste>;
@@ -62,6 +66,7 @@ export const esquemaMerma = z.object({
   cantidad: zCantidad,
   motivo: zTexto(200, "El motivo de la merma es obligatorio"),
   nota: zTextoOpcional(500),
+  claveIdempotencia: zClaveIdempotencia,
 });
 export type EntradaMerma = z.input<typeof esquemaMerma>;
 export type DatosMerma = z.output<typeof esquemaMerma>;
@@ -74,6 +79,7 @@ export const esquemaTraslado = z
     cantidad: zCantidad,
     motivo: zTextoOpcional(200),
     nota: zTextoOpcional(500),
+    claveIdempotencia: zClaveIdempotencia,
   })
   .refine((d) => d.ubicacionOrigenId !== d.ubicacionDestinoId, {
     path: ["ubicacionDestinoId"],
@@ -81,3 +87,13 @@ export const esquemaTraslado = z
   });
 export type EntradaTraslado = z.input<typeof esquemaTraslado>;
 export type DatosTraslado = z.output<typeof esquemaTraslado>;
+
+/** Corrección administrativa del vencimiento de un lote (solo ADMIN). */
+export const esquemaCorregirVencimientoLote = z.object({
+  loteId: zId,
+  /** Nueva fecha de vencimiento; vacío = el lote queda sin fecha. */
+  fechaVencimiento: zDiaOpcional,
+  motivo: zTexto(200, "Indica el motivo de la corrección"),
+});
+export type EntradaCorregirVencimientoLote = z.input<typeof esquemaCorregirVencimientoLote>;
+export type DatosCorregirVencimientoLote = z.output<typeof esquemaCorregirVencimientoLote>;
