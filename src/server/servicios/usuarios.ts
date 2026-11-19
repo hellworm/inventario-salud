@@ -26,6 +26,7 @@ import {
   patronLike,
   type FiltroEstado,
   type OpcionesPagina,
+  textoDeBusqueda,
 } from "./apoyo-admin";
 
 // ---------------------------------------------------------------------------
@@ -110,7 +111,7 @@ const TIPOS_BLOQUEO_LOGIN: readonly TipoLimite[] = ["LOGIN_PAR", "LOGIN_CUENTA"]
 export async function listarUsuarios(actor: Actor, filtros: FiltrosUsuarios = {}): Promise<Paginado<FilaUsuario>> {
   verificarPermiso(actor, "usuarios:gestionar");
   const { pagina, porPagina, saltar } = normalizarPagina(filtros);
-  const texto = filtros.texto?.trim();
+  const texto = textoDeBusqueda(filtros.texto);
   const where: Prisma.UsuarioWhereInput = {
     ...condicionActivo(filtros.estado),
     ...(filtros.rol ? { rol: filtros.rol } : {}),
@@ -185,7 +186,7 @@ export async function listarUsuarios(actor: Actor, filtros: FiltrosUsuarios = {}
 // Mutaciones
 // ---------------------------------------------------------------------------
 
-const MENSAJE_EMAIL_DUPLICADO = "Ya existe un usuario con ese email.";
+const MENSAJE_EMAIL_DUPLICADO = "Ya existe un usuario con ese correo electrónico.";
 
 async function exigirEmailLibre(tx: Tx, email: string, exceptoId?: string): Promise<void> {
   const existente = await tx.usuario.findUnique({ where: { email }, select: { id: true } });

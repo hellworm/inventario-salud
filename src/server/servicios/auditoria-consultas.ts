@@ -1,6 +1,6 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
-import { finDelDia, inicioDelDia, parsearDia } from "@/lib/fechas";
+import { finDelDia, inicioDelDia, parsearDiaFiltro } from "@/lib/fechas";
 import type { Actor } from "@/lib/permisos";
 import type { Paginado } from "@/lib/resultado";
 import { verificarPermiso } from "../autorizacion";
@@ -36,8 +36,8 @@ export interface FiltrosAuditoria extends OpcionesPagina {
 export async function listarAuditoria(actor: Actor, filtros: FiltrosAuditoria = {}): Promise<Paginado<FilaAuditoria>> {
   verificarPermiso(actor, "auditoria:ver");
   const { pagina, porPagina, saltar } = normalizarPagina(filtros);
-  const desde = parsearDia(filtros.desde);
-  const hasta = parsearDia(filtros.hasta);
+  const desde = parsearDiaFiltro(filtros.desde);
+  const hasta = parsearDiaFiltro(filtros.hasta);
   const where: Prisma.RegistroAuditoriaWhereInput = {
     ...(filtros.usuarioId ? { usuarioId: filtros.usuarioId } : {}),
     ...(filtros.accion ? { accion: filtros.accion } : {}),

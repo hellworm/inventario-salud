@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
 import { ErrorDominio } from "../errores";
+import { acotarPagina, limpiarTexto } from "@/lib/parametros";
 import { POR_PAGINA_DEFECTO, POR_PAGINA_MAXIMO, type Paginado } from "@/lib/resultado";
 
 /** Utilidades internas de los servicios de administración (no se exportan desde `index.ts`). */
@@ -19,10 +20,15 @@ export interface OpcionesPagina {
   porPagina?: number | null;
 }
 
-/** Normaliza página y tamaño (por defecto 25, máximo 100). */
+/**
+ * Normaliza página y tamaño (por defecto 25, máximo 100). ÚNICA normalización
+ * de paginación de los servicios: la página queda entre 1 y 1.000.000
+ * (`acotarPagina`), de modo que `saltar` nunca desborda el OFFSET.
+ */
 export function normalizarPagina(opciones: OpcionesPagina): { pagina: number; porPagina: number; saltar: number } {
-  const porPagina = Math.min(Math.max(Math.trunc(Number(opciones.porPagina)) || POR_PAGINA_DEFECTO, 1), POR_PAGINA_MAXIMO);
-  const pagina = Math.max(Math.trunc(Number(opciones.pagina)) || 1, 1);
+  const tamano = Math.trunc(Number(opciones.porPagina));
+  const porPagina = Math.min(Math.max(Number.isFinite(tamano) && tamano > 0 ? tamano : POR_PAGINA_DEFECTO, 1), POR_PAGINA_MAXIMO);
+  const pagina = acotarPagina(opciones.pagina);
   return { pagina, porPagina, saltar: (pagina - 1) * porPagina };
 }
 
@@ -73,7 +79,21 @@ export async function conUnicidad<T>(trabajo: () => Promise<T>, mensaje: string,
 /** Largo máximo de un texto de búsqueda libre (lo que exceda se ignora). */
 export const LARGO_MAXIMO_BUSQUEDA = 120;
 
-/** Patrón `%texto%` para ILIKE, escapando comodines y acotando el largo. */
+/**
+ * Texto de búsqueda saneado (sin caracteres de control, recortado y acotado),
+ * o `null` si queda vacío. Todo servicio que reciba un texto libre lo pasa por
+ * aquí antes de usarlo en SQL o de guardarlo en el detalle de auditoría (un
+ * byte nulo hace fallar a PostgreSQL en ambos casos).
+ */
+export function textoDeBusqueda(texto: string | null | undefined): string | null {
+  const limpio = limpiarTexto(texto ?? "", LARGO_MAXIMO_BUSQUEDA);
+  return limpio === "" ? null : limpio;
+}
+
+/**
+ * Patrón `%texto%` para ILIKE: quita caracteres de control (un byte nulo hace
+ * fallar a PostgreSQL), escapa comodines y acota el largo.
+ */
 export function patronLike(texto: string): string {
-  return `%${texto.slice(0, LARGO_MAXIMO_BUSQUEDA).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return `%${limpiarTexto(texto, LARGO_MAXIMO_BUSQUEDA).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }

@@ -19,15 +19,22 @@ import {
   formatearFechaHora,
   hoyEnSantiago,
   inicioDelDia,
-  parsearDia,
+  parsearDiaFiltro,
   sumarDias,
   type DiaISO,
 } from "@/lib/fechas";
 import type { Actor } from "@/lib/permisos";
-import { POR_PAGINA_DEFECTO, POR_PAGINA_MAXIMO, type Paginado } from "@/lib/resultado";
+import type { Paginado } from "@/lib/resultado";
 import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { db } from "../db";
-import { condicionMovimientos, type FiltrosMovimientos } from "./consultas-movimientos";
+import { armarPaginado, normalizarPagina, patronLike, textoDeBusqueda } from "./apoyo-admin";
+import {
+  condicionMovimientos,
+  consultaPorTexto,
+  type ConsultaPorTexto,
+  type CursorMovimiento,
+  type FiltrosMovimientos,
+} from "./consultas-movimientos";
 import { auditarExportacion, MAXIMO_FILAS_EXPORTACION, type ExportacionCsv } from "./exportaciones";
 
 /**
@@ -45,15 +52,8 @@ interface Paginacion {
   porPagina?: number;
 }
 
-function normalizarPaginacion({ pagina, porPagina }: Paginacion) {
-  const pp = Math.min(Math.max(Math.trunc(porPagina ?? POR_PAGINA_DEFECTO) || POR_PAGINA_DEFECTO, 1), POR_PAGINA_MAXIMO);
-  const p = Math.max(Math.trunc(pagina ?? 1) || 1, 1);
-  return { pagina: p, porPagina: pp, saltar: (p - 1) * pp };
-}
-
-function paginar<T>(items: T[], total: number, pagina: number, porPagina: number): Paginado<T> {
-  return { items, total, pagina, porPagina, totalPaginas: Math.max(1, Math.ceil(total / porPagina)) };
-}
+const normalizarPaginacion = normalizarPagina;
+const paginar = armarPaginado;
 
 function filtroCentros(columna: Prisma.Sql, centros: string[] | null): Prisma.Sql {
   if (centros === null) return Prisma.empty;
@@ -62,8 +62,8 @@ function filtroCentros(columna: Prisma.Sql, centros: string[] | null): Prisma.Sq
 }
 
 function patronDe(texto?: string | null): string | null {
-  const limpio = texto?.trim();
-  return limpio ? `%${limpio.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
+  const limpio = textoDeBusqueda(texto);
+  return limpio ? patronLike(limpio) : null;
 }
 
 export interface PeriodoReporte {
@@ -89,8 +89,9 @@ export function resolverPeriodo(
   ahora?: Date,
 ): PeriodoReporte {
   const hoy = hoyEnSantiago(ahora);
-  let fin = parsearDia(hasta ?? null) ?? hoy;
-  let inicio = parsearDia(desde ?? null) ?? sumarDias(fin, -(DIAS_PERIODO_DEFECTO - 1));
+  // Fechas fuera de 2000–2100 se ignoran (ver `parsearDiaFiltro`).
+  let fin = parsearDiaFiltro(hasta ?? null) ?? hoy;
+  let inicio = parsearDiaFiltro(desde ?? null) ?? sumarDias(fin, -(DIAS_PERIODO_DEFECTO - 1));
   if (inicio > fin) [inicio, fin] = [fin, inicio];
   const ultimoTranscurrido = fin > hoy ? hoy : fin;
   return { desde: inicio, hasta: fin, dias: Math.max(1, diasEntre(inicio, ultimoTranscurrido) + 1) };
@@ -359,7 +360,7 @@ export async function exportarExistencias(
   await auditarExportacion(actor, "existencias", {
     centroId: filtros.centroId ?? null,
     categoriaId: filtros.categoriaId ?? null,
-    texto: filtros.texto?.trim() || null,
+    texto: textoDeBusqueda(filtros.texto),
     filas: filas.length,
   });
   return {
@@ -434,7 +435,7 @@ export async function exportarVencimientos(
   await auditarExportacion(actor, "vencimientos", {
     centroId: filtros.centroId ?? null,
     categoriaId: filtros.categoriaId ?? null,
-    texto: filtros.texto?.trim() || null,
+    texto: textoDeBusqueda(filtros.texto),
     dias: horizonte,
     filas: filas.length,
   });
@@ -543,21 +544,36 @@ function aFilaMovimiento(m: MovimientoSeleccionado): FilaReporteMovimiento {
   };
 }
 
+/**
+ * Filtro de un reporte de movimientos: el `where` de Prisma (alcance, período,
+ * tipo, insumo) y, si hay texto, la consulta SQL que además busca sin
+ * distinguir tildes (`porTexto`). Vista previa y CSV usan lo mismo.
+ */
 function condicionReporte(
   actor: Actor,
   filtros: FiltrosReporteMovimientos,
   periodo: PeriodoReporte,
-): Prisma.MovimientoWhereInput {
+): { where: Prisma.MovimientoWhereInput; porTexto: ConsultaPorTexto | null } {
   const base: FiltrosMovimientos = {
     centroId: filtros.centroId,
     insumoId: filtros.insumoId,
     tipo: filtros.tipo,
-    texto: filtros.texto,
     desde: periodo.desde,
     hasta: periodo.hasta,
   };
   // `condicionMovimientos` valida el acceso al centro y aplica el alcance del actor.
-  return condicionMovimientos(actor, base);
+  const where = condicionMovimientos(actor, base);
+  const texto = textoDeBusqueda(filtros.texto);
+  return { where, porTexto: texto ? consultaPorTexto(where, texto) : null };
+}
+
+/** Movimientos por id, en el orden del historial. */
+function movimientosPorId(ids: readonly CursorMovimiento[]) {
+  return db.movimiento.findMany({
+    where: { id: { in: ids.map((f) => f.id) } },
+    select: SELECCION_MOVIMIENTO,
+    orderBy: ORDEN_MOVIMIENTOS,
+  });
 }
 
 const ORDEN_MOVIMIENTOS = [{ creadoEn: "desc" }, { id: "desc" }] satisfies Prisma.MovimientoOrderByWithRelationInput[];
@@ -570,18 +586,22 @@ export async function reporteMovimientos(
 ): Promise<ReporteMovimientos> {
   verificarPermiso(actor, "reportes:ver");
   const periodo = resolverPeriodo(filtros.desde, filtros.hasta, opciones.ahora);
-  const where = condicionReporte(actor, filtros, periodo);
+  const { where, porTexto } = condicionReporte(actor, filtros, periodo);
   const { pagina, porPagina, saltar } = normalizarPaginacion(filtros);
 
   const [grupos, filas, insumo] = await Promise.all([
-    db.movimiento.groupBy({ by: ["tipo"], where, _count: { _all: true }, _sum: { cantidad: true } }),
-    db.movimiento.findMany({
-      where,
-      select: SELECCION_MOVIMIENTO,
-      orderBy: ORDEN_MOVIMIENTOS,
-      skip: saltar,
-      take: porPagina,
-    }),
+    porTexto
+      ? porTexto.agrupar("tipo").then((g) => g.map((x) => ({ tipo: x.clave, _count: { _all: x.movimientos }, _sum: { cantidad: x.unidades } })))
+      : db.movimiento.groupBy({ by: ["tipo"], where, _count: { _all: true }, _sum: { cantidad: true } }),
+    porTexto
+      ? porTexto.ids({ limite: porPagina, saltar }).then(movimientosPorId)
+      : db.movimiento.findMany({
+          where,
+          select: SELECCION_MOVIMIENTO,
+          orderBy: ORDEN_MOVIMIENTOS,
+          skip: saltar,
+          take: porPagina,
+        }),
     filtros.insumoId
       ? db.insumo.findUnique({ where: { id: filtros.insumoId }, select: { id: true, codigo: true, nombre: true } })
       : Promise.resolve(null),
@@ -642,23 +662,30 @@ function celdasMovimiento(m: FilaReporteMovimiento): CeldaCsv[] {
 const LOTE_EXPORTACION = 1_000;
 
 /** Lee los movimientos por lotes con cursor (no usa OFFSET: escala a cientos de miles de filas). */
-async function* leerMovimientos(where: Prisma.MovimientoWhereInput): AsyncGenerator<CeldaCsv[]> {
+async function* leerMovimientos(
+  where: Prisma.MovimientoWhereInput,
+  porTexto: ConsultaPorTexto | null,
+): AsyncGenerator<CeldaCsv[]> {
   // Una fila más que el tope: así `conAvisoDeTope` sabe que el archivo quedó incompleto.
   const limite = MAXIMO_FILAS_EXPORTACION + 1;
-  let cursor: string | undefined;
+  let cursor: CursorMovimiento | undefined;
   let entregadas = 0;
   while (entregadas < limite) {
-    const lote = await db.movimiento.findMany({
-      where,
-      select: SELECCION_MOVIMIENTO,
-      orderBy: ORDEN_MOVIMIENTOS,
-      take: Math.min(LOTE_EXPORTACION, limite - entregadas),
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    });
+    const tomar = Math.min(LOTE_EXPORTACION, limite - entregadas);
+    const lote = porTexto
+      ? await porTexto.ids({ limite: tomar, despuesDe: cursor }).then(movimientosPorId)
+      : await db.movimiento.findMany({
+          where,
+          select: SELECCION_MOVIMIENTO,
+          orderBy: ORDEN_MOVIMIENTOS,
+          take: tomar,
+          ...(cursor ? { cursor: { id: cursor.id }, skip: 1 } : {}),
+        });
     for (const m of lote) yield celdasMovimiento(aFilaMovimiento(m));
     entregadas += lote.length;
     if (lote.length < LOTE_EXPORTACION) return;
-    cursor = lote[lote.length - 1]?.id;
+    const ultimo = lote[lote.length - 1];
+    cursor = ultimo ? { id: ultimo.id, creadoEn: ultimo.creadoEn } : undefined;
   }
 }
 
@@ -669,14 +696,14 @@ export async function exportarMovimientos(
 ): Promise<ExportacionCsv> {
   verificarPermiso(actor, "reportes:ver");
   const periodo = resolverPeriodo(filtros.desde, filtros.hasta, opciones.ahora);
-  const where = condicionReporte(actor, filtros, periodo);
+  const { where, porTexto } = condicionReporte(actor, filtros, periodo);
   const esMermas = filtros.tipo === "MERMA";
-  const total = await db.movimiento.count({ where });
+  const total = porTexto ? await porTexto.contar() : await db.movimiento.count({ where });
   await auditarExportacion(actor, esMermas ? "mermas" : "movimientos", {
     centroId: filtros.centroId ?? null,
     tipo: filtros.tipo ?? null,
     insumoId: filtros.insumoId ?? null,
-    texto: filtros.texto?.trim() || null,
+    texto: textoDeBusqueda(filtros.texto),
     desde: periodo.desde,
     hasta: periodo.hasta,
     filas: total,
@@ -685,7 +712,7 @@ export async function exportarMovimientos(
     archivo: nombreArchivoCsv(esMermas ? "mermas" : "movimientos", sufijoPeriodo(periodo)),
     encabezados: ENCABEZADOS_MOVIMIENTOS,
     truncada: total > MAXIMO_FILAS_EXPORTACION,
-    filas: leerMovimientos(where),
+    filas: leerMovimientos(where, porTexto),
   };
 }
 
@@ -710,18 +737,22 @@ export async function reporteMermas(
 ): Promise<ReporteMermas> {
   verificarPermiso(actor, "reportes:ver");
   const periodo = resolverPeriodo(filtros.desde, filtros.hasta, opciones.ahora);
-  const where = condicionReporte(actor, { ...filtros, tipo: "MERMA" }, periodo);
+  const { where, porTexto } = condicionReporte(actor, { ...filtros, tipo: "MERMA" }, periodo);
   const { pagina, porPagina, saltar } = normalizarPaginacion(filtros);
 
   const [grupos, filas] = await Promise.all([
-    db.movimiento.groupBy({ by: ["motivo"], where, _count: { _all: true }, _sum: { cantidad: true } }),
-    db.movimiento.findMany({
-      where,
-      select: SELECCION_MOVIMIENTO,
-      orderBy: ORDEN_MOVIMIENTOS,
-      skip: saltar,
-      take: porPagina,
-    }),
+    porTexto
+      ? porTexto.agrupar("motivo").then((g) => g.map((x) => ({ motivo: x.clave, _count: { _all: x.movimientos }, _sum: { cantidad: x.unidades } })))
+      : db.movimiento.groupBy({ by: ["motivo"], where, _count: { _all: true }, _sum: { cantidad: true } }),
+    porTexto
+      ? porTexto.ids({ limite: porPagina, saltar }).then(movimientosPorId)
+      : db.movimiento.findMany({
+          where,
+          select: SELECCION_MOVIMIENTO,
+          orderBy: ORDEN_MOVIMIENTOS,
+          skip: saltar,
+          take: porPagina,
+        }),
   ]);
   const porMotivo = grupos
     .map((g): ResumenMotivoMerma => ({
@@ -930,7 +961,7 @@ export async function exportarConsumo(
   await auditarExportacion(actor, "consumo", {
     centroId: filtros.centroId ?? null,
     categoriaId: filtros.categoriaId ?? null,
-    texto: filtros.texto?.trim() || null,
+    texto: textoDeBusqueda(filtros.texto),
     desde: periodo.desde,
     hasta: periodo.hasta,
     filas: filas.length,

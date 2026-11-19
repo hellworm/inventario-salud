@@ -8,6 +8,7 @@ import { normalizarTexto } from "@/lib/formato";
 import type { Actor } from "@/lib/permisos";
 import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { db } from "../db";
+import { textoDeBusqueda } from "./apoyo-admin";
 import { auditarExportacion, type ExportacionCsv } from "./exportaciones";
 
 /** Alerta de stock: un insumo bajo su mínimo (o sin stock) en un centro. */
@@ -352,7 +353,7 @@ export async function exportarReposicion(
   await auditarExportacion(actor, "reposicion", {
     centroId: filtros.centroId ?? null,
     categoriaId: filtros.categoriaId ?? null,
-    texto: filtros.texto?.trim() || null,
+    texto: textoDeBusqueda(filtros.texto),
     filas: lista.totalItems,
   });
   const items = lista.grupos.flatMap((g) => g.items);

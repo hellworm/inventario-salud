@@ -1,11 +1,11 @@
 import "server-only";
 import { Prisma, type TipoMovimiento } from "@prisma/client";
-import { dateADia, finDelDia, inicioDelDia, parsearDia, type DiaISO } from "@/lib/fechas";
+import { dateADia, finDelDia, inicioDelDia, parsearDiaFiltro, type DiaISO } from "@/lib/fechas";
 import type { Actor } from "@/lib/permisos";
-import { POR_PAGINA_DEFECTO, POR_PAGINA_MAXIMO, type Paginado } from "@/lib/resultado";
+import type { Paginado } from "@/lib/resultado";
 import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { db } from "../db";
-import { patronLike } from "./apoyo-admin";
+import { armarPaginado, normalizarPagina, patronLike, textoDeBusqueda } from "./apoyo-admin";
 
 export interface FiltrosMovimientos {
   /** `null`/omitido = todos los centros visibles del actor. */
@@ -20,7 +20,7 @@ export interface FiltrosMovimientos {
   desde?: string | null;
   /** Día final inclusive. */
   hasta?: string | null;
-  /** Busca en nombre/código del insumo, número de lote y documento (sin distinguir tildes en `listarMovimientos`). */
+  /** Busca en nombre/código del insumo, número de lote y documento (sin distinguir tildes ni mayúsculas). */
   texto?: string | null;
   pagina?: number;
   porPagina?: number;
@@ -106,15 +106,18 @@ function aFila(m: MovimientoSeleccionado): FilaMovimiento {
 }
 
 /**
- * Construye el `where` de Prisma respetando el alcance del actor. La búsqueda
- * por `texto` de este `where` no distingue mayúsculas pero SÍ tildes (Prisma no
- * expone `unaccent`); `listarMovimientos` la resuelve aparte con SQL.
+ * Construye el `where` de Prisma respetando el alcance del actor (centros
+ * visibles, ubicación, insumo, lote, usuario, proveedor, tipo y fechas).
+ *
+ * NO incluye la búsqueda por `texto`: Prisma no expone `unaccent`, así que el
+ * texto se resuelve aparte con SQL, sin distinguir tildes, mediante
+ * `consultaPorTexto(where, texto)`. Así el historial, el reporte de
+ * movimientos, el de mermas y sus CSV buscan igual.
  */
 export function condicionMovimientos(actor: Actor, filtros: FiltrosMovimientos): Prisma.MovimientoWhereInput {
   const centros = alcanceDeCentros(actor, filtros.centroId);
-  const desde = parsearDia(filtros.desde ?? null);
-  const hasta = parsearDia(filtros.hasta ?? null);
-  const texto = filtros.texto?.trim();
+  const desde = parsearDiaFiltro(filtros.desde ?? null);
+  const hasta = parsearDiaFiltro(filtros.hasta ?? null);
   const tipos = filtros.tipo ? (Array.isArray(filtros.tipo) ? filtros.tipo : [filtros.tipo]) : null;
 
   return {
@@ -133,31 +136,16 @@ export function condicionMovimientos(actor: Actor, filtros: FiltrosMovimientos):
           },
         }
       : {}),
-    ...(texto
-      ? {
-          OR: [
-            { insumo: { nombre: { contains: texto, mode: "insensitive" } } },
-            { insumo: { codigo: { contains: texto, mode: "insensitive" } } },
-            { lote: { numeroLote: { contains: texto, mode: "insensitive" } } },
-            { documentoRef: { contains: texto, mode: "insensitive" } },
-          ],
-        }
-      : {}),
   };
 }
 
 /**
- * Página del historial cuando hay texto de búsqueda: los ids se resuelven con
- * SQL para poder usar `unaccent` ("dialisis" encuentra "Diálisis", "guia"
- * encuentra "GUÍA 123"). El resto de los filtros lo aplica el mismo `where`
- * de Prisma (sin el texto), combinado por id.
+ * Condición SQL (alias `m`) equivalente a un `where` de `condicionMovimientos`
+ * MÁS la búsqueda por texto con `unaccent` ("dialisis" encuentra "Diálisis",
+ * "guia" encuentra "GUÍA 123") en nombre/código del insumo, número de lote y
+ * documento.
  */
-async function paginaPorTexto(
-  where: Prisma.MovimientoWhereInput,
-  texto: string,
-  pagina: number,
-  porPagina: number,
-): Promise<{ total: number; ids: string[] }> {
+function sqlPorTexto(where: Prisma.MovimientoWhereInput, texto: string): Prisma.Sql {
   const patron = patronLike(texto);
   // Candidatos por texto. El catálogo y los lotes son acotados; los documentos
   // se buscan directo en movimientos.
@@ -188,18 +176,58 @@ async function paginaPorTexto(
   const periodo = where.creadoEn as { gte?: Date; lt?: Date } | undefined;
   if (periodo?.gte) condiciones.push(Prisma.sql`m."creadoEn" >= ${periodo.gte}`);
   if (periodo?.lt) condiciones.push(Prisma.sql`m."creadoEn" < ${periodo.lt}`);
-  const donde = Prisma.join(condiciones, " AND ");
+  return Prisma.join(condiciones, " AND ");
+}
 
-  const [conteo, filas] = await Promise.all([
-    db.$queryRaw<{ total: bigint }[]>(Prisma.sql`SELECT COUNT(*) AS "total" FROM "movimientos" m WHERE ${donde}`),
-    db.$queryRaw<{ id: string }[]>(Prisma.sql`
-      SELECT m."id" FROM "movimientos" m
-      WHERE ${donde}
-      ORDER BY m."creadoEn" DESC, m."id" DESC
-      LIMIT ${porPagina} OFFSET ${(pagina - 1) * porPagina}
-    `),
-  ]);
-  return { total: Number(conteo[0]?.total ?? 0), ids: filas.map((f) => f.id) };
+/** Posición en el orden del historial (más recientes primero) para leer por lotes sin OFFSET. */
+export interface CursorMovimiento {
+  creadoEn: Date;
+  id: string;
+}
+
+export interface ConsultaPorTexto {
+  contar(): Promise<number>;
+  /** Ids en el orden del historial; con `despuesDe` continúa desde ese movimiento (sin OFFSET). */
+  ids(opciones: { limite: number; saltar?: number; despuesDe?: CursorMovimiento }): Promise<CursorMovimiento[]>;
+  /** Conteo y unidades agrupados por tipo o por motivo. */
+  agrupar(columna: "tipo" | "motivo"): Promise<{ clave: string | null; movimientos: number; unidades: number }[]>;
+}
+
+/**
+ * Consultas del libro mayor filtradas por un `where` de `condicionMovimientos`
+ * y, además, por texto sin distinguir tildes ni mayúsculas. La usan el
+ * historial, los reportes de movimientos y mermas y sus exportaciones.
+ */
+export function consultaPorTexto(where: Prisma.MovimientoWhereInput, texto: string): ConsultaPorTexto {
+  const donde = sqlPorTexto(where, texto);
+  return {
+    async contar() {
+      const [fila] = await db.$queryRaw<{ total: bigint }[]>(
+        Prisma.sql`SELECT COUNT(*) AS "total" FROM "movimientos" m WHERE ${donde}`,
+      );
+      return Number(fila?.total ?? 0);
+    },
+    ids({ limite, saltar = 0, despuesDe }) {
+      const desde = despuesDe
+        ? Prisma.sql`AND (m."creadoEn", m."id") < (${despuesDe.creadoEn}, ${despuesDe.id})`
+        : Prisma.empty;
+      return db.$queryRaw<CursorMovimiento[]>(Prisma.sql`
+        SELECT m."id", m."creadoEn" FROM "movimientos" m
+        WHERE ${donde} ${desde}
+        ORDER BY m."creadoEn" DESC, m."id" DESC
+        LIMIT ${limite} OFFSET ${saltar}
+      `);
+    },
+    async agrupar(columna) {
+      const filas = await db.$queryRaw<{ clave: string | null; movimientos: bigint; unidades: bigint | null }[]>(Prisma.sql`
+        SELECT m.${Prisma.raw(`"${columna}"`)}::text AS "clave", COUNT(*) AS "movimientos", SUM(m."cantidad") AS "unidades"
+        FROM "movimientos" m
+        WHERE ${donde}
+        GROUP BY 1
+      `);
+      return filas.map((f) => ({ clave: f.clave, movimientos: Number(f.movimientos), unidades: Number(f.unidades ?? 0) }));
+    },
+  };
 }
 
 /**
@@ -212,28 +240,19 @@ export async function listarMovimientos(
   filtros: FiltrosMovimientos = {},
 ): Promise<Paginado<FilaMovimiento>> {
   verificarPermiso(actor, "movimientos:ver");
-  const texto = filtros.texto?.trim();
-  const where = condicionMovimientos(actor, { ...filtros, texto: null });
-  const porPagina = Math.min(
-    Math.max(Math.trunc(filtros.porPagina ?? POR_PAGINA_DEFECTO) || POR_PAGINA_DEFECTO, 1),
-    POR_PAGINA_MAXIMO,
-  );
-  const pagina = Math.max(Math.trunc(filtros.pagina ?? 1) || 1, 1);
+  const texto = textoDeBusqueda(filtros.texto);
+  const where = condicionMovimientos(actor, filtros);
+  const { pagina, porPagina, saltar } = normalizarPagina(filtros);
 
   if (texto) {
-    const { total, ids } = await paginaPorTexto(where, texto, pagina, porPagina);
+    const consulta = consultaPorTexto(where, texto);
+    const [total, ids] = await Promise.all([consulta.contar(), consulta.ids({ limite: porPagina, saltar })]);
     const filas = await db.movimiento.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids.map((f) => f.id) } },
       select: SELECCION,
       orderBy: [{ creadoEn: "desc" }, { id: "desc" }],
     });
-    return {
-      items: filas.map(aFila),
-      total,
-      pagina,
-      porPagina,
-      totalPaginas: Math.max(1, Math.ceil(total / porPagina)),
-    };
+    return armarPaginado(filas.map(aFila), total, pagina, porPagina);
   }
 
   const [total, filas] = await Promise.all([
@@ -242,17 +261,11 @@ export async function listarMovimientos(
       where,
       select: SELECCION,
       orderBy: [{ creadoEn: "desc" }, { id: "desc" }],
-      skip: (pagina - 1) * porPagina,
+      skip: saltar,
       take: porPagina,
     }),
   ]);
-  return {
-    items: filas.map(aFila),
-    total,
-    pagina,
-    porPagina,
-    totalPaginas: Math.max(1, Math.ceil(total / porPagina)),
-  };
+  return armarPaginado(filas.map(aFila), total, pagina, porPagina);
 }
 
 /**

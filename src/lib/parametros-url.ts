@@ -3,6 +3,8 @@
  * Las comparten las páginas y los Route Handlers de exportación, de modo que
  * la descarga use exactamente los mismos filtros que la vista previa.
  */
+import type { DiaISO } from "./fechas";
+import { acotarPagina, diaParam, textoParam } from "./parametros";
 
 export type ParametrosUrl = Record<string, string | string[] | undefined>;
 
@@ -13,11 +15,10 @@ export function parametrosDe(consulta: URLSearchParams): ParametrosUrl {
   return salida;
 }
 
-/** Primer valor no vacío del parámetro (recortado), o `undefined`. */
+/** Primer valor no vacío del parámetro (saneado: sin caracteres de control, recortado), o `undefined`. */
 export function leerTexto(sp: ParametrosUrl, clave: string): string | undefined {
   const bruto = sp[clave];
-  const valor = (Array.isArray(bruto) ? bruto[0] : bruto)?.trim();
-  return valor ? valor.slice(0, 200) : undefined;
+  return textoParam(Array.isArray(bruto) ? bruto[0] : bruto) ?? undefined;
 }
 
 /** Valor del parámetro solo si pertenece a la lista permitida. */
@@ -26,10 +27,22 @@ export function leerOpcion<T extends string>(sp: ParametrosUrl, clave: string, p
   return permitidos.find((p) => p === valor);
 }
 
-/** Entero positivo del parámetro (p. ej. la página), o `undefined`. */
+/** Entero positivo pequeño del parámetro (p. ej. `dias=30`), o `undefined`. Para páginas usa `leerPagina`. */
 export function leerEntero(sp: ParametrosUrl, clave: string): number | undefined {
-  const valor = Number(leerTexto(sp, clave));
-  return Number.isInteger(valor) && valor > 0 ? valor : undefined;
+  const texto = leerTexto(sp, clave);
+  if (!texto || !/^\d{1,6}$/.test(texto)) return undefined;
+  const valor = Number(texto);
+  return valor > 0 ? valor : undefined;
+}
+
+/** Página acotada (1..1.000.000) del parámetro; inválida o ausente → 1. */
+export function leerPagina(sp: ParametrosUrl, clave = "pagina"): number {
+  return acotarPagina(leerTexto(sp, clave));
+}
+
+/** Día de un filtro (`YYYY-MM-DD`, entre 2000 y 2100), o `undefined`. */
+export function leerDia(sp: ParametrosUrl, clave: string): DiaISO | undefined {
+  return diaParam(leerTexto(sp, clave)) ?? undefined;
 }
 
 /** `ruta?a=1&b=2` omitiendo los valores vacíos. */

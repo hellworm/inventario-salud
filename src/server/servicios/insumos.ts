@@ -25,6 +25,7 @@ import {
   patronLike,
   type FiltroEstado,
   type OpcionesPagina,
+  textoDeBusqueda,
 } from "./apoyo-admin";
 
 export interface FilaInsumoAdmin {
@@ -57,7 +58,7 @@ export interface FiltrosInsumosAdmin extends OpcionesPagina {
 export async function listarInsumosAdmin(actor: Actor, filtros: FiltrosInsumosAdmin = {}): Promise<Paginado<FilaInsumoAdmin>> {
   verificarPermiso(actor, "catalogo:gestionar");
   const { pagina, porPagina, saltar } = normalizarPagina(filtros);
-  const texto = filtros.texto?.trim();
+  const texto = textoDeBusqueda(filtros.texto);
 
   const condiciones: Prisma.Sql[] = [Prisma.sql`TRUE`];
   if (texto) {

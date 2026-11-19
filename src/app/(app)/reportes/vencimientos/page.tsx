@@ -9,7 +9,6 @@ import {
   CLASE_ENCABEZADO_IMPRIMIBLE,
   DosLineas,
   NavReportes,
-  PaginacionNombrada,
   VistaReporte,
 } from "@/components/reportes/piezas";
 import {
@@ -20,12 +19,13 @@ import {
   DataTable,
   EmptyState,
   PageHeader,
+  Pagination,
   type Columna,
 } from "@/components/ui";
 import { describirVencimiento, formatearDia, formatearFechaHora } from "@/lib/fechas";
 import { leerFiltros } from "@/lib/filtros-reportes";
 import { formatearCLP, formatearNumero, pluralizar } from "@/lib/formato";
-import { construirHref, leerEntero, resolverCentro } from "@/lib/parametros-url";
+import { construirHref, leerPagina, resolverCentro } from "@/lib/parametros-url";
 import { contextoPagina } from "@/server/auth/sesion";
 import {
   reporteMermas,
@@ -136,7 +136,7 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
       texto: f.texto,
       desde: f.desde,
       hasta: f.hasta,
-      pagina: leerEntero(sp, "paginaMermas"),
+      pagina: leerPagina(sp, "paginaMermas"),
       porPagina: 15,
     }),
   ]);
@@ -146,20 +146,6 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
   // Los insumos se cuentan en unidades de medida distintas: los motivos se comparan por número de bajas.
   const motivos = [...mermas.porMotivo].sort((a, b) => b.movimientos - a.movimientos || a.motivo.localeCompare(b.motivo, "es"));
   const principalMotivo = motivos[0];
-
-  const comunes = {
-    centro: centroActivoId ? undefined : (centroId ?? undefined),
-    q: f.texto,
-    dias: f.dias,
-    desde: f.desde,
-    hasta: f.hasta,
-  };
-  const hrefPagina = (parametro: "pagina" | "paginaMermas") => (n: number) =>
-    construirHref("/reportes/vencimientos", {
-      ...comunes,
-      pagina: parametro === "pagina" ? (n > 1 ? n : undefined) : vencimientos.pagina > 1 ? vencimientos.pagina : undefined,
-      paginaMermas: parametro === "paginaMermas" ? (n > 1 ? n : undefined) : mermas.pagina > 1 ? mermas.pagina : undefined,
-    });
 
   return (
     <VistaReporte
@@ -233,7 +219,7 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
             }
           />
         </Card>
-        <PaginacionNombrada etiqueta="Paginación de vencimientos" {...vencimientos} hrefDe={hrefPagina("pagina")} className="mt-4" />
+        <Pagination etiqueta="Paginación de vencimientos" {...vencimientos} className="mt-4" />
       </section>
 
       <section aria-labelledby="titulo-mermas" className="mt-8">
@@ -285,7 +271,7 @@ export default async function PaginaReporteVencimientos({ searchParams }: PagePr
             }
           />
         </Card>
-        <PaginacionNombrada etiqueta="Paginación de mermas" {...mermas} hrefDe={hrefPagina("paginaMermas")} className="mt-4" />
+        <Pagination etiqueta="Paginación de mermas" {...mermas} parametro="paginaMermas" className="mt-4" />
       </section>
     </VistaReporte>
   );

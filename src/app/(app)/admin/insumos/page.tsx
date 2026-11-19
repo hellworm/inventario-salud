@@ -17,6 +17,7 @@ import { DosLineas } from "@/components/reportes/piezas";
 import { pluralizar } from "@/lib/formato";
 import { contextoPagina } from "@/server/auth/sesion";
 import { listarCategorias, listarInsumosAdmin, type FilaInsumoAdmin } from "@/server/servicios";
+import { paginaParam, textoParam } from "@/lib/parametros";
 
 export const metadata: Metadata = { title: "Insumos" };
 
@@ -79,11 +80,11 @@ const ESTADOS = [
 export default async function PaginaAdminInsumos({ searchParams }: PageProps<"/admin/insumos">) {
   const { actor } = await contextoPagina("catalogo:gestionar");
   const sp = await searchParams;
-  const texto = typeof sp.q === "string" ? sp.q : undefined;
-  const categoriaId = typeof sp.categoria === "string" ? sp.categoria : undefined;
+  const texto = textoParam(sp.q) ?? undefined;
+  const categoriaId = textoParam(sp.categoria) ?? undefined;
   const estado = sp.estado === "activos" || sp.estado === "inactivos" ? sp.estado : undefined;
   const [insumos, categorias] = await Promise.all([
-    listarInsumosAdmin(actor, { texto, categoriaId, estado, pagina: Number(sp.pagina) || 1 }),
+    listarInsumosAdmin(actor, { texto, categoriaId, estado, pagina: paginaParam(sp.pagina) }),
     listarCategorias(actor),
   ]);
   const hayFiltros = Boolean(texto || categoriaId || estado);

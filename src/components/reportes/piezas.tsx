@@ -1,6 +1,5 @@
 import * as React from "react";
-import Link from "next/link";
-import { ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import { BotonImprimir } from "@/components/alertas/boton-imprimir";
 import "@/components/alertas/impresion.css";
 import { PestanasEnlace } from "@/components/alertas/pestanas-enlace";
@@ -195,67 +194,5 @@ export function AccionesReporte({ hrefCsv }: { hrefCsv?: string }) {
       <BotonImprimir />
       {hrefCsv ? <BotonExportar href={hrefCsv} /> : null}
     </>
-  );
-}
-
-/**
- * Paginación con nombre propio, para páginas con más de una lista paginada
- * (dos `nav` no pueden llamarse igual). Misma apariencia que `Pagination`.
- */
-export function PaginacionNombrada({
-  etiqueta,
-  pagina,
-  totalPaginas,
-  total,
-  porPagina,
-  hrefDe,
-  className,
-}: {
-  /** Nombre accesible del `nav` (p. ej. "Paginación de mermas"). */
-  etiqueta: string;
-  pagina: number;
-  totalPaginas: number;
-  total: number;
-  porPagina: number;
-  hrefDe: (pagina: number) => string;
-  className?: string;
-}) {
-  if (total === 0) return null;
-  const desde = (pagina - 1) * porPagina + 1;
-  const hasta = Math.min(pagina * porPagina, total);
-  const clase = buttonClasses({ variant: "secundario", size: "sm" });
-  return (
-    <nav className={cn("flex flex-col items-center justify-between gap-3 sm:flex-row print:hidden", className)} aria-label={etiqueta}>
-      <p className="cifras text-sm text-texto-suave" aria-live="polite">
-        {formatearNumero(desde)}–{formatearNumero(hasta)} de {formatearNumero(total)}
-      </p>
-      <div className="flex items-center gap-2">
-        {pagina > 1 ? (
-          <Link href={hrefDe(pagina - 1)} className={clase} rel="prev" scroll={false}>
-            <ChevronLeft aria-hidden />
-            Anterior
-          </Link>
-        ) : (
-          <span className={clase} aria-disabled="true">
-            <ChevronLeft aria-hidden />
-            Anterior
-          </span>
-        )}
-        <span className="cifras px-1 text-sm text-texto-suave">
-          Página {formatearNumero(pagina)} de {formatearNumero(totalPaginas)}
-        </span>
-        {pagina < totalPaginas ? (
-          <Link href={hrefDe(pagina + 1)} className={clase} rel="next" scroll={false}>
-            Siguiente
-            <ChevronRight aria-hidden />
-          </Link>
-        ) : (
-          <span className={clase} aria-disabled="true">
-            Siguiente
-            <ChevronRight aria-hidden />
-          </span>
-        )}
-      </div>
-    </nav>
   );
 }

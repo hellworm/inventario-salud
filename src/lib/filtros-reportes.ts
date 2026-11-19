@@ -8,7 +8,7 @@
  * (cobertura|consumo), `pagina`.
  */
 import { TIPOS_MOVIMIENTO, TRAMOS_VENCIMIENTO, type TipoMovimiento, type TramoVencimiento } from "./estados";
-import { leerEntero, leerOpcion, leerTexto, type ParametrosUrl } from "./parametros-url";
+import { leerDia, leerEntero, leerOpcion, leerPagina, leerTexto, type ParametrosUrl } from "./parametros-url";
 
 export const ORDENES_REPORTE_CONSUMO = ["cobertura", "consumo"] as const;
 
@@ -31,12 +31,12 @@ export function leerFiltros(sp: ParametrosUrl): FiltrosUrl {
     centro: leerTexto(sp, "centro"),
     categoriaId: leerTexto(sp, "categoria"),
     texto: leerTexto(sp, "q"),
-    desde: leerTexto(sp, "desde"),
-    hasta: leerTexto(sp, "hasta"),
+    desde: leerDia(sp, "desde"),
+    hasta: leerDia(sp, "hasta"),
     tipo: leerOpcion(sp, "tipo", TIPOS_MOVIMIENTO),
     insumoId: leerTexto(sp, "insumo"),
     dias: TRAMOS_VENCIMIENTO.find((t) => t === dias),
     orden: leerOpcion(sp, "orden", ORDENES_REPORTE_CONSUMO),
-    pagina: leerEntero(sp, "pagina"),
+    pagina: leerPagina(sp, "pagina"),
   };
 }

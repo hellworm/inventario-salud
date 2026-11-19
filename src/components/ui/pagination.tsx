@@ -15,6 +15,12 @@ export interface PaginationProps {
   porPagina: number;
   /** Nombre del parámetro de URL (por defecto `pagina`). */
   parametro?: string;
+  /**
+   * Nombre accesible del `nav` (por defecto "Paginación"). Obligatorio de
+   * distinguir cuando una página tiene más de una lista paginada: dos `nav`
+   * no pueden llamarse igual (p. ej. "Paginación de mermas").
+   */
+  etiqueta?: string;
   className?: string;
 }
 
@@ -22,7 +28,15 @@ export interface PaginationProps {
  * Paginación basada en la URL (`?pagina=2`): conserva el resto de los filtros.
  * Recibe directamente los campos de un resultado `Paginado<T>`.
  */
-export function Pagination({ pagina, totalPaginas, total, porPagina, parametro = "pagina", className }: PaginationProps) {
+export function Pagination({
+  pagina,
+  totalPaginas,
+  total,
+  porPagina,
+  parametro = "pagina",
+  etiqueta = "Paginación",
+  className,
+}: PaginationProps) {
   const ruta = usePathname();
   const params = useSearchParams();
   if (total === 0) return null;
@@ -34,6 +48,8 @@ export function Pagination({ pagina, totalPaginas, total, porPagina, parametro =
     const consulta = copia.toString();
     return consulta ? `${ruta}?${consulta}` : ruta;
   };
+  // Una página más allá del final (URL escrita a mano) no tiene filas: se dice y se ofrece volver.
+  const fueraDeRango = pagina > totalPaginas;
   const desde = (pagina - 1) * porPagina + 1;
   const hasta = Math.min(pagina * porPagina, total);
   const hayAnterior = pagina > 1;
@@ -41,15 +57,17 @@ export function Pagination({ pagina, totalPaginas, total, porPagina, parametro =
   const claseBoton = buttonClasses({ variant: "secundario", size: "sm" });
 
   return (
-    <nav className={cn("flex flex-col items-center justify-between gap-3 sm:flex-row", className)} aria-label="Paginación">
+    <nav className={cn("flex flex-col items-center justify-between gap-3 sm:flex-row", className)} aria-label={etiqueta}>
       <p className="cifras text-sm text-texto-suave" aria-live="polite">
-        {formatearNumero(desde)}–{formatearNumero(hasta)} de {formatearNumero(total)}
+        {fueraDeRango
+          ? `No hay resultados en esta página (${formatearNumero(total)} en total)`
+          : `${formatearNumero(desde)}–${formatearNumero(hasta)} de ${formatearNumero(total)}`}
       </p>
       <div className="flex items-center gap-2">
         {hayAnterior ? (
-          <Link href={hrefDe(pagina - 1)} className={claseBoton} rel="prev" scroll={false}>
+          <Link href={hrefDe(fueraDeRango ? totalPaginas : pagina - 1)} className={claseBoton} rel="prev" scroll={false}>
             <ChevronLeft aria-hidden />
-            Anterior
+            {fueraDeRango ? "Ir a la última página" : "Anterior"}
           </Link>
         ) : (
           <span className={claseBoton} aria-disabled="true">
@@ -58,7 +76,7 @@ export function Pagination({ pagina, totalPaginas, total, porPagina, parametro =
           </span>
         )}
         <span className="cifras px-1 text-sm text-texto-suave">
-          Página {formatearNumero(pagina)} de {formatearNumero(totalPaginas)}
+          {fueraDeRango ? `${formatearNumero(totalPaginas)} ${totalPaginas === 1 ? "página" : "páginas"}` : `Página ${formatearNumero(pagina)} de ${formatearNumero(totalPaginas)}`}
         </span>
         {haySiguiente ? (
           <Link href={hrefDe(pagina + 1)} className={claseBoton} rel="next" scroll={false}>

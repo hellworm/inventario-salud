@@ -7,6 +7,7 @@ import { formatearRut } from "@/lib/chile/rut";
 import { formatearNumero } from "@/lib/formato";
 import { contextoPagina } from "@/server/auth/sesion";
 import { listarProveedoresAdmin, type FilaProveedor } from "@/server/servicios";
+import { paginaParam, textoParam } from "@/lib/parametros";
 
 export const metadata: Metadata = { title: "Proveedores" };
 
@@ -81,9 +82,9 @@ const ESTADOS = [
 export default async function PaginaAdminProveedores({ searchParams }: PageProps<"/admin/proveedores">) {
   const { actor } = await contextoPagina("proveedores:gestionar");
   const sp = await searchParams;
-  const texto = typeof sp.q === "string" ? sp.q : undefined;
+  const texto = textoParam(sp.q) ?? undefined;
   const estado = sp.estado === "activos" || sp.estado === "inactivos" ? sp.estado : undefined;
-  const proveedores = await listarProveedoresAdmin(actor, { texto, estado, pagina: Number(sp.pagina) || 1 });
+  const proveedores = await listarProveedoresAdmin(actor, { texto, estado, pagina: paginaParam(sp.pagina) });
   const hayFiltros = Boolean(texto || estado);
 
   return (

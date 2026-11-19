@@ -57,6 +57,21 @@ export function parsearDia(texto: string | null | undefined): DiaISO | null {
   return `${String(anio).padStart(4, "0")}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
 }
 
+/** Rango admitido para las fechas de FILTROS (historial, reportes, auditoría). */
+export const DIA_FILTRO_MINIMO: DiaISO = "2000-01-01";
+export const DIA_FILTRO_MAXIMO: DiaISO = "2100-12-31";
+
+/**
+ * Como `parsearDia`, pero para filtros de consulta: una fecha fuera de
+ * 2000–2100 se ignora (`null`). Único punto donde se acotan: lo usan los
+ * lectores de URL y, como defensa, los servicios. Sin esto, `?desde=9999-12-31`
+ * produce instantes fuera del rango que maneja la base de datos.
+ */
+export function parsearDiaFiltro(texto: string | null | undefined): DiaISO | null {
+  const dia = parsearDia(texto);
+  return dia !== null && dia >= DIA_FILTRO_MINIMO && dia <= DIA_FILTRO_MAXIMO ? dia : null;
+}
+
 /** Día ISO → `Date` a medianoche UTC (lo que espera Prisma para columnas DATE). */
 export function diaADate(dia: DiaISO): Date {
   return new Date(`${dia}T00:00:00.000Z`);

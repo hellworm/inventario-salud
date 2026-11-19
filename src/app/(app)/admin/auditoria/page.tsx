@@ -12,7 +12,7 @@ import {
 import { BotonDetalleAuditoria } from "@/components/admin/detalle-auditoria";
 import { BarraFiltros, FiltroFecha, FiltroSelect } from "@/components/admin/filtros-url";
 import { Alert, Badge, buttonClasses, Card, DataTable, EmptyState, PageHeader, Pagination, type Columna } from "@/components/ui";
-import { formatearFechaHora, hoyEnSantiago, parsearDia } from "@/lib/fechas";
+import { formatearFechaHora, hoyEnSantiago } from "@/lib/fechas";
 import { contextoPagina } from "@/server/auth/sesion";
 import {
   buscarInsumos,
@@ -21,6 +21,7 @@ import {
   opcionesFiltroAuditoria,
   type FilaAuditoria,
 } from "@/server/servicios";
+import { diaParam, paginaParam, textoParam } from "@/lib/parametros";
 
 export const metadata: Metadata = { title: "Auditoría" };
 
@@ -85,7 +86,7 @@ const COLUMNAS: Columna<FilaLegible>[] = [
 ];
 
 function parametro(valor: string | string[] | undefined): string | undefined {
-  return typeof valor === "string" && valor !== "" ? valor : undefined;
+  return textoParam(valor) ?? undefined;
 }
 
 export default async function PaginaAuditoria({ searchParams }: PageProps<"/admin/auditoria">) {
@@ -96,12 +97,12 @@ export default async function PaginaAuditoria({ searchParams }: PageProps<"/admi
     accion: parametro(sp.accion),
     entidad: parametro(sp.entidad),
     entidadId: parametro(sp.entidadId),
-    desde: parsearDia(parametro(sp.desde)) ?? undefined,
-    hasta: parsearDia(parametro(sp.hasta)) ?? undefined,
+    desde: diaParam(sp.desde) ?? undefined,
+    hasta: diaParam(sp.hasta) ?? undefined,
   };
   const rangoInvertido = Boolean(filtros.desde && filtros.hasta && filtros.desde > filtros.hasta);
   const [registros, opciones, insumos, categorias] = await Promise.all([
-    listarAuditoria(actor, { ...filtros, pagina: Number(sp.pagina) || 1 }),
+    listarAuditoria(actor, { ...filtros, pagina: paginaParam(sp.pagina) }),
     opcionesFiltroAuditoria(actor),
     buscarInsumos(actor, { soloActivos: false, limite: 500 }),
     listarCategorias(actor),

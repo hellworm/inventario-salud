@@ -10,10 +10,11 @@ import {
 } from "@/lib/estados";
 import { dateADia, hoyEnSantiago, sumarDias, type DiaISO } from "@/lib/fechas";
 import type { Actor } from "@/lib/permisos";
-import { POR_PAGINA_DEFECTO, POR_PAGINA_MAXIMO, type Paginado } from "@/lib/resultado";
+import type { Paginado } from "@/lib/resultado";
 import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { db } from "../db";
 import { noEncontrado } from "../errores";
+import { normalizarPagina, patronLike, textoDeBusqueda } from "./apoyo-admin";
 
 /**
  * Consultas de inventario. Conceptos:
@@ -122,11 +123,6 @@ interface FilaSql {
   total_filas: number;
 }
 
-function normalizarPaginacion(pagina?: number, porPagina?: number) {
-  const pp = Math.min(Math.max(Math.trunc(porPagina ?? POR_PAGINA_DEFECTO) || POR_PAGINA_DEFECTO, 1), POR_PAGINA_MAXIMO);
-  const p = Math.max(Math.trunc(pagina ?? 1) || 1, 1);
-  return { pagina: p, porPagina: pp, saltar: (p - 1) * pp };
-}
 
 /** Fragmento `AND columna IN (...)` para el alcance de centros (o vacío). */
 function filtroCentros(columna: Prisma.Sql, centros: string[] | null): Prisma.Sql {
@@ -148,10 +144,10 @@ export async function listarInventario(
   const centros = alcanceDeCentros(actor, filtros.centroId);
   const hoy = hoyEnSantiago(opciones.ahora);
   const limite = sumarDias(hoy, DIAS_POR_VENCER);
-  const { pagina, porPagina, saltar } = normalizarPaginacion(filtros.pagina, filtros.porPagina);
+  const { pagina, porPagina, saltar } = normalizarPagina(filtros);
   const ubicacionId = filtros.ubicacionId || null;
-  const texto = filtros.texto?.trim() || null;
-  const patron = texto ? `%${texto.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
+  const texto = textoDeBusqueda(filtros.texto);
+  const patron = texto ? patronLike(texto) : null;
 
   const condiciones: Prisma.Sql[] = [Prisma.sql`TRUE`];
   if (filtros.categoriaId) condiciones.push(Prisma.sql`b."categoriaId" = ${filtros.categoriaId}`);
