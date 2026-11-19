@@ -12,6 +12,7 @@ import { construirHref, resolverCentro } from "@/lib/parametros-url";
 import { contextoPagina } from "@/server/auth/sesion";
 import { pluralUnidad, unidadSegun } from "@/lib/unidades";
 import { listaReposicion, listarCategorias, type AlertaStock } from "@/server/servicios";
+import { SinCentroActivo } from "@/components/shell/sin-centro";
 
 export const metadata: Metadata = { title: "Lista de reposición" };
 
@@ -111,7 +112,8 @@ function TablaReposicion({ items, titulo }: { items: AlertaStock[]; titulo: stri
 }
 
 export default async function PaginaReposicion({ searchParams }: PageProps<"/alertas/reposicion">) {
-  const { sesion, actor, centroId: centroActivoId, centro, centros } = await contextoPagina("alertas:ver");
+  const { sesion, actor, centroId: centroActivoId, centro, centros, sinCentro } = await contextoPagina("alertas:ver");
+  if (sinCentro) return <SinCentroActivo titulo="Lista de reposición" />;
   const filtros = leerFiltros(await searchParams);
   const centroId = resolverCentro(centroActivoId, centros, filtros.centro);
 

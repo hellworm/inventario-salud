@@ -43,6 +43,7 @@ import {
   type FilaMovimiento,
   type ResumenCentro,
 } from "@/server/servicios";
+import { SinCentroActivo } from "@/components/shell/sin-centro";
 
 export const metadata: Metadata = { title: "Panel" };
 
@@ -167,7 +168,8 @@ const DETALLE_VENCIDOS: Record<Rol, string> = {
 };
 
 export default async function PaginaPanel({ searchParams }: PageProps<"/panel">) {
-  const { sesion, actor, centroId, centro, centros } = await contextoPagina("panel:ver");
+  const { sesion, actor, centroId, centro, centros, sinCentro } = await contextoPagina("panel:ver");
+  if (sinCentro) return <SinCentroActivo titulo="Panel" />;
   const [{ aviso }, resumen, ubicaciones] = await Promise.all([
     searchParams,
     resumenPanel(actor, { centroId }),
@@ -263,6 +265,7 @@ export default async function PaginaPanel({ searchParams }: PageProps<"/panel">)
           <Card>
             <CardHeader
               titulo="Actividad de los últimos 14 días"
+              // El gráfico cuenta movimientos, no unidades (cajas + ampollas + litros no se suman).
               descripcion={`${pluralizar(resumen.movimientosHoy, "movimiento")} hoy · ${pluralizar(totalMovimientos, "movimiento")} en el período`}
             />
             {totalMovimientos === 0 ? (

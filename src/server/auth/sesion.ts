@@ -132,6 +132,13 @@ export interface CentroActivo {
   centros: CentroResumen[];
   /** ¿Puede elegir "Toda la red"? */
   puedeVerTodaLaRed: boolean;
+  /**
+   * `true` si la persona NO ve toda la red y no tiene ningún centro activo
+   * asignado (p. ej. su único centro fue desactivado). `centroId === null`
+   * significa "Toda la red" SOLO cuando `sinCentro` es `false`: las páginas
+   * deben mostrar `<SinCentroActivo />` en vez de textos de toda la red.
+   */
+  sinCentro: boolean;
 }
 
 /** Centros activos visibles para el actor, ordenados por nombre. */
@@ -162,7 +169,7 @@ export async function obtenerCentroActivo(sesion: Sesion): Promise<CentroActivo>
   const quiereTodaLaRed = !preferido || preferido === CENTRO_TODOS;
   if (!centro && !(puedeVerTodaLaRed && quiereTodaLaRed)) centro = centros[0] ?? null;
 
-  return { centroId: centro?.id ?? null, centro, centros, puedeVerTodaLaRed };
+  return { centroId: centro?.id ?? null, centro, centros, puedeVerTodaLaRed, sinCentro: !puedeVerTodaLaRed && centros.length === 0 };
 }
 
 export interface ContextoPagina extends CentroActivo {

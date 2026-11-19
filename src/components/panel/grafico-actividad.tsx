@@ -11,7 +11,9 @@ export interface DiaActividad {
   etiqueta: string;
   /** Etiqueta completa para el detalle (p. ej. "Jueves 19-11-2026"). */
   titulo: string;
+  /** Número de movimientos de entrada del día (no unidades). */
   entradas: number;
+  /** Número de movimientos de salida del día (no unidades). */
   salidas: number;
   movimientos: number;
 }
@@ -31,7 +33,9 @@ function topeLimpio(valor: number): number {
   const potencia = 10 ** Math.floor(Math.log10(valor));
   const fraccion = valor / potencia;
   const paso = fraccion <= 1 ? 1 : fraccion <= 2 ? 2 : fraccion <= 2.5 ? 2.5 : fraccion <= 5 ? 5 : 10;
-  return paso * potencia;
+  const tope = paso * potencia;
+  // Son conteos: la marca intermedia del eje (tope / 2) también debe ser entera.
+  return Math.max(2, Math.ceil(tope / 2) * 2);
 }
 
 function Muestra({ trama }: { trama?: boolean }) {
@@ -45,7 +49,8 @@ function Muestra({ trama }: { trama?: boolean }) {
 }
 
 /**
- * Barras agrupadas de unidades que entran y salen por día. Cada día es un
+ * Barras agrupadas con el NÚMERO DE MOVIMIENTOS de entrada y de salida por día
+ * (no unidades: los insumos se miden en cajas, ampollas, litros…). Cada día es un
  * objetivo enfocable (teclado, mouse o toque) que muestra su detalle; la tabla
  * alternativa entrega los mismos datos en texto.
  */
@@ -64,21 +69,21 @@ export function GraficoActividad({ dias }: { dias: readonly DiaActividad[] }) {
         <ul className="flex flex-wrap gap-x-5 gap-y-1" aria-label="Series">
           <li className="inline-flex items-center gap-1.5">
             <Muestra />
-            Entradas <strong className="cifras font-semibold text-texto">{formatearNumero(totalEntradas)}</strong>
+            Movimientos de entrada <strong className="cifras font-semibold text-texto">{formatearNumero(totalEntradas)}</strong>
           </li>
           <li className="inline-flex items-center gap-1.5">
             <Muestra trama />
-            Salidas <strong className="cifras font-semibold text-texto">{formatearNumero(totalSalidas)}</strong>
+            Movimientos de salida <strong className="cifras font-semibold text-texto">{formatearNumero(totalSalidas)}</strong>
           </li>
         </ul>
         <p className="cifras min-h-5 text-right" aria-live="polite">
           {seleccionado ? (
             <>
-              <span className="font-medium text-texto">{seleccionado.titulo}</span>: +{formatearNumero(seleccionado.entradas)} / −
-              {formatearNumero(seleccionado.salidas)} · {pluralizar(seleccionado.movimientos, "movimiento")}
+              <span className="font-medium text-texto">{seleccionado.titulo}</span>: {formatearNumero(seleccionado.entradas)} de entrada ·{" "}
+              {formatearNumero(seleccionado.salidas)} de salida
             </>
           ) : (
-            <span className="text-texto-tenue">Unidades por día</span>
+            <span className="text-texto-tenue">N.º de movimientos por día</span>
           )}
         </p>
       </div>
@@ -110,7 +115,7 @@ export function GraficoActividad({ dias }: { dias: readonly DiaActividad[] }) {
                     onFocus={() => setActivo(i)}
                     onBlur={() => setActivo(null)}
                     onClick={() => setActivo(i)}
-                    aria-label={`${d.titulo}: entraron ${formatearNumero(d.entradas)} y salieron ${formatearNumero(d.salidas)} unidades en ${pluralizar(d.movimientos, "movimiento")}`}
+                    aria-label={`${d.titulo}: ${pluralizar(d.entradas, "movimiento")} de entrada y ${pluralizar(d.salidas, "movimiento")} de salida`}
                     className={cn(
                       "flex h-full w-full cursor-default items-end justify-center gap-[2px] rounded-t-md px-[2px] outline-offset-0 transition-colors sm:px-1",
                       activo === i && "bg-marca-50",
@@ -145,13 +150,13 @@ export function GraficoActividad({ dias }: { dias: readonly DiaActividad[] }) {
         </summary>
         <div className="mt-2 max-h-72 overflow-auto rounded-lg border border-borde">
           <table className="w-full text-sm">
-            <caption className="sr-only">Unidades que entran y salen por día</caption>
+            <caption className="sr-only">Número de movimientos de entrada y de salida por día</caption>
             <thead className="sticky top-0 bg-superficie-2 text-xs text-texto-suave uppercase">
               <tr>
                 <th scope="col" className="px-3 py-2 text-left font-semibold">Día</th>
-                <th scope="col" className="px-3 py-2 text-right font-semibold">Entradas</th>
-                <th scope="col" className="px-3 py-2 text-right font-semibold">Salidas</th>
-                <th scope="col" className="px-3 py-2 text-right font-semibold">Movimientos</th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold">De entrada</th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold">De salida</th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold">Total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-borde">

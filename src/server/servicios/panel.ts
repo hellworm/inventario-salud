@@ -10,10 +10,14 @@ import { listarMovimientos, type FilaMovimiento } from "./consultas-movimientos"
 
 export interface ActividadDia {
   dia: DiaISO;
-  /** Unidades que entraron (ingresos, ajustes +, traslados de entrada). */
+  /**
+   * NÚMERO DE MOVIMIENTOS de entrada (ingresos, ajustes +, traslados de
+   * entrada). No son unidades: sumar cajas, ampollas y litros no significa nada.
+   */
   entradas: number;
-  /** Unidades que salieron (retiros, mermas, ajustes −, traslados de salida). */
+  /** Número de movimientos de salida (retiros, mermas, ajustes −, traslados de salida). */
   salidas: number;
+  /** Total de movimientos del día (`entradas + salidas`). */
   movimientos: number;
 }
 
@@ -111,11 +115,10 @@ export async function resumenPanel(
     `),
     obtenerAlertas(actor, { centroId: filtros.centroId }, opciones),
     puedeVerMovimientos
-      ? db.$queryRaw<{ dia: string; tipo: TipoMovimiento; unidades: number; movimientos: number }[]>(Prisma.sql`
+      ? db.$queryRaw<{ dia: string; tipo: TipoMovimiento; movimientos: number }[]>(Prisma.sql`
           SELECT
             to_char(m."creadoEn" AT TIME ZONE 'UTC' AT TIME ZONE ${ZONA_HORARIA}, 'YYYY-MM-DD') AS dia,
             m."tipo",
-            SUM(m."cantidad")::int AS unidades,
             COUNT(*)::int AS movimientos
           FROM "movimientos" m
           WHERE m."creadoEn" >= ${desde} ${filtroCentroSql(Prisma.sql`m."centroId"`)}
@@ -135,8 +138,8 @@ export async function resumenPanel(
   for (const fila of actividadSql) {
     const destino = porDia.get(fila.dia);
     if (!destino) continue;
-    if (SIGNO_MOVIMIENTO[fila.tipo] > 0) destino.entradas += fila.unidades;
-    else destino.salidas += fila.unidades;
+    if (SIGNO_MOVIMIENTO[fila.tipo] > 0) destino.entradas += fila.movimientos;
+    else destino.salidas += fila.movimientos;
     destino.movimientos += fila.movimientos;
   }
 

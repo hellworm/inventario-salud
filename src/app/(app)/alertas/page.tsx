@@ -41,6 +41,7 @@ import {
   type AlertaStock,
   type AlertaVencimiento,
 } from "@/server/servicios";
+import { SinCentroActivo } from "@/components/shell/sin-centro";
 
 export const metadata: Metadata = { title: "Alertas" };
 
@@ -256,7 +257,8 @@ function pagina<T>(items: readonly T[], numero: number) {
 }
 
 export default async function PaginaAlertas({ searchParams }: PageProps<"/alertas">) {
-  const { actor, centroId: centroActivoId, centro, centros } = await contextoPagina("alertas:ver");
+  const { actor, centroId: centroActivoId, centro, centros, sinCentro } = await contextoPagina("alertas:ver");
+  if (sinCentro) return <SinCentroActivo titulo="Alertas" />;
   const sp = await searchParams;
   const filtros = leerFiltros(sp);
   const centroId = resolverCentro(centroActivoId, centros, filtros.centro);

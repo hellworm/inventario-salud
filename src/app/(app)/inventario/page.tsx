@@ -16,11 +16,13 @@ import {
   type DetalleInsumo,
 } from "@/server/servicios";
 import { VistaInventario } from "./vista-inventario";
+import { SinCentroActivo } from "@/components/shell/sin-centro";
 
 export const metadata: Metadata = { title: "Inventario" };
 
 export default async function PaginaInventario({ searchParams }: PageProps<"/inventario">) {
-  const { actor, centroId, centro } = await contextoPagina("inventario:ver");
+  const { actor, centroId, centro, sinCentro } = await contextoPagina("inventario:ver");
+  if (sinCentro) return <SinCentroActivo titulo="Inventario" />;
   const sp = await searchParams;
   const verId = textoParam(sp.ver);
 
