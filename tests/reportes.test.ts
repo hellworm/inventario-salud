@@ -151,8 +151,8 @@ describe("lista de reposición", () => {
     const { csv, filas } = await aCsv(exportacion);
     expect(filas).toHaveLength(2);
     expect(csv.startsWith("﻿Centro;Categoría;Código;Insumo;Unidad;Estado;Disponible;")).toBe(true);
-    expect(csv).toContain("Centro A;General;DIA-001;Dializador 1.8 m²;unidad;Bajo mínimo;38;50;80;12;42;42\r\n");
-    expect(csv).toContain("Centro A;General;GUA-001;Guantes de nitrilo M;unidad;Sin stock;0;50;;50;;50\r\n");
+    expect(csv).toContain("Centro A;General;DIA-001;Dializador 1.8 m²;unidad;Bajo mínimo;38;50;80;12;42;42;;;;\r\n");
+    expect(csv).toContain("Centro A;General;GUA-001;Guantes de nitrilo M;unidad;Sin stock;0;50;;50;;50;;;;\r\n");
 
     const auditoria = await exportacionesAuditadas("reposicion");
     expect(auditoria).toHaveLength(1);
@@ -191,7 +191,7 @@ describe("reporteExistencias", () => {
   it("exporta todas las filas y audita", async () => {
     const { csv, filas } = await aCsv(await exportarExistencias(e.admin, { centroId: e.centroA }));
     expect(filas).toHaveLength(5);
-    expect(csv).toContain(`Centro A;Bodega;General;DIA-001;Dializador 1.8 m²;unidad;D-20;${formatearDia(e.dia(20))};20;Rojo;6;1500;9000\r\n`);
+    expect(csv).toContain(`Centro A;Bodega;General;DIA-001;Dializador 1.8 m²;unidad;D-20;${formatearDia(e.dia(20))};20;Rojo;6;1500;9000;\r\n`);
     const auditoria = await exportacionesAuditadas("existencias");
     expect(auditoria).toHaveLength(1);
     expect(auditoria[0]!.detalle).toMatchObject({ filtros: { centroId: e.centroA, filas: 5 } });

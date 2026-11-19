@@ -38,6 +38,7 @@ import {
   type FiltrosMovimientos,
 } from "./consultas-movimientos";
 import { auditarExportacion, MAXIMO_FILAS_EXPORTACION, type ExportacionCsv } from "./exportaciones";
+import { proveedorDeFila, sqlProveedorEfectivo, type ColumnasProveedorSql, type ProveedorEfectivo } from "./proveedor-insumo";
 import { sqlEsAlgunColor } from "./semaforo";
 
 /**
@@ -144,6 +145,8 @@ export interface FilaExistencia {
   costoUnitario: number | null;
   /** cantidad × costo unitario; `null` sin costo. */
   valor: number | null;
+  /** Proveedor efectivo del insumo para la institución del centro de la fila (`null` = sin definir). */
+  proveedor: ProveedorEfectivo | null;
 }
 
 export interface TotalesExistencias {
@@ -159,7 +162,7 @@ export interface ReporteExistencias extends Paginado<FilaExistencia> {
   totales: TotalesExistencias;
 }
 
-interface FilaExistenciaSql {
+interface FilaExistenciaSql extends ColumnasProveedorSql {
   existenciaId: string;
   centroId: string;
   centro: string;
@@ -190,6 +193,12 @@ interface ConsultaExistencias {
 
 function sqlBaseExistencias(c: ConsultaExistencias, hoy: DiaISO): Prisma.Sql {
   const patron = patronDe(c.texto);
+  // Cada fila es de un centro: su proveedor es el de la institución de ESE centro.
+  const prov = sqlProveedorEfectivo({
+    insumoId: Prisma.sql`i."id"`,
+    predeterminado: Prisma.sql`i."proveedorId"`,
+    institucionId: Prisma.sql`ce."institucionId"`,
+  });
   return Prisma.sql`
     SELECT
       e."id" AS "existenciaId", e."cantidad",
@@ -197,12 +206,14 @@ function sqlBaseExistencias(c: ConsultaExistencias, hoy: DiaISO): Prisma.Sql {
       u."id" AS "ubicacionId", u."nombre" AS ubicacion,
       i."id" AS "insumoId", i."codigo", i."nombre", i."unidadMedida", ca."nombre" AS categoria,
       l."id" AS "loteId", l."numeroLote", l."fechaVencimiento"
+      ${prov.columnas}
     FROM "existencias" e
     JOIN "lotes" l ON l."id" = e."loteId"
     JOIN "insumos" i ON i."id" = l."insumoId"
     JOIN "categorias" ca ON ca."id" = i."categoriaId"
     JOIN "ubicaciones" u ON u."id" = e."ubicacionId"
     JOIN "centros" ce ON ce."id" = u."centroId" AND ce."activo"
+    ${prov.uniones}
     WHERE e."cantidad" > 0
       ${filtroCentros(Prisma.sql`u."centroId"`, c.centros)}
       ${c.categoriaId ? Prisma.sql`AND i."categoriaId" = ${c.categoriaId}` : Prisma.empty}
@@ -283,6 +294,7 @@ async function consultarExistencias(
       cantidad: f.cantidad,
       costoUnitario: costo,
       valor: f.costo === null ? null : Math.round(f.cantidad * f.costo),
+      proveedor: proveedorDeFila(f),
     };
   });
   const t = totalesSql[0];
@@ -335,6 +347,7 @@ const ENCABEZADOS_EXISTENCIAS = [
   "Cantidad",
   "Costo unitario (CLP)",
   "Valor (CLP)",
+  "Proveedor",
 ];
 
 function celdasExistencia(f: FilaExistencia): CeldaCsv[] {
@@ -352,6 +365,7 @@ function celdasExistencia(f: FilaExistencia): CeldaCsv[] {
     f.cantidad,
     f.costoUnitario,
     f.valor,
+    f.proveedor ? `${f.proveedor.razonSocial}${f.proveedor.activo ? "" : " (inactivo)"}` : "",
   ];
 }
 

@@ -41,6 +41,12 @@ export const PERMISOS = [
   "usuarios:gestionar",
   "proveedores:gestionar",
   "parametros:gestionar",
+  /**
+   * Definir, cambiar o quitar el proveedor preferido de UNA institución para un
+   * insumo (el ADMIN, solo el de la suya). El predeterminado de la red es parte
+   * del catálogo compartido: `catalogo:gestionar` (o `catalogo:crear` al crear).
+   */
+  "proveedores-insumo:gestionar",
 ] as const;
 export type Permiso = (typeof PERMISOS)[number];
 

@@ -15,4 +15,5 @@ export * from "./categorias";
 export * from "./instituciones";
 export * from "./centros";
 export * from "./proveedores";
+export * from "./proveedor-insumo";
 export * from "./auditoria-consultas";

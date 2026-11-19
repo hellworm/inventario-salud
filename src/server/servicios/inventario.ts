@@ -11,6 +11,7 @@ import {
   type EstadoStock,
   type EstadoVencimiento,
 } from "@/lib/estados";
+import { FILTRO_SIN_PROVEEDOR } from "@/lib/esquemas/proveedor-insumo";
 import { dateADia, hoyEnSantiago, type DiaISO } from "@/lib/fechas";
 import type { Actor } from "@/lib/permisos";
 import type { Paginado } from "@/lib/resultado";
@@ -18,6 +19,13 @@ import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { db } from "../db";
 import { noEncontrado } from "../errores";
 import { normalizarPagina, patronLike, textoDeBusqueda } from "./apoyo-admin";
+import {
+  institucionDeContexto,
+  proveedorDeFila,
+  sqlProveedorEfectivo,
+  type ColumnasProveedorSql,
+  type ProveedorEfectivo,
+} from "./proveedor-insumo";
 import { sqlEsColor } from "./semaforo";
 
 /**
@@ -79,6 +87,12 @@ export interface FiltrosInventario {
    * de estos colores (un insumo con un lote rojo y otro verde aparece en ambos).
    */
   semaforo?: readonly ColorSemaforo[] | null;
+  /**
+   * Proveedor EFECTIVO del insumo en el contexto (institución del centro o del
+   * usuario → predeterminado de la red): el id de un proveedor, o
+   * `FILTRO_SIN_PROVEEDOR` ("sin") para los insumos sin proveedor definido.
+   */
+  proveedorId?: string | null;
   /** Orden del listado (por defecto, por nombre). */
   orden?: OrdenInventario | null;
   pagina?: number;
@@ -111,9 +125,11 @@ export interface FilaInventario {
   diasParaVencer: number | null;
   estadoStock: EstadoStock;
   estadoVencimiento: EstadoVencimiento;
+  /** Proveedor efectivo en el contexto de la consulta (`null` = sin proveedor definido). */
+  proveedor: ProveedorEfectivo | null;
 }
 
-interface FilaSql {
+interface FilaSql extends ColumnasProveedorSql {
   id: string;
   codigo: string;
   nombre: string;
@@ -167,6 +183,11 @@ export async function listarInventario(
 ): Promise<Paginado<FilaInventario>> {
   verificarPermiso(actor, "inventario:ver");
   const centros = alcanceDeCentros(actor, filtros.centroId);
+  const prov = sqlProveedorEfectivo({
+    insumoId: Prisma.sql`i."id"`,
+    predeterminado: Prisma.sql`i."proveedorId"`,
+    institucionId: await institucionDeContexto(actor, filtros.centroId),
+  });
   const hoy = hoyEnSantiago(opciones.ahora);
   const limites = limitesSemaforo(hoy);
   const fecha = Prisma.sql`l."fechaVencimiento"`;
@@ -178,6 +199,8 @@ export async function listarInventario(
   const condiciones: Prisma.Sql[] = [Prisma.sql`TRUE`];
   if (filtros.categoriaId) condiciones.push(Prisma.sql`b."categoriaId" = ${filtros.categoriaId}`);
   if (ubicacionId) condiciones.push(Prisma.sql`b.en_ubicacion > 0`);
+  if (filtros.proveedorId === FILTRO_SIN_PROVEEDOR) condiciones.push(Prisma.sql`b."provId" IS NULL`);
+  else if (filtros.proveedorId) condiciones.push(Prisma.sql`b."provId" = ${filtros.proveedorId}`);
   if (patron) {
     condiciones.push(Prisma.sql`(
       unaccent(b."nombre") ILIKE unaccent(${patron})
@@ -276,10 +299,12 @@ export async function listarInventario(
                AND COALESCE(ex.total, 0) - COALESCE(ex.vencido, 0) < par.minimo THEN 'BAJO_MINIMO'
           ELSE 'OK'
         END AS estado_stock
+        ${prov.columnas}
       FROM "insumos" i
       JOIN "categorias" c ON c."id" = i."categoriaId"
       LEFT JOIN ex ON ex.insumo_id = i."id"
       LEFT JOIN par ON par.insumo_id = i."id"
+      ${prov.uniones}
       WHERE ex.insumo_id IS NOT NULL OR (par.insumo_id IS NOT NULL AND i."activo")
     )
     SELECT b.*, (COUNT(*) OVER ())::int AS total_filas
@@ -322,6 +347,7 @@ export async function listarInventario(
       diasParaVencer: diasParaVencer(proximo, hoy),
       estadoStock: f.estado_stock,
       estadoVencimiento: estadoDeConteo(semaforo),
+      proveedor: proveedorDeFila(f),
     };
   });
 
@@ -338,6 +364,53 @@ export async function listarInventario(
     porPagina,
     totalPaginas: Math.max(1, Math.ceil(totalReal / porPagina)),
   };
+}
+
+/**
+ * Cuántos insumos del inventario del alcance tienen a cada proveedor como
+ * proveedor EFECTIVO: `{ "<proveedorId>": n }`. Usa la misma regla de
+ * visibilidad que `listarInventario` (insumos con existencias o con parámetro
+ * de stock en los centros del alcance), de modo que el conteo coincide con
+ * `/inventario?proveedor=<id>`.
+ * Permiso: `inventario:ver` (y acceso al centro si se indica).
+ */
+export async function contarInsumosPorProveedor(
+  actor: Actor,
+  filtros: { centroId?: string | null } = {},
+): Promise<Record<string, number>> {
+  verificarPermiso(actor, "inventario:ver");
+  const centros = alcanceDeCentros(actor, filtros.centroId);
+  const prov = sqlProveedorEfectivo({
+    insumoId: Prisma.sql`i."id"`,
+    predeterminado: Prisma.sql`i."proveedorId"`,
+    institucionId: await institucionDeContexto(actor, filtros.centroId),
+  });
+  const filas = await db.$queryRaw<{ proveedorId: string; insumos: number }[]>(Prisma.sql`
+    SELECT ${prov.id} AS "proveedorId", COUNT(*)::int AS insumos
+    FROM "insumos" i
+    ${prov.uniones}
+    WHERE ${prov.id} IS NOT NULL
+      AND (
+        EXISTS (
+          SELECT 1
+          FROM "existencias" e
+          JOIN "lotes" l ON l."id" = e."loteId"
+          JOIN "ubicaciones" u ON u."id" = e."ubicacionId"
+          JOIN "centros" ce ON ce."id" = u."centroId" AND ce."activo"
+          WHERE l."insumoId" = i."id" ${filtroCentros(Prisma.sql`u."centroId"`, centros)}
+        )
+        OR (
+          i."activo" AND EXISTS (
+            SELECT 1
+            FROM "parametros_stock" p
+            JOIN "centros" ce ON ce."id" = p."centroId" AND ce."activo"
+            WHERE p."insumoId" = i."id" ${filtroCentros(Prisma.sql`p."centroId"`, centros)}
+          )
+        )
+      )
+    GROUP BY ${prov.id}
+  `);
+  return Object.fromEntries(filas.map((f) => [f.proveedorId, f.insumos]));
 }
 
 // ---------------------------------------------------------------------------

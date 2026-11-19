@@ -58,6 +58,7 @@ model Institucion {
   centros   Centro[]
   usuarios  Usuario[]
   auditoria RegistroAuditoria[]
+  proveedoresInsumo ProveedorInsumoInstitucion[]
 
   @@map("instituciones")
 }
@@ -191,18 +192,24 @@ model Insumo {
   codigoBarras       String?
   requiereCadenaFrio Boolean  @default(false)
   controlaVencimiento Boolean @default(true)
+  /// Proveedor predeterminado de la RED para este insumo (opcional). Cada
+  /// institución puede sobrescribirlo con `ProveedorInsumoInstitucion`.
+  proveedorId        String?
   activo             Boolean  @default(true)
   creadoEn           DateTime @default(now())
   actualizadoEn      DateTime @updatedAt
 
   categoria   Categoria        @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
+  proveedor   Proveedor?       @relation(fields: [proveedorId], references: [id], onDelete: Restrict)
   parametros  ParametroStock[]
   lotes       Lote[]
   movimientos Movimiento[]
+  proveedoresInstitucion ProveedorInsumoInstitucion[]
 
   @@index([categoriaId])
   @@index([nombre])
   @@index([codigoBarras])
+  @@index([proveedorId])
   @@map("insumos")
 }
 
@@ -236,8 +243,31 @@ model Proveedor {
   actualizadoEn DateTime @updatedAt
 
   movimientos Movimiento[]
+  insumosPredeterminados Insumo[]
+  insumosInstitucion     ProveedorInsumoInstitucion[]
 
   @@map("proveedores")
+}
+
+/// Proveedor preferido de UNA institución para un insumo: sobrescribe, solo
+/// para ella, el predeterminado de la red (`Insumo.proveedorId`). Sin fila, la
+/// institución usa el de la red.
+model ProveedorInsumoInstitucion {
+  id            String   @id @default(cuid())
+  insumoId      String
+  institucionId String
+  proveedorId   String
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  insumo      Insumo      @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+  institucion Institucion @relation(fields: [institucionId], references: [id], onDelete: Cascade)
+  proveedor   Proveedor   @relation(fields: [proveedorId], references: [id], onDelete: Restrict)
+
+  @@unique([insumoId, institucionId])
+  @@index([institucionId])
+  @@index([proveedorId])
+  @@map("proveedores_insumo_institucion")
 }
 
 model Lote {

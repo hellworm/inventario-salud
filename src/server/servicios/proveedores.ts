@@ -9,7 +9,7 @@ import {
   type EntradaActualizarProveedor,
   type EntradaProveedor,
 } from "@/lib/esquemas/proveedores";
-import type { Actor } from "@/lib/permisos";
+import { puede, type Actor } from "@/lib/permisos";
 import type { Paginado } from "@/lib/resultado";
 import { registrarAuditoria } from "../auditoria";
 import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
@@ -27,6 +27,7 @@ import {
   type OpcionesPagina,
   textoDeBusqueda,
 } from "./apoyo-admin";
+import { contarInsumosPorProveedor } from "./inventario";
 
 export interface FilaProveedor {
   id: string;
@@ -227,6 +228,11 @@ export interface ProveedorDirectorio {
   sitioWeb: string | null;
   /** Último ingreso registrado con este proveedor en los centros del alcance. */
   ultimoIngreso: Date | null;
+  /**
+   * "Insumos que le compras": insumos del inventario del alcance cuyo proveedor
+   * EFECTIVO es este (coincide con `/inventario?proveedor=<id>`).
+   */
+  insumos: number;
 }
 
 export interface DirectorioProveedores {
@@ -262,7 +268,9 @@ export async function listarDirectorioProveedores(
     filtros.orden === "nombre"
       ? Prisma.sql`p."razonSocial" ASC, p."id" ASC`
       : Prisma.sql`u.ultimo DESC NULLS LAST, p."razonSocial" ASC, p."id" ASC`;
-  const filas = await db.$queryRaw<(Omit<ProveedorDirectorio, "ultimoIngreso"> & { ultimo: Date | null; total: number })[]>(Prisma.sql`
+  // Los cuatro roles tienen `inventario:ver`; si alguno no lo tuviera, simplemente no hay conteo.
+  const conteoInsumos = puede(actor.rol, "inventario:ver") ? contarInsumosPorProveedor(actor, { centroId: filtros.centroId }) : {};
+  const filas = await db.$queryRaw<(Omit<ProveedorDirectorio, "ultimoIngreso" | "insumos"> & { ultimo: Date | null; total: number })[]>(Prisma.sql`
     SELECT p."id", p."rut", p."razonSocial", p."contacto", p."telefono", p."email", p."sitioWeb",
            u.ultimo, (COUNT(*) OVER ())::int AS total
     FROM "proveedores" p
@@ -275,12 +283,18 @@ export async function listarDirectorioProveedores(
     ORDER BY ${orden}
     LIMIT ${limite}
   `);
+  const insumosPorProveedor: Record<string, number> = await conteoInsumos;
   return {
     total: filas[0]?.total ?? 0,
     items: filas.map(({ ultimo, total, ...p }) => {
       void total;
       // Nunca se entrega a la interfaz un enlace que no sea http(s) (defensa ante datos antiguos o importados).
-      return { ...p, sitioWeb: p.sitioWeb ? normalizarSitioWeb(p.sitioWeb) : null, ultimoIngreso: ultimo };
+      return {
+        ...p,
+        sitioWeb: p.sitioWeb ? normalizarSitioWeb(p.sitioWeb) : null,
+        ultimoIngreso: ultimo,
+        insumos: insumosPorProveedor[p.id] ?? 0,
+      };
     }),
   };
 }

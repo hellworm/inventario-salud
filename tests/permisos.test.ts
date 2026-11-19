@@ -59,6 +59,7 @@ describe("matriz de permisos", () => {
     // Lo que sí conserva, explícito (si alguien lo quita de la matriz, falla aquí).
     for (const p of [
       "catalogo:crear", "centros:gestionar", "usuarios:gestionar", "proveedores:gestionar", "parametros:gestionar",
+      "proveedores-insumo:gestionar",
       "movimientos:ajuste", "movimientos:merma", "movimientos:traslado", "reportes:ver", "auditoria:ver",
     ] as const) {
       expect(puede("ADMIN", p)).toBe(true);
