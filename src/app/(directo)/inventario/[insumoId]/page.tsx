@@ -47,6 +47,8 @@ import {
   type FilaMovimiento,
   type ParametroDetalle,
 } from "@/server/servicios";
+import { BotonCorregirVencimiento } from "@/components/inventario/corregir-vencimiento";
+import { SinCentroActivo } from "@/components/shell/sin-centro";
 
 /** Título de pestaña con el nombre real del insumo (o el genérico si no existe o no hay acceso). */
 export async function generateMetadata({ params }: PageProps<"/inventario/[insumoId]">): Promise<Metadata> {
@@ -103,7 +105,8 @@ function BarraMinimo({ parametro, unidad }: { parametro: ParametroDetalle; unida
 }
 
 export default async function PaginaInsumo({ params }: PageProps<"/inventario/[insumoId]">) {
-  const { actor, centroId, centro } = await contextoPagina("inventario:ver");
+  const { actor, centroId, centro, sinCentro } = await contextoPagina("inventario:ver");
+  if (sinCentro) return <SinCentroActivo titulo="Inventario" />;
   const { insumoId } = await params;
   const puedeVerMovimientos = puede(actor.rol, "movimientos:ver");
   const [detalle, movimientos] = await Promise.all([
@@ -119,6 +122,8 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
     trasladar: puede(actor.rol, "movimientos:traslado"),
     ajustar: puede(actor.rol, "movimientos:ajuste"),
     darDeBaja: puede(actor.rol, "movimientos:merma"),
+    // Corregir la fecha de un lote es solo del administrador (el servicio lo vuelve a exigir).
+    corregirVencimiento: actor.rol === "ADMIN" && puede(actor.rol, "movimientos:ajuste"),
   };
   const lotesConStock = new Set(detalle.existencias.map((e) => e.loteId)).size;
   const diasProximo = detalle.existencias.find((e) => e.fechaVencimiento === detalle.proximoVencimiento && e.estadoVencimiento !== "VENCIDO")?.diasParaVencer ?? null;
@@ -172,25 +177,35 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
             encabezado: "Acción",
             alinear: "derecha",
             className: "whitespace-nowrap",
-            celda: (e) =>
-              e.estadoVencimiento === "VENCIDO" ? (
-                permisos.darDeBaja ? (
-                  <Link
-                    href={`/movimientos/ajuste?tipo=merma&insumo=${insumo.id}&ubicacion=${e.ubicacionId}&lote=${e.loteId}`}
-                    className={claseAccionFila}
-                  >
-                    <Trash2 aria-hidden />
-                    Dar de baja
+            celda: (e) => (
+              <span className="flex flex-wrap items-center justify-end gap-1.5 max-md:justify-start">
+                {permisos.corregirVencimiento ? (
+                  <BotonCorregirVencimiento
+                    lote={{ loteId: e.loteId, numeroLote: e.numeroLote, fechaVencimiento: e.fechaVencimiento }}
+                    insumo={insumo.nombre}
+                    controlaVencimiento={insumo.controlaVencimiento}
+                  />
+                ) : null}
+                {e.estadoVencimiento === "VENCIDO" ? (
+                  permisos.darDeBaja ? (
+                    <Link
+                      href={`/movimientos/ajuste?tipo=merma&insumo=${insumo.id}&ubicacion=${e.ubicacionId}&lote=${e.loteId}`}
+                      className={claseAccionFila}
+                    >
+                      <Trash2 aria-hidden />
+                      Dar de baja
+                    </Link>
+                  ) : (
+                    <span className="text-xs text-texto-tenue">No retirable</span>
+                  )
+                ) : permisos.retirar ? (
+                  <Link href={`/movimientos/retiro?insumo=${insumo.id}&ubicacion=${e.ubicacionId}&lote=${e.loteId}`} className={claseAccionFila}>
+                    <ArrowUpFromLine aria-hidden />
+                    Retirar
                   </Link>
-                ) : (
-                  <span className="text-xs text-texto-tenue">No retirable</span>
-                )
-              ) : permisos.retirar ? (
-                <Link href={`/movimientos/retiro?insumo=${insumo.id}&ubicacion=${e.ubicacionId}&lote=${e.loteId}`} className={claseAccionFila}>
-                  <ArrowUpFromLine aria-hidden />
-                  Retirar
-                </Link>
-              ) : null,
+                ) : null}
+              </span>
+            ),
           } satisfies Columna<ExistenciaDetalle>,
         ]
       : []),
