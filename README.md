@@ -221,11 +221,11 @@ npm run test:e2e          # todo; agrega p. ej. `retiros`, `--project=movil` o `
   si no hay uno).
 - Cada rol inicia sesión una vez (`e2e/sesiones.setup.ts`) y los tests reutilizan esa sesión.
 - **Límite de intentos de ingreso.** El servidor de la suite corre con `TRUST_PROXY=1` (lo fija
-  `playwright.config.ts`; es solo de ese servidor de pruebas). Los tests normales no envían
-  `X-Forwarded-For`, así que para ellos no hay IP y no los alcanza el límite por IP. Los tests del
-  limitador envían su propia cabecera con una IP distinta por test (`ipDePrueba()`), y así
-  comprueban el modelo real: bloqueo por cuenta + IP sin dejar fuera al titular desde otra red. La
-  protección no se desactiva en ningún caso.
+  `playwright.config.ts`; es solo de ese servidor de pruebas) y cada test envía su propia
+  `X-Forwarded-For` con una IP distinta (`ipDelTest`, en `e2e/soporte/fixtures.ts`), como personas
+  en redes distintas. Así se prueba el modelo real —bloqueo por cuenta + IP sin dejar fuera al
+  titular desde otra red, límite por IP y el modo "sin IP"— y los intentos fallidos de un test no
+  consumen el cupo de los demás. La protección no se desactiva en ningún caso.
 - `bugConocido("B-xx: …")` (`e2e/soporte/fixtures.ts`) marca un test que documenta un bug real
   pendiente: se espera que falle y no rompe la suite. Hoy **ningún test lo usa**; queda como
   herramienta para el próximo informe de QA (`E2E_EXIGIR_BUGS=1` los ejecuta como tests normales).

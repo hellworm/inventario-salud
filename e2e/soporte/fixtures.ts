@@ -12,8 +12,22 @@ interface Fixtures {
   vigilancia: Vigilancia;
   /** Abre una página con la sesión guardada del rol (contexto propio, se cierra sola). */
   abrirComo: (rol: Rol) => Promise<Page>;
+  /**
+   * IP desde la que "llega" este test (cabecera `X-Forwarded-For`; el servidor
+   * de la suite corre con `TRUST_PROXY=1`). Cada test tiene la suya: así el
+   * límite de intentos por IP de un test no alcanza a los demás, igual que
+   * personas en redes distintas. Sin la cabecera, Next pone la IP del socket
+   * (127.0.0.1) y toda la suite compartiría un solo cupo.
+   */
+  ipDelTest: string;
   /** Abre una página sin sesión (contexto limpio). */
   abrirAnonimo: () => Promise<Page>;
+  /**
+   * Abre una página sin sesión cuya IP el servidor NO puede determinar
+   * (`X-Forwarded-For` inválida → IP nula), como en un despliegue sin
+   * `TRUST_PROXY`: el bloqueo por intentos degrada a "por cuenta".
+   */
+  abrirSinIp: () => Promise<Page>;
   /**
    * Abre una página sin sesión cuyas solicitudes llegan "desde" la IP indicada
    * (cabecera `X-Forwarded-For`; el servidor de la suite corre con
@@ -57,11 +71,20 @@ export const test = base.extend<Fixtures>({
     await usar(page);
   },
 
+  ipDelTest: async ({}, usar) => {
+    await usar(ipDePrueba());
+  },
+
+  // También vale para la `page` por defecto del test y su `page.request`.
+  extraHTTPHeaders: async ({ ipDelTest }, usar) => {
+    await usar({ "X-Forwarded-For": ipDelTest });
+  },
+
   opcionesContexto: async (
-    { baseURL, viewport, locale, timezoneId, hasTouch, isMobile, deviceScaleFactor, userAgent },
+    { baseURL, viewport, locale, timezoneId, hasTouch, isMobile, deviceScaleFactor, userAgent, extraHTTPHeaders },
     usar,
   ) => {
-    await usar({ baseURL, viewport, locale, timezoneId, hasTouch, isMobile, deviceScaleFactor, userAgent });
+    await usar({ baseURL, viewport, locale, timezoneId, hasTouch, isMobile, deviceScaleFactor, userAgent, extraHTTPHeaders });
   },
 
   abrirComo: async ({ browser, opcionesContexto, vigilancia }, usar) => {
@@ -83,6 +106,22 @@ export const test = base.extend<Fixtures>({
         ...opcionesContexto,
         storageState: rol ? rutaSesion(rol) : { cookies: [], origins: [] },
         extraHTTPHeaders: { "X-Forwarded-For": ip },
+      });
+      contextos.push(contexto);
+      const pagina = await contexto.newPage();
+      vigilar(pagina, vigilancia.problemas);
+      return pagina;
+    });
+    await Promise.all(contextos.map((c) => c.close()));
+  },
+
+  abrirSinIp: async ({ browser, opcionesContexto, vigilancia }, usar) => {
+    const contextos: BrowserContext[] = [];
+    await usar(async () => {
+      const contexto = await browser.newContext({
+        ...opcionesContexto,
+        storageState: { cookies: [], origins: [] },
+        extraHTTPHeaders: { "X-Forwarded-For": "desconocida" },
       });
       contextos.push(contexto);
       const pagina = await contexto.newPage();

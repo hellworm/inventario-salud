@@ -89,8 +89,10 @@ export default defineConfig({
         url: `${URL_BASE}/login`,
         reuseExistingServer: true,
         timeout: 120_000,
-        // TRUST_PROXY=1: los tests del limitador de login envían su propia X-Forwarded-For
-        // (una IP distinta por test); el resto de la suite no la envía y queda sin IP.
+        // TRUST_PROXY=1: cada test envía su propia X-Forwarded-For (una IP distinta por
+        // test, ver `ipDelTest` en e2e/soporte/fixtures.ts). Así se prueba el limitador
+        // real (por IP y por cuenta + IP) sin que los intentos fallidos de un test
+        // consuman el cupo de los demás, y sin desactivar ninguna protección.
         env: { DATABASE_URL: BASE_E2E, TRUST_PROXY: "1" },
         stdout: "ignore",
         // E2E_VER_SERVIDOR=1 muestra los errores que el servidor escribe durante la suite.

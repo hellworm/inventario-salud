@@ -203,10 +203,10 @@ test.describe("Administración de usuarios", () => {
     await expect(await filaDeUsuario(page, usuario)).not.toContainText("Bloqueada");
   });
 
-  test("sin IP confiable el bloqueo es por cuenta: cinco fallos la bloquean y restablecer la contraseña la libera", async ({ page, abrirAnonimo }) => {
-    // Sin cabecera X-Forwarded-For el servidor no conoce la IP (como sin TRUST_PROXY).
+  test("sin IP confiable el bloqueo es por cuenta: cinco fallos la bloquean y restablecer la contraseña la libera", async ({ page, abrirSinIp }) => {
+    // El servidor no puede determinar la IP de estas solicitudes (como en un despliegue sin TRUST_PROXY).
     const usuario = await crearUsuario(page, "Visitante");
-    const intruso = await abrirAnonimo();
+    const intruso = await abrirSinIp();
     for (let intento = 1; intento <= 5; intento++) {
       await iniciarSesion(intruso, usuario.email, `Incorrecta.${intento}.2026`);
       await expect(intruso.getByRole("alert").filter({ hasText: ERROR_CREDENCIALES })).toBeVisible();
@@ -215,7 +215,7 @@ test.describe("Administración de usuarios", () => {
     await expect(intruso.getByRole("alert").filter({ hasText: ERROR_CREDENCIALES })).toBeVisible();
     await expect(intruso).toHaveURL(/\/login/);
     // En este modo el bloqueo alcanza a todos: tampoco entra desde otro navegador.
-    const otro = await abrirAnonimo();
+    const otro = await abrirSinIp();
     await iniciarSesion(otro, usuario.email, usuario.temporal);
     await expect(otro.getByRole("alert").filter({ hasText: ERROR_CREDENCIALES })).toBeVisible();
 

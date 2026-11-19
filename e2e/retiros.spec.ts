@@ -125,13 +125,19 @@ test.describe("Retiros de stock", () => {
     const admin = await abrirComo("admin");
     const { insumo } = await insumoConDosLotes(admin);
     await abrirRetiro(admin, insumo, BODEGA);
+    const bodegaId = await admin.getByRole("combobox", { name: "Desde la ubicación" }).inputValue();
     await admin.getByRole("textbox", { name: "Cantidad a retirar" }).fill("14");
     await enviarRetiro(admin, { masDeLaMitad: true });
     await expect(admin.getByRole("status").filter({ hasText: "Retiro registrado" })).toContainText("quedan 0 cajas");
     expect(await disponibleEnFicha(admin, insumo)).toBe(0);
 
-    // Sin stock: el formulario lo dice y no deja registrar.
-    await abrirRetiro(admin, insumo, BODEGA);
+    // Sin stock: la ubicación ya no se puede elegir como origen…
+    await admin.goto(`/movimientos/retiro?insumo=${insumo.id}`);
+    const origen = admin.getByRole("combobox", { name: "Desde la ubicación" });
+    await expect(origen.locator(`option[value="${bodegaId}"]`)).toBeDisabled();
+    await expect(origen.locator(`option[value="${bodegaId}"]`)).toContainText("sin stock");
+    // …y llegando con ella en la URL, el formulario lo dice y no deja registrar.
+    await admin.goto(`/movimientos/retiro?insumo=${insumo.id}&ubicacion=${bodegaId}`);
     await expect(admin.getByRole("form", { name: "Registrar retiro" })).toContainText("No hay stock vigente para retirar aquí.");
     await expect(admin.getByRole("button", { name: "Registrar retiro" })).toBeDisabled();
   });
