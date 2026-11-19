@@ -28,19 +28,22 @@ import {
 import { ComboboxInsumo, type InsumoOpcion } from "@/components/movimientos/combobox-insumo";
 import {
   AnuncioErrores,
+  AYUDA_SIN_PACIENTES,
   CifrasConfirmacion,
   Confirmacion,
   enfocarPrimerError,
   erroresDeEsquema,
   PanelExistencias,
+  ResumenErrores,
   unirErrores,
   useExistenciasInsumo,
 } from "@/components/movimientos/formulario";
 import { formatearRut } from "@/lib/chile/rut";
-import { esquemaIngreso } from "@/lib/esquemas/movimientos";
+import { esquemaIngreso, normalizarNumeroLote } from "@/lib/esquemas/movimientos";
 import { calcularEstadoVencimiento } from "@/lib/estados";
 import { describirVencimiento, diasEntre, formatearDia, type DiaISO } from "@/lib/fechas";
-import { nuevaClaveIdempotencia } from "@/lib/esquemas/base";
+import { MONTO_MAXIMO, nuevaClaveIdempotencia, zMontoOpcional } from "@/lib/esquemas/base";
+import { formatearMonto } from "@/lib/formato";
 import type { ErroresCampo } from "@/lib/resultado";
 import { cantidadConUnidad } from "@/lib/unidades";
 
@@ -61,6 +64,9 @@ interface LineaRegistrada {
 interface IngresoConfirmado {
   insumo: InsumoOpcion;
   ubicacion: UbicacionOpcion;
+  /** Centro real del movimiento, según el servidor. */
+  centro: string;
+  repetido: boolean;
   numeroLote: string;
   loteCreado: boolean;
   cantidad: number;
@@ -112,19 +118,30 @@ export function FormularioIngreso({
   const ingreso = useAccion(registrarIngresoAccion, { toastError: false });
 
   const ubicacion = ubicaciones.find((u) => u.id === ubicacionId) ?? null;
-  const loteNormalizado = numeroLote.trim().toUpperCase();
+  const loteNormalizado = normalizarNumeroLote(numeroLote);
   const lotesRegistrados = existencias.datos?.lotesRegistrados ?? [];
   const loteExistente = loteNormalizado ? (lotesRegistrados.find((l) => l.numeroLote === loteNormalizado) ?? null) : null;
   const loteExistenteVencido =
     loteExistente !== null && calcularEstadoVencimiento(loteExistente.fechaVencimiento, hoy) === "VENCIDO";
-  const pideVencimiento = insumo !== null && loteExistente === null;
+  // Lote que ya existe SIN fecha en un insumo que hoy controla vencimiento:
+  // hay que completar la fecha (el servidor la exige), así que el campo se muestra.
+  const completarFecha =
+    insumo !== null && insumo.controlaVencimiento && loteExistente !== null && loteExistente.fechaVencimiento === null;
+  const fechaFija = loteExistente !== null && !completarFecha;
+  const pideVencimiento = insumo !== null && !fechaFija;
   const vencimientoObligatorio = pideVencimiento && insumo.controlaVencimiento;
+
+  // Costo: se muestra cómo se interpretó lo escrito ANTES de guardar (el libro
+  // mayor es inmutable) y un punto decimal se rechaza de inmediato.
+  const costoLeido = costoUnitario.trim() === "" ? null : zMontoOpcional.safeParse(costoUnitario);
+  const errorCosto = costoLeido && !costoLeido.success ? (costoLeido.error.issues[0]?.message ?? "Ingresa un monto válido.") : null;
+  const costoInterpretado = costoLeido?.success && costoLeido.data !== undefined && costoLeido.data <= MONTO_MAXIMO ? costoLeido.data : null;
 
   const valores = {
     ubicacionId,
     insumoId: insumo?.id ?? "",
     numeroLote,
-    fechaVencimiento: loteExistente ? (loteExistente.fechaVencimiento ?? "") : fechaVencimiento,
+    fechaVencimiento: fechaFija ? (loteExistente?.fechaVencimiento ?? "") : fechaVencimiento,
     cantidad,
     proveedorId,
     documentoRef,
@@ -142,14 +159,29 @@ export function FormularioIngreso({
     }
     if (pideVencimiento && !e.fechaVencimiento) {
       if (vencimientoObligatorio && !fechaVencimiento) {
-        e.fechaVencimiento = ["Este insumo controla vencimiento: ingresa la fecha del lote"];
+        e.fechaVencimiento = [
+          completarFecha
+            ? "Este lote no tiene fecha registrada y el insumo controla vencimiento: indícala."
+            : "Este insumo controla vencimiento: ingresa la fecha del lote.",
+        ];
       } else if (fechaVencimiento && diasEntre(hoy, fechaVencimiento) < 0) {
         e.fechaVencimiento = ["Esa fecha ya pasó: no se pueden ingresar lotes vencidos"];
       }
     }
     return e;
   };
-  const erroresLocales = intentado ? validar() : {};
+  const erroresLocales: ErroresCampo = intentado ? validar() : errorCosto ? { costoUnitario: [errorCosto] } : {};
+  const camposVisibles = [
+    "insumoId",
+    "ubicacionId",
+    "numeroLote",
+    ...(fechaFija ? [] : ["fechaVencimiento"]),
+    "cantidad",
+    "proveedorId",
+    "documentoRef",
+    "costoUnitario",
+    "nota",
+  ];
   const errores = unirErrores(ingreso.erroresCampo, erroresLocales);
   const errorGeneral = ingreso.error && Object.keys(ingreso.erroresCampo).length === 0 ? ingreso.error : null;
 
@@ -175,10 +207,12 @@ export function FormularioIngreso({
       return;
     }
     setClaveIdempotencia(nuevaClaveIdempotencia());
-    const { movimiento, loteCreado, stock } = r.datos;
+    const { movimiento, loteCreado, stock, repetido } = r.datos;
     setConfirmado({
       insumo,
       ubicacion,
+      centro: ubicaciones.find((u) => u.centroId === movimiento.centroId)?.centro ?? ubicacion.centro,
+      repetido,
       numeroLote: movimiento.numeroLote,
       loteCreado,
       cantidad: movimiento.cantidad,
@@ -230,13 +264,15 @@ export function FormularioIngreso({
       {confirmado ? (
         <Confirmacion
           titulo="Ingreso registrado"
+          centro={confirmado.centro}
+          repetido={confirmado.repetido}
           detalle={
             <CifrasConfirmacion
               cifras={[
                 ...(confirmado.stock
                   ? [
                       {
-                        etiqueta: `Ahora hay en ${confirmado.ubicacion.centro}`,
+                        etiqueta: `Ahora hay en ${confirmado.centro}`,
                         valor: cantidadConUnidad(confirmado.stock.disponibleCentro, confirmado.insumo.unidadMedida),
                         nota: "disponibles para usar",
                       },
@@ -287,6 +323,7 @@ export function FormularioIngreso({
           <form ref={refFormulario} noValidate onSubmit={enviar} className="space-y-5" aria-label="Registrar ingreso">
             <AnuncioErrores errores={errores} visible={intentado} />
             {errorGeneral ? <Alert tono="peligro">{errorGeneral}</Alert> : null}
+            <ResumenErrores errores={ingreso.erroresCampo} camposVisibles={camposVisibles} />
 
             <Field label="Insumo" requerido error={errores.insumoId}>
               <ComboboxInsumo
@@ -327,7 +364,7 @@ export function FormularioIngreso({
                 />
               </Field>
 
-              {loteExistente ? (
+              {loteExistente && fechaFija ? (
                 <div className="space-y-1.5">
                   <p className="text-sm font-medium text-texto">Vencimiento</p>
                   <div
@@ -352,7 +389,7 @@ export function FormularioIngreso({
                   opcional={insumo !== null && !insumo.controlaVencimiento}
                   error={errores.fechaVencimiento}
                   ayuda={
-                    fechaVencimiento || (loteNormalizado && insumo && existencias.datos) ? (
+                    completarFecha || fechaVencimiento || (loteNormalizado && insumo && existencias.datos) ? (
                       <>
                         {/* El selector nativo usa el formato del dispositivo: se repite la fecha como la muestra la app. */}
                         {fechaVencimiento ? (
@@ -360,7 +397,12 @@ export function FormularioIngreso({
                             Vence el <strong className="cifras font-semibold text-texto">{formatearDia(fechaVencimiento)}</strong> (día-mes-año)
                           </span>
                         ) : null}
-                        {loteNormalizado && insumo && existencias.datos ? (
+                        {completarFecha ? (
+                          <span className="block">
+                            El lote <span className="cifras">{loteExistente?.numeroLote}</span> ya está registrado, pero sin fecha de
+                            vencimiento, y este insumo ahora la exige: indícala para completarlo.
+                          </span>
+                        ) : loteNormalizado && insumo && existencias.datos ? (
                           <span className="inline-flex items-center gap-1.5">
                             <PackagePlus className="size-4 text-texto-tenue" aria-hidden />
                             Lote nuevo para este insumo.
@@ -423,6 +465,16 @@ export function FormularioIngreso({
                   label={`Costo unitario${insumo ? ` (por ${insumo.unidadMedida})` : ""}`}
                   opcional
                   error={errores.costoUnitario}
+                  ayuda={
+                    costoInterpretado !== null ? (
+                      <span data-costo-interpretado>
+                        Se guardará como <strong className="cifras font-semibold text-texto">{formatearMonto(costoInterpretado)}</strong>
+                        {insumo ? ` por ${insumo.unidadMedida}` : ""}.
+                      </span>
+                    ) : (
+                      "Usa coma para los decimales (1250,5); el punto separa miles (1.250)."
+                    )
+                  }
                 >
                   <Input
                     name="costoUnitario"
@@ -435,7 +487,7 @@ export function FormularioIngreso({
                     className="cifras"
                   />
                 </Field>
-                <Field label="Nota" opcional error={errores.nota} className="sm:col-span-2">
+                <Field label="Nota" opcional error={errores.nota} ayuda={AYUDA_SIN_PACIENTES} className="sm:col-span-2">
                   <Textarea name="nota" value={nota} onChange={(e) => alEditar(setNota)(e.target.value)} rows={2} maxLength={500} />
                 </Field>
               </div>

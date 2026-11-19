@@ -3,28 +3,31 @@ import Link from "next/link";
 import { MapPinOff } from "lucide-react";
 import { buttonClasses, EmptyState, PageHeader } from "@/components/ui";
 import { hoyEnSantiago } from "@/lib/fechas";
+import { textoParam } from "@/lib/parametros";
 import { puede } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { buscarInsumos, listarProveedoresActivos, listarUbicaciones, obtenerOpcionInsumo } from "@/server/servicios";
 import { volverDeFormulario } from "../volver";
 import { FormularioIngreso } from "./formulario-ingreso";
+import { SinCentroActivo } from "@/components/shell/sin-centro";
+import { AvisoCambioCentro } from "@/components/movimientos/aviso-cambio-centro";
 
 export const metadata: Metadata = { title: "Registrar ingreso" };
 
-const texto = (v: string | string[] | undefined) => (typeof v === "string" && v.trim() ? v.trim() : null);
 
 export default async function PaginaIngreso({ searchParams }: PageProps<"/movimientos/ingreso">) {
-  const { actor, centroId, centro } = await contextoPagina("movimientos:ingreso");
+  const { actor, centroId, centro, sinCentro } = await contextoPagina("movimientos:ingreso");
+  if (sinCentro) return <SinCentroActivo titulo="Registrar ingreso" />;
   const sp = await searchParams;
   const volver = await volverDeFormulario(sp.volver);
-  const insumoParam = texto(sp.insumo);
+  const insumoParam = textoParam(sp.insumo);
   const [ubicaciones, proveedores, insumosIniciales, insumoInicial] = await Promise.all([
     listarUbicaciones(actor, { centroId }),
     listarProveedoresActivos(actor),
     buscarInsumos(actor, { limite: 20 }),
     insumoParam ? obtenerOpcionInsumo(actor, insumoParam) : null,
   ]);
-  const ubicacionParam = texto(sp.ubicacion);
+  const ubicacionParam = textoParam(sp.ubicacion);
 
   return (
     <>
@@ -37,6 +40,7 @@ export default async function PaginaIngreso({ searchParams }: PageProps<"/movimi
         }
         volver={volver}
       />
+      <AvisoCambioCentro centroId={centroId} nombre={centro?.nombre ?? null} />
       {ubicaciones.length === 0 ? (
         <EmptyState
           icono={MapPinOff}
@@ -62,7 +66,7 @@ export default async function PaginaIngreso({ searchParams }: PageProps<"/movimi
           inicial={{
             insumo: insumoInicial?.activo ? insumoInicial : null,
             ubicacionId: ubicaciones.some((u) => u.id === ubicacionParam) ? ubicacionParam : null,
-            numeroLote: texto(sp.lote),
+            numeroLote: textoParam(sp.lote),
           }}
         />
       )}

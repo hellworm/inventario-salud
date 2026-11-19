@@ -257,7 +257,7 @@ export function VistaMovimientos({
                             e.stopPropagation();
                             abrir(m.id);
                           }}
-                          className="cifras rounded-md whitespace-nowrap text-texto"
+                          className="cifras inline-flex items-center rounded-md whitespace-nowrap text-texto pointer-coarse:min-h-11"
                         >
                           {formatearFechaHora(m.creadoEn)}
                         </button>

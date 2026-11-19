@@ -10,6 +10,7 @@ import { buscarInsumos, detalleInsumo, listarUbicaciones, obtenerOpcionInsumo } 
 import { volverDeFormulario } from "../volver";
 import { FormularioAjuste } from "./formulario-ajuste";
 import { TIPOS_AJUSTE } from "./tipos";
+import { AvisoCambioCentro } from "@/components/movimientos/aviso-cambio-centro";
 
 export const metadata: Metadata = { title: "Ajuste o merma" };
 
@@ -63,6 +64,7 @@ export default async function PaginaAjuste({ searchParams }: PageProps<"/movimie
         }
         volver={volver}
       />
+      <AvisoCambioCentro centroId={centroId} nombre={centro?.nombre ?? null} />
       {ubicaciones.length === 0 ? (
         <EmptyState
           icono={MapPinOff}

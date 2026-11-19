@@ -16,11 +16,13 @@ import {
   usuariosConMovimientos,
 } from "@/server/servicios";
 import { VistaMovimientos } from "./vista-movimientos";
+import { SinCentroActivo } from "@/components/shell/sin-centro";
 
 export const metadata: Metadata = { title: "Historial de movimientos" };
 
 export default async function PaginaMovimientos({ searchParams }: PageProps<"/movimientos">) {
-  const { actor, centroId, centro } = await contextoPagina("movimientos:ver");
+  const { actor, centroId, centro, sinCentro } = await contextoPagina("movimientos:ver");
+  if (sinCentro) return <SinCentroActivo titulo="Historial de movimientos" />;
   const sp = await searchParams;
   const insumoParam = textoParam(sp.insumo);
   const movId = textoParam(sp.mov);

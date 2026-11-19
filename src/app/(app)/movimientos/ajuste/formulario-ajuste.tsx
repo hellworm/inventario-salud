@@ -20,10 +20,12 @@ import {
 import { ComboboxInsumo, type InsumoOpcion } from "@/components/movimientos/combobox-insumo";
 import {
   AnuncioErrores,
+  AYUDA_SIN_PACIENTES,
   CifrasConfirmacion,
   Confirmacion,
   enfocarPrimerError,
   PanelExistencias,
+  ResumenErrores,
   stockPorUbicacion,
   unirErrores,
   useExistenciasInsumo,
@@ -55,6 +57,9 @@ interface AjusteConfirmado {
   tipo: TipoAjuste;
   insumo: InsumoOpcion;
   ubicacion: UbicacionOpcion;
+  /** Centro real del movimiento, según el servidor. */
+  centro: string;
+  repetido: boolean;
   numeroLote: string;
   cantidad: number;
   saldoLote: number;
@@ -134,6 +139,8 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
   const motivos: readonly string[] = tipo === "MERMA" ? MOTIVOS_MERMA : MOTIVOS_AJUSTE;
   const motivo = motivoOpcion === OTRO ? motivoOtro.trim() : motivoOpcion;
   const listo = insumo !== null && ubicacion !== null && existencias.datos !== null;
+  // Mientras llegan las existencias no hay lotes que elegir: el botón lo dice.
+  const cargandoExistencias = insumo !== null && existencias.datos === null && !existencias.error;
 
   const validar = (): ErroresCampo => {
     const e: ErroresCampo = {};
@@ -153,6 +160,7 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
   const erroresLocales = intentado ? validar() : excede ? { cantidad: validar().cantidad ?? [] } : {};
   const errores = unirErrores(accion.erroresCampo, erroresLocales);
   const errorGeneral = accion.error && Object.keys(accion.erroresCampo).length === 0 ? accion.error : null;
+  const camposVisibles = ["insumoId", "ubicacionId", ...(listo && lotes.length > 0 ? ["loteId"] : []), "cantidad", "motivo", "nota"];
 
   function alEditar<T>(setter: (valor: T) => void) {
     return (valor: T) => {
@@ -200,6 +208,8 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
       tipo,
       insumo,
       ubicacion,
+      centro: ubicaciones.find((u) => u.centroId === r.datos.movimiento.centroId)?.centro ?? ubicacion.centro,
+      repetido: r.datos.movimiento.repetido === true,
       numeroLote: r.datos.movimiento.numeroLote,
       cantidad: r.datos.movimiento.cantidad,
       saldoLote: r.datos.movimiento.saldoPosterior,
@@ -225,6 +235,8 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
       {confirmado ? (
         <Confirmacion
           titulo={TEXTOS[confirmado.tipo].confirmado}
+          centro={confirmado.centro}
+          repetido={confirmado.repetido}
           detalle={
             <CifrasConfirmacion
               cifras={[
@@ -236,7 +248,7 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
                 ...(confirmado.stock
                   ? [
                       {
-                        etiqueta: `Disponible en ${confirmado.ubicacion.centro}`,
+                        etiqueta: `Disponible en ${confirmado.centro}`,
                         valor: cantidadConUnidad(confirmado.stock.disponibleCentro, confirmado.insumo.unidadMedida),
                         nota:
                           confirmado.stock.vencidoCentro > 0
@@ -272,6 +284,7 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
           <form ref={refFormulario} noValidate onSubmit={enviar} className="space-y-5" aria-label="Registrar ajuste o merma">
             <AnuncioErrores errores={errores} visible={intentado} />
             {errorGeneral ? <Alert tono="peligro">{errorGeneral}</Alert> : null}
+            <ResumenErrores errores={accion.erroresCampo} camposVisibles={camposVisibles} />
 
             <Grupo leyenda="¿Qué necesitas hacer?" requerido>
               <OpcionesTarjeta<TipoAjuste>
@@ -394,7 +407,7 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
                 />
               </Field>
               {motivoOpcion === OTRO ? (
-                <Field label="¿Cuál?" requerido error={errores.motivo}>
+                <Field label="¿Cuál?" requerido error={errores.motivo} ayuda={AYUDA_SIN_PACIENTES}>
                   <Input
                     name="motivoOtro"
                     value={motivoOtro}
@@ -413,7 +426,7 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
               </Alert>
             ) : null}
 
-            <Field label="Nota" opcional error={errores.nota}>
+            <Field label="Nota" opcional error={errores.nota} ayuda={AYUDA_SIN_PACIENTES}>
               <Textarea name="nota" value={nota} onChange={(e) => alEditar(setNota)(e.target.value)} rows={2} maxLength={500} />
             </Field>
 
@@ -429,10 +442,17 @@ export function FormularioAjuste({ ubicaciones, insumosIniciales, centroId, most
                 size="lg"
                 variant={tipo === "MERMA" ? "peligro" : "primario"}
                 cargando={accion.pendiente}
+                disabled={cargandoExistencias}
                 className="sm:min-w-52"
               >
-                {tipo === "MERMA" ? <Trash2 aria-hidden /> : <SlidersHorizontal aria-hidden />}
-                {TEXTOS[tipo].boton}
+                {cargandoExistencias ? (
+                  "Cargando existencias…"
+                ) : (
+                  <>
+                    {tipo === "MERMA" ? <Trash2 aria-hidden /> : <SlidersHorizontal aria-hidden />}
+                    {TEXTOS[tipo].boton}
+                  </>
+                )}
               </Button>
             </div>
           </form>

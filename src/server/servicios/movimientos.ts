@@ -547,7 +547,11 @@ export async function registrarIngreso(
           if (ajenas > 0) {
             throw new ErrorDominio(
               "LOTE_INCONSISTENTE",
-              `El lote ${datos.numeroLote} ya está registrado sin fecha de vencimiento y tiene existencias en otros centros. Deja la fecha en blanco o pide a un administrador que la corrija.`,
+              // Si el insumo controla vencimiento, dejar la fecha en blanco tampoco sirve
+              // (se exigiría): solo queda que un administrador la corrija.
+              insumo.controlaVencimiento
+                ? `El lote ${datos.numeroLote} ya está registrado sin fecha de vencimiento y tiene existencias en otros centros: tú no puedes completarla. Pide a un administrador que corrija el vencimiento del lote y vuelve a registrar el ingreso.`
+                : `El lote ${datos.numeroLote} ya está registrado sin fecha de vencimiento y tiene existencias en otros centros. Deja la fecha en blanco o pide a un administrador que la corrija.`,
               { campo: "fechaVencimiento" },
             );
           }

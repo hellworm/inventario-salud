@@ -6,7 +6,7 @@ import type { Actor } from "@/lib/permisos";
 import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { db } from "../db";
 import { noEncontrado } from "../errores";
-import { patronLike } from "./apoyo-admin";
+import { patronLike, textoDeBusqueda } from "./apoyo-admin";
 
 /**
  * Consultas livianas para poblar formularios (selects, buscadores).
@@ -28,6 +28,11 @@ export interface OpcionInsumo {
   controlaVencimiento: boolean;
   requiereCadenaFrio: boolean;
   codigoBarras: string | null;
+  /**
+   * Solo con `priorizarRetirosDeCentroId`: `true` si el insumo tuvo retiros en
+   * ese centro en los últimos `DIAS_PRIORIDAD_RETIROS` días (van primero).
+   */
+  masUsado?: boolean;
 }
 
 export interface OpcionUbicacion {
@@ -92,7 +97,7 @@ export async function buscarInsumos(
   opciones: { ahora?: Date } = {},
 ): Promise<OpcionInsumo[]> {
   verificarPermiso(actor, "catalogo:ver");
-  const texto = filtros.texto?.trim();
+  const texto = textoDeBusqueda(filtros.texto);
   const limite = Math.min(Math.max(Math.trunc(filtros.limite ?? 50) || 50, 1), 500);
 
   const condiciones: Prisma.Sql[] = [Prisma.sql`TRUE`];
@@ -109,6 +114,7 @@ export async function buscarInsumos(
 
   let unionRetiros = Prisma.empty;
   let orden = Prisma.sql`i."nombre" ASC, i."id" ASC`;
+  let columnaUso = Prisma.empty;
   if (!texto && filtros.priorizarRetirosDeCentroId) {
     const [centroId] = alcanceDeCentros(actor, filtros.priorizarRetirosDeCentroId)!;
     const desde = new Date((opciones.ahora ?? new Date()).getTime() - DIAS_PRIORIDAD_RETIROS * 86_400_000);
@@ -120,11 +126,12 @@ export async function buscarInsumos(
         GROUP BY m."insumoId"
       ) r ON r."insumoId" = i."id"`;
     orden = Prisma.sql`COALESCE(r."retirado", 0) DESC, i."nombre" ASC, i."id" ASC`;
+    columnaUso = Prisma.sql`, (COALESCE(r."retirado", 0) > 0) AS "masUsado"`;
   }
 
   return db.$queryRaw<OpcionInsumo[]>(Prisma.sql`
     SELECT i."id", i."codigo", i."nombre", i."presentacion", i."unidadMedida", c."nombre" AS "categoria",
-           i."controlaVencimiento", i."requiereCadenaFrio", i."codigoBarras"
+           i."controlaVencimiento", i."requiereCadenaFrio", i."codigoBarras"${columnaUso}
     FROM "insumos" i
     JOIN "categorias" c ON c."id" = i."categoriaId"
     ${unionRetiros}

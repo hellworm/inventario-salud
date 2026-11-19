@@ -31,11 +31,13 @@ import {
 import { ComboboxInsumo, type InsumoOpcion } from "@/components/movimientos/combobox-insumo";
 import {
   AnuncioErrores,
+  AYUDA_SIN_PACIENTES,
   CifrasConfirmacion,
   Confirmacion,
   enfocarPrimerError,
   erroresDeEsquema,
   PanelExistencias,
+  ResumenErrores,
   stockPorUbicacion,
   unirErrores,
   useExistenciasInsumo,
@@ -56,6 +58,9 @@ type Modo = "FEFO" | "LOTE";
 interface RetiroConfirmado {
   insumo: InsumoOpcion;
   ubicacion: UbicacionOpcion;
+  /** Centro real del movimiento, según el servidor. */
+  centro: string;
+  repetido: boolean;
   cantidad: number;
   lotes: { id: string; numeroLote: string; cantidad: number; saldo: number }[];
   stock: StockActual | null;
@@ -126,6 +131,8 @@ export function FormularioRetiro({
   const unidad = insumo?.unidadMedida ?? "unidad";
   const listo = insumo !== null && ubicacion !== null && existencias.datos !== null;
   const sinStock = listo && plan.disponible === 0;
+  // Mientras llegan las existencias no se puede validar ni enviar: el botón lo dice.
+  const cargandoExistencias = insumo !== null && existencias.datos === null && !existencias.error;
 
   const valores = { ubicacionId, insumoId: insumo?.id ?? "", cantidad, loteId, motivo, nota };
 
@@ -149,6 +156,13 @@ export function FormularioRetiro({
   const erroresLocales = intentado ? validar() : excede ? { cantidad: validar().cantidad ?? [] } : {};
   const errores = unirErrores(retiro.erroresCampo, erroresLocales);
   const errorGeneral = retiro.error && Object.keys(retiro.erroresCampo).length === 0 ? retiro.error : null;
+  const camposVisibles = [
+    "insumoId",
+    "ubicacionId",
+    ...(listo && !sinStock ? ["cantidad", ...(modo === "LOTE" ? ["loteId"] : [])] : []),
+    "motivo",
+    "nota",
+  ];
 
   function alEditar<T>(setter: (valor: T) => void) {
     return (valor: T) => {
@@ -181,9 +195,12 @@ export function FormularioRetiro({
       return;
     }
     setClaveIdempotencia(nuevaClaveIdempotencia());
+    const centroReal = r.datos.movimientos[0]?.centroId;
     setConfirmado({
       insumo,
       ubicacion,
+      centro: ubicaciones.find((u) => u.centroId === centroReal)?.centro ?? ubicacion.centro,
+      repetido: r.datos.repetido,
       cantidad: r.datos.cantidadTotal,
       lotes: r.datos.movimientos.map((m) => ({ id: m.id, numeroLote: m.numeroLote, cantidad: m.cantidad, saldo: m.saldoPosterior })),
       stock: r.datos.stock,
@@ -208,6 +225,8 @@ export function FormularioRetiro({
       {confirmado ? (
         <Confirmacion
           titulo="Retiro registrado"
+          centro={confirmado.centro}
+          repetido={confirmado.repetido}
           detalle={
             <>
               <CifrasConfirmacion
@@ -220,7 +239,7 @@ export function FormularioRetiro({
                           nota: "disponibles para usar",
                         },
                         {
-                          etiqueta: `Total en ${confirmado.ubicacion.centro}`,
+                          etiqueta: `Total en ${confirmado.centro}`,
                           valor: cantidadConUnidad(confirmado.stock.disponibleCentro, confirmado.insumo.unidadMedida),
                           nota: "sumando todas las ubicaciones",
                         },
@@ -273,6 +292,7 @@ export function FormularioRetiro({
           <form ref={refFormulario} noValidate onSubmit={enviar} className="space-y-5" aria-label="Registrar retiro">
             <AnuncioErrores errores={errores} visible={intentado} />
             {errorGeneral ? <Alert tono="peligro">{errorGeneral}</Alert> : null}
+            <ResumenErrores errores={retiro.erroresCampo} camposVisibles={camposVisibles} />
 
             <Field label="Insumo" requerido error={errores.insumoId}>
               <ComboboxInsumo
@@ -286,6 +306,7 @@ export function FormularioRetiro({
                   setCantidad("");
                 })}
                 iniciales={insumosIniciales}
+                priorizarRetirosDeCentroId={centroId}
                 autoFocus={ronda > 0}
               />
             </Field>
@@ -416,7 +437,7 @@ export function FormularioRetiro({
               </>
             ) : null}
 
-            <Field label="Destino o motivo" opcional error={errores.motivo} ayuda="Por ejemplo la sala, el turno o el procedimiento.">
+            <Field label="Destino o motivo" opcional error={errores.motivo} ayuda={`Por ejemplo la sala, el turno o el procedimiento. ${AYUDA_SIN_PACIENTES}`}>
               <Input name="motivo" value={motivo} onChange={(e) => alEditar(setMotivo)(e.target.value)} maxLength={200} autoComplete="off" />
             </Field>
             <div className="-mt-2">
@@ -428,7 +449,7 @@ export function FormularioRetiro({
               />
             </div>
 
-            <Field label="Nota" opcional error={errores.nota}>
+            <Field label="Nota" opcional error={errores.nota} ayuda={AYUDA_SIN_PACIENTES}>
               <Textarea name="nota" value={nota} onChange={(e) => alEditar(setNota)(e.target.value)} rows={2} maxLength={500} />
             </Field>
 
@@ -448,9 +469,15 @@ export function FormularioRetiro({
                   "Los campos con * son obligatorios."
                 )}
               </p>
-              <Button type="submit" size="lg" cargando={retiro.pendiente} disabled={sinStock} className="sm:min-w-52">
-                <ArrowUpFromLine aria-hidden />
-                Registrar retiro
+              <Button type="submit" size="lg" cargando={retiro.pendiente} disabled={sinStock || cargandoExistencias} className="sm:min-w-52">
+                {cargandoExistencias ? (
+                  "Cargando existencias…"
+                ) : (
+                  <>
+                    <ArrowUpFromLine aria-hidden />
+                    Registrar retiro
+                  </>
+                )}
               </Button>
             </div>
           </form>

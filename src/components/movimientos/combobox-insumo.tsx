@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Loader2, PackageSearch, Search, Snowflake, X } from "lucide-react";
 import { buscarInsumosAccion } from "@/acciones/consultas";
-import { controlClasses, useCampo, useDebounce } from "@/components/ui";
+import { avisarSesionVencida, controlClasses, esSesionVencida, useCampo, useDebounce } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
 /** Insumo del catálogo tal como lo usa el buscador (serializable). */
@@ -17,6 +17,8 @@ export interface InsumoOpcion {
   controlaVencimiento: boolean;
   requiereCadenaFrio: boolean;
   codigoBarras: string | null;
+  /** Viene de `buscarInsumos` con priorización: retirado hace poco en el centro activo. */
+  masUsado?: boolean;
 }
 
 export interface ComboboxInsumoProps {
@@ -27,6 +29,12 @@ export interface ComboboxInsumoProps {
   placeholder?: string;
   autoFocus?: boolean;
   disabled?: boolean;
+  /**
+   * Centro cuyos retiros de los últimos 30 días ordenan las sugerencias cuando
+   * no hay texto: primero lo más retirado ahí, bajo el rótulo "Más usados en
+   * este centro" (las iniciales se refrescan con `buscarInsumosAccion` al abrir).
+   */
+  priorizarRetirosDeCentroId?: string | null;
   /** Versión compacta (filtros): sin línea de detalle en la selección. */
   compacto?: boolean;
   id?: string;
@@ -48,6 +56,7 @@ export function ComboboxInsumo({
   autoFocus,
   disabled,
   compacto = false,
+  priorizarRetirosDeCentroId = null,
   ...propias
 }: ComboboxInsumoProps) {
   const { invalido, ...campo } = useCampo(propias);
@@ -79,6 +88,7 @@ export function ComboboxInsumo({
     } else {
       buscarInsumosAccion({ texto: consulta })
         .then((r) => {
+          if (esSesionVencida(r)) avisarSesionVencida();
           if (!vigente) return;
           setResultado({ texto: consulta, opciones: r.ok ? r.datos : [], error: !r.ok });
           setActivo(0);
@@ -91,6 +101,26 @@ export function ComboboxInsumo({
       vigente = false;
     };
   }, [consulta, iniciales]);
+
+  // Con priorización por uso, las iniciales se refrescan al abrir (lo "más
+  // usado" cambia durante el día); si falla, quedan las que envió la página.
+  const refrescado = React.useRef(false);
+  React.useEffect(() => {
+    if (!abierto || !priorizarRetirosDeCentroId || refrescado.current) return;
+    refrescado.current = true;
+    let vigente = true;
+    buscarInsumosAccion({ priorizarRetirosDeCentroId })
+      .then((r) => {
+        if (esSesionVencida(r)) avisarSesionVencida();
+        if (vigente && r.ok && r.datos.length > 0) {
+          setResultado((previo) => (previo.texto === "" ? { texto: "", opciones: r.datos, error: false } : previo));
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      vigente = false;
+    };
+  }, [abierto, priorizarRetirosDeCentroId]);
 
   // Tras elegir o quitar la selección, el foco sigue en el control.
   React.useEffect(() => {
@@ -233,31 +263,37 @@ export function ComboboxInsumo({
         className="absolute inset-x-0 top-full z-30 mt-1.5 max-h-80 overflow-y-auto overscroll-contain rounded-control border border-borde bg-superficie py-1 shadow-flotante"
       >
         {opciones.map((o, i) => (
-          <li
-            key={o.id}
-            id={idOpcion(i)}
-            role="option"
-            aria-selected={i === activo}
-            data-indice={i}
-            // Evita que el input pierda el foco antes del clic.
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => elegir(o)}
-            onMouseMove={() => setActivo(i)}
-            className={cn(
-              "flex min-h-12 cursor-pointer items-center gap-3 px-3.5 py-2",
-              i === activo ? "bg-marca-50" : "bg-superficie",
-              buscando && "opacity-60",
-            )}
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[0.9375rem] font-medium text-texto">{o.nombre}</span>
-              <span className="block truncate text-xs text-texto-suave">
-                <span className="cifras">{o.codigo}</span> · {o.categoria}
-                {o.presentacion ? ` · ${o.presentacion}` : ""}
+          <React.Fragment key={o.id}>
+            {resultado.texto === "" && Boolean(o.masUsado) !== Boolean(opciones[i - 1]?.masUsado) && (o.masUsado || i > 0) ? (
+              <li role="presentation" className="px-3.5 pt-2.5 pb-1 text-xs font-semibold tracking-wide text-texto-tenue uppercase">
+                {o.masUsado ? "Más usados en este centro" : "Otros insumos"}
+              </li>
+            ) : null}
+            <li
+              id={idOpcion(i)}
+              role="option"
+              aria-selected={i === activo}
+              data-indice={i}
+              // Evita que el input pierda el foco antes del clic.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => elegir(o)}
+              onMouseMove={() => setActivo(i)}
+              className={cn(
+                "flex min-h-12 cursor-pointer items-center gap-3 px-3.5 py-2",
+                i === activo ? "bg-marca-50" : "bg-superficie",
+                buscando && "opacity-60",
+              )}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[0.9375rem] font-medium text-texto">{o.nombre}</span>
+                <span className="block truncate text-xs text-texto-suave">
+                  <span className="cifras">{o.codigo}</span> · {o.categoria}
+                  {o.presentacion ? ` · ${o.presentacion}` : ""}
+                </span>
               </span>
-            </span>
-            {o.requiereCadenaFrio ? <Snowflake className="size-4 shrink-0 text-info-700" aria-label="Cadena de frío" /> : null}
-          </li>
+              {o.requiereCadenaFrio ? <Snowflake className="size-4 shrink-0 text-info-700" aria-label="Cadena de frío" /> : null}
+            </li>
+          </React.Fragment>
         ))}
         {opciones.length === 0 && !buscando ? (
           <li role="presentation" className="flex items-center gap-3 px-3.5 py-4 text-sm text-texto-suave">

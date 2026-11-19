@@ -6,6 +6,7 @@ import { contextoPagina } from "@/server/auth/sesion";
 import { buscarInsumos, listarUbicaciones, obtenerOpcionInsumo } from "@/server/servicios";
 import { volverDeFormulario } from "../volver";
 import { FormularioTraslado } from "./formulario-traslado";
+import { AvisoCambioCentro } from "@/components/movimientos/aviso-cambio-centro";
 
 export const metadata: Metadata = { title: "Registrar traslado" };
 
@@ -35,6 +36,7 @@ export default async function PaginaTraslado({ searchParams }: PageProps<"/movim
         }
         volver={volver}
       />
+      <AvisoCambioCentro centroId={centroId} nombre={centro?.nombre ?? null} />
       {origenes.length === 0 || destinos.length < 2 ? (
         <EmptyState
           icono={MapPinOff}

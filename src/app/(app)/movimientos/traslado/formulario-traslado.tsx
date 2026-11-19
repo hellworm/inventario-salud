@@ -16,11 +16,13 @@ import {
 import { ComboboxInsumo, type InsumoOpcion } from "@/components/movimientos/combobox-insumo";
 import {
   AnuncioErrores,
+  AYUDA_SIN_PACIENTES,
   CifrasConfirmacion,
   Confirmacion,
   enfocarPrimerError,
   erroresDeEsquema,
   PanelExistencias,
+  ResumenErrores,
   stockPorUbicacion,
   unirErrores,
   useExistenciasInsumo,
@@ -34,6 +36,7 @@ interface TrasladoConfirmado {
   insumo: InsumoOpcion;
   origen: UbicacionOpcion;
   destino: UbicacionOpcion;
+  repetido: boolean;
   numeroLote: string;
   cantidad: number;
   saldoOrigen: number;
@@ -99,6 +102,8 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
   const pedido = leerCantidad(cantidad) ?? 0;
   const unidad = insumo?.unidadMedida ?? "unidad";
   const listo = insumo !== null && existencias.datos !== null;
+  // Mientras llegan las existencias no hay lotes que elegir: el botón lo dice.
+  const cargandoExistencias = insumo !== null && existencias.datos === null && !existencias.error;
   const entreCentros = origen !== null && destino !== null && origen.centroId !== destino.centroId;
 
   const valores = { loteId, ubicacionOrigenId: origenId, ubicacionDestinoId: destinoId, cantidad, motivo, nota };
@@ -120,6 +125,15 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
   const erroresLocales = intentado ? validar() : excede ? { cantidad: validar().cantidad ?? [] } : {};
   const errores = unirErrores(traslado.erroresCampo, erroresLocales);
   const errorGeneral = traslado.error && Object.keys(traslado.erroresCampo).length === 0 ? traslado.error : null;
+  const camposVisibles = [
+    "insumoId",
+    "ubicacionOrigenId",
+    "ubicacionDestinoId",
+    ...(insumo && origenId && listo && lotes.length > 0 ? ["loteId"] : []),
+    "cantidad",
+    "motivo",
+    "nota",
+  ];
 
   function alEditar<T>(setter: (valor: T) => void) {
     return (valor: T) => {
@@ -143,10 +157,12 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
       return;
     }
     setClaveIdempotencia(nuevaClaveIdempotencia());
+    // Origen y destino REALES del traslado, según el resultado del servidor.
     setConfirmado({
       insumo,
-      origen,
-      destino,
+      origen: origenes.find((u) => u.id === r.datos.salida.ubicacionId) ?? origen,
+      destino: destinos.find((u) => u.id === r.datos.entrada.ubicacionId) ?? destino,
+      repetido: r.datos.repetido,
       numeroLote: r.datos.salida.numeroLote,
       cantidad: r.datos.salida.cantidad,
       saldoOrigen: r.datos.salida.saldoPosterior,
@@ -172,6 +188,7 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
       {confirmado ? (
         <Confirmacion
           titulo="Traslado registrado"
+          repetido={confirmado.repetido}
           detalle={
             <CifrasConfirmacion
               cifras={[
@@ -212,6 +229,7 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
           <form ref={refFormulario} noValidate onSubmit={enviar} className="space-y-5" aria-label="Registrar traslado">
             <AnuncioErrores errores={errores} visible={intentado} />
             {errorGeneral ? <Alert tono="peligro">{errorGeneral}</Alert> : null}
+            <ResumenErrores errores={traslado.erroresCampo} camposVisibles={camposVisibles} />
 
             <Field label="Insumo" requerido error={errores.insumoId}>
               <ComboboxInsumo
@@ -287,7 +305,7 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
               <CampoCantidad valor={cantidad} onCambiar={alEditar(setCantidad)} unidad={unidad} maximo={lote?.cantidad} />
             </Field>
 
-            <Field label="Motivo" opcional error={errores.motivo}>
+            <Field label="Motivo" opcional error={errores.motivo} ayuda={AYUDA_SIN_PACIENTES}>
               <Input
                 name="motivo"
                 value={motivo}
@@ -297,7 +315,7 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
                 placeholder="Ej.: Reposición de sala, préstamo entre centros"
               />
             </Field>
-            <Field label="Nota" opcional error={errores.nota}>
+            <Field label="Nota" opcional error={errores.nota} ayuda={AYUDA_SIN_PACIENTES}>
               <Textarea name="nota" value={nota} onChange={(e) => alEditar(setNota)(e.target.value)} rows={2} maxLength={500} />
             </Field>
 
@@ -314,9 +332,15 @@ export function FormularioTraslado({ origenes, destinos, insumosIniciales, centr
                   "Los campos con * son obligatorios."
                 )}
               </p>
-              <Button type="submit" size="lg" cargando={traslado.pendiente} className="sm:min-w-52">
-                <ArrowLeftRight aria-hidden />
-                Registrar traslado
+              <Button type="submit" size="lg" cargando={traslado.pendiente} disabled={cargandoExistencias} className="sm:min-w-52">
+                {cargandoExistencias ? (
+                  "Cargando existencias…"
+                ) : (
+                  <>
+                    <ArrowLeftRight aria-hidden />
+                    Registrar traslado
+                  </>
+                )}
               </Button>
             </div>
           </form>

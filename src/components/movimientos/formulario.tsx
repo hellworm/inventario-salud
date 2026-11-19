@@ -9,8 +9,17 @@ import * as React from "react";
 import type { z } from "zod";
 import { Boxes, CircleCheck, MapPin } from "lucide-react";
 import { existenciasInsumoAccion, type ExistenciasInsumo } from "@/acciones/consultas";
-import { BadgeEstadoVencimiento, Card, CardHeader, Skeleton } from "@/components/ui";
+import {
+  Alert,
+  avisarSesionVencida,
+  BadgeEstadoVencimiento,
+  Card,
+  CardHeader,
+  esSesionVencida,
+  Skeleton,
+} from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { conPuntoFinal, erroresSinControl, unirErrores } from "@/lib/errores-formulario";
 import { formatearDia } from "@/lib/fechas";
 import { formatearNumero } from "@/lib/formato";
 import type { ErroresCampo } from "@/lib/resultado";
@@ -48,6 +57,7 @@ export function useExistenciasInsumo(insumoId: string | null, centroId: string |
     let vigente = true;
     existenciasInsumoAccion({ insumoId, centroId })
       .then((r) => {
+        if (esSesionVencida(r)) avisarSesionVencida();
         if (!vigente) return;
         setRespuesta({ clave, datos: r.ok ? r.datos : null, error: r.ok ? null : r.error });
       })
@@ -207,11 +217,20 @@ export function Confirmacion({
   children,
   detalle,
   acciones,
+  centro,
+  repetido = false,
 }: {
   titulo: string;
   children: React.ReactNode;
   detalle?: React.ReactNode;
   acciones: React.ReactNode;
+  /**
+   * Centro REAL del movimiento registrado (según el resultado del servidor).
+   * Se muestra siempre: el centro activo pudo cambiar en otra pestaña.
+   */
+  centro?: string | null;
+  /** El servidor ya tenía registrada esta operación (reenvío): no se duplicó. */
+  repetido?: boolean;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
@@ -228,14 +247,30 @@ export function Confirmacion({
           <div className="min-w-0">
             <h2 className="text-lg font-semibold tracking-tight text-texto">{titulo}</h2>
             <p className="mt-1 text-base text-texto">{children}</p>
+            {centro ? (
+              <p className="mt-1 text-sm text-texto-suave" data-centro-movimiento>
+                Registrado en <strong className="font-semibold text-texto">{centro}</strong>.
+              </p>
+            ) : null}
           </div>
         </div>
+        {repetido ? (
+          <Alert tono="info" className="mt-4">
+            {MENSAJE_REPETIDO}
+          </Alert>
+        ) : null}
         {detalle ? <div className="mt-4">{detalle}</div> : null}
       </div>
       <div className="mt-5 flex flex-col gap-2 border-t border-borde pt-4 sm:flex-row sm:flex-wrap">{acciones}</div>
     </Card>
   );
 }
+
+/** Aviso cuando el servidor devuelve `repetido: true` (misma clave de idempotencia). */
+export const MENSAJE_REPETIDO = "Este movimiento ya estaba registrado; no se duplicó.";
+
+/** Ayuda de los campos de texto libre (nota, motivo): el sistema no guarda datos de pacientes. */
+export const AYUDA_SIN_PACIENTES = "No incluyas datos de pacientes.";
 
 /** Cifras destacadas dentro de la confirmación (saldo resultante, etc.). */
 export function CifrasConfirmacion({ cifras }: { cifras: readonly { etiqueta: string; valor: React.ReactNode; nota?: React.ReactNode }[] }) {
@@ -251,6 +286,8 @@ export function CifrasConfirmacion({ cifras }: { cifras: readonly { etiqueta: st
     </dl>
   );
 }
+
+export { conPuntoFinal, erroresSinControl, unirErrores };
 
 // ---------------------------------------------------------------------------
 // Errores: foco y anuncio
@@ -280,19 +317,23 @@ export function erroresDeEsquema(esquema: z.ZodType, valores: unknown): ErroresC
   return errores;
 }
 
-/** Puntuación uniforme de los mensajes de validación: siempre terminan en punto. */
-export function conPuntoFinal(mensaje: string): string {
-  const limpio = mensaje.trim();
-  return limpio === "" || /[.!?…:]$/.test(limpio) ? limpio : `${limpio}.`;
-}
-
-/** Une errores del servidor con los de la validación local (gana el local) y uniforma su puntuación. */
-export function unirErrores(servidor: ErroresCampo, locales: ErroresCampo): ErroresCampo {
-  const unidos: ErroresCampo = {};
-  for (const [campo, mensajes] of Object.entries({ ...servidor, ...locales })) {
-    unidos[campo] = mensajes.map(conPuntoFinal);
-  }
-  return unidos;
+/** Resumen visible de los errores que no se pueden mostrar junto a un campo. */
+export function ResumenErrores({ errores, camposVisibles }: { errores: ErroresCampo; camposVisibles: readonly string[] }) {
+  const mensajes = erroresSinControl(errores, camposVisibles);
+  if (mensajes.length === 0) return null;
+  return (
+    <Alert tono="peligro" titulo="No se pudo registrar" data-resumen-errores>
+      {mensajes.length === 1 ? (
+        mensajes[0]
+      ) : (
+        <ul className="list-disc space-y-0.5 pl-4">
+          {mensajes.map((m) => (
+            <li key={m}>{m}</li>
+          ))}
+        </ul>
+      )}
+    </Alert>
+  );
 }
 
 /** Región `aria-live` que anuncia cuántos campos hay que corregir. */

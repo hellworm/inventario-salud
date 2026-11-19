@@ -7,17 +7,21 @@ import { contextoPagina } from "@/server/auth/sesion";
 import { buscarInsumos, listarUbicaciones, obtenerOpcionInsumo } from "@/server/servicios";
 import { volverDeFormulario } from "../volver";
 import { FormularioRetiro } from "./formulario-retiro";
+import { SinCentroActivo } from "@/components/shell/sin-centro";
+import { AvisoCambioCentro } from "@/components/movimientos/aviso-cambio-centro";
 
 export const metadata: Metadata = { title: "Registrar retiro" };
 
 export default async function PaginaRetiro({ searchParams }: PageProps<"/movimientos/retiro">) {
-  const { actor, centroId, centro } = await contextoPagina("movimientos:retiro");
+  const { actor, centroId, centro, sinCentro } = await contextoPagina("movimientos:retiro");
+  if (sinCentro) return <SinCentroActivo titulo="Registrar retiro" />;
   const sp = await searchParams;
   const volver = await volverDeFormulario(sp.volver);
   const insumoParam = textoParam(sp.insumo);
   const [ubicaciones, insumosIniciales, insumoInicial] = await Promise.all([
     listarUbicaciones(actor, { centroId }),
-    buscarInsumos(actor, { limite: 20 }),
+    // Con un centro activo, primero lo más retirado ahí en los últimos 30 días.
+    buscarInsumos(actor, { limite: 20, priorizarRetirosDeCentroId: centroId }),
     insumoParam ? obtenerOpcionInsumo(actor, insumoParam) : null,
   ]);
   const ubicacionParam = textoParam(sp.ubicacion);
@@ -33,6 +37,7 @@ export default async function PaginaRetiro({ searchParams }: PageProps<"/movimie
         }
         volver={volver}
       />
+      <AvisoCambioCentro centroId={centroId} nombre={centro?.nombre ?? null} />
       {ubicaciones.length === 0 ? (
         <EmptyState
           icono={MapPinOff}
