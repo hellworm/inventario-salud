@@ -192,7 +192,7 @@ export function OpcionesTarjeta<V extends string>({
             <span
               className={cn(
                 "flex size-5 shrink-0 items-center justify-center rounded-full border",
-                marcado ? "border-marca-600 bg-marca-600 text-white" : "border-borde-fuerte bg-superficie",
+                marcado ? "border-primario bg-primario text-white" : "border-borde-fuerte bg-superficie",
               )}
               aria-hidden
             >
@@ -266,7 +266,7 @@ export function SelectorLote({
             <span
               className={cn(
                 "flex size-5 shrink-0 items-center justify-center rounded-full border",
-                marcado ? "border-marca-600 bg-marca-600 text-white" : "border-borde-fuerte bg-superficie",
+                marcado ? "border-primario bg-primario text-white" : "border-borde-fuerte bg-superficie",
                 bloqueado && "opacity-40",
               )}
               aria-hidden

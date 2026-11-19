@@ -45,6 +45,10 @@ debes usar **dentro de 72 horas** (después vence y hay que pedir otra).
   administradores pueden elegir además todos sus centros a la vez: **Toda mi institución** (o
   **Toda la red**, el administrador de la red).
 - **Tu nombre** (arriba a la derecha): **Cambiar contraseña**, **Ayuda** y **Salir**.
+- **Tema claro u oscuro**: en ese mismo menú de tu nombre, bajo **Tema**, elige **Claro**, **Oscuro**
+  o **Dispositivo** (sigue la configuración de tu equipo; es lo que viene por defecto). También está
+  en la pantalla de ingreso, arriba a la derecha. Se recuerda en ese navegador y lo que imprimes
+  sale siempre en claro.
 
 Cierra la sesión al terminar si el equipo es compartido. Por seguridad, se cierra sola tras varias
 horas sin uso: si eso pasa mientras llenas un formulario, verás el aviso **Tu sesión venció** y el

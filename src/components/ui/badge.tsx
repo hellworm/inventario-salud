@@ -101,10 +101,10 @@ export const SEMAFORO_UI: Readonly<
   VENCIDO: {
     tono: "peligro",
     icono: CalendarX2,
-    badge: "bg-peligro-700 text-white ring-peligro-800",
+    badge: "bg-vencido text-white ring-vencido-borde",
     texto: "text-peligro-800",
-    suave: "bg-peligro-700 text-white",
-    acento: "border-l-peligro-800",
+    suave: "bg-vencido text-white",
+    acento: "border-l-vencido",
   },
   ROJO: { tono: "peligro", icono: OctagonAlert, texto: "text-peligro-700", suave: "bg-peligro-50 text-peligro-700", acento: "border-l-peligro-600" },
   AMARILLO: { tono: "alerta", icono: TriangleAlert, texto: "text-alerta-700", suave: "bg-alerta-100 text-alerta-800", acento: "border-l-alerta-500" },

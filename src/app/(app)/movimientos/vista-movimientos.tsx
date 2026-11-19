@@ -131,7 +131,7 @@ export function VistaMovimientos({
             <SlidersHorizontal aria-hidden />
             <span className="max-sm:sr-only">Filtros</span>
             {activos > 0 ? (
-              <span className="cifras flex size-5 items-center justify-center rounded-full bg-marca-600 text-xs font-semibold text-white">{activos}</span>
+              <span className="cifras flex size-5 items-center justify-center rounded-full bg-primario text-xs font-semibold text-white">{activos}</span>
             ) : null}
           </Button>
         </div>

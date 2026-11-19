@@ -4,8 +4,19 @@
  * Tokens de diseño de RedInsumos.
  * - `marca-*`: escala del color primario (teal / azul petróleo).
  * - Tokens semánticos (fondo, superficie, borde, texto…): usar SIEMPRE estos
- *   en vez de grises sueltos; así un futuro modo oscuro solo redefine variables.
+ *   en vez de grises sueltos; el tema oscuro solo redefine variables.
  * - Estados: exito (verde), alerta (ámbar), peligro (rojo), info (azul).
+ *
+ * TEMAS (claro / oscuro / según el dispositivo). Ver docs/ARQUITECTURA.md §10.
+ * Los valores de `@theme` son los del tema CLARO; `ri-tema-oscuro` (más abajo)
+ * los redefine. En oscuro las escalas cambian de papel, no se invierten:
+ *   50–100  fondos teñidos        200–400  bordes y anillos
+ *   500–600 gráficos, íconos y bordes de acento (≥ 3:1 sobre las superficies)
+ *   700–950 TEXTO (≥ 4,5:1 sobre las superficies y sobre su fondo 50/100)
+ * Por eso un relleno sólido con texto blanco NUNCA usa `bg-marca-600` ni
+ * `bg-peligro-600`: usa `bg-primario`, `bg-critico` o `bg-vencido`, que
+ * mantienen ≥ 4,5:1 con blanco en los dos temas. `tests/tema.test.ts` mide
+ * estos contrastes con la fórmula de WCAG.
  */
 @theme {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
@@ -27,11 +38,41 @@
   --color-fondo: var(--ri-fondo);
   --color-superficie: var(--ri-superficie);
   --color-superficie-2: var(--ri-superficie-2);
+  /* Capas flotantes (diálogos, menús, avisos): un nivel sobre `superficie`. */
+  --color-superficie-alta: var(--ri-superficie-alta);
   --color-borde: var(--ri-borde);
   --color-borde-fuerte: var(--ri-borde-fuerte);
   --color-texto: var(--ri-texto);
   --color-texto-suave: var(--ri-texto-suave);
   --color-texto-tenue: var(--ri-texto-tenue);
+
+  /* Rellenos sólidos con texto blanco (botones, chips activos, avatar, logo). */
+  --color-primario: var(--ri-primario);
+  --color-primario-hover: var(--ri-primario-hover);
+  --color-primario-activo: var(--ri-primario-activo);
+  --color-critico: var(--ri-critico);
+  --color-critico-hover: var(--ri-critico-hover);
+  --color-critico-activo: var(--ri-critico-activo);
+  /* "Vencido": estado aparte del semáforo, siempre sólido. */
+  --color-vencido: var(--ri-vencido);
+  --color-vencido-borde: var(--ri-vencido-borde);
+  /* Contorno de foco (más claro en oscuro). */
+  --color-foco: var(--ri-foco);
+  /* Velo detrás de diálogos y paneles. */
+  --color-velo: var(--ri-velo);
+  /* Pista (tooltip) del menú en modo rail. */
+  --color-pista: var(--ri-pista);
+  --color-sobre-pista: var(--ri-sobre-pista);
+  /* Serie "salidas" del gráfico de actividad (cobre con trama). */
+  --color-serie-salidas: var(--ri-serie-salidas);
+  --color-serie-salidas-trama: var(--ri-serie-salidas-trama);
+  /* Fijos en ambos temas: zonas siempre oscuras (panel del login, cámara del escáner). */
+  --color-noche-100: #d6f1f2;
+  --color-noche-200: #b0e2e4;
+  --color-noche-300: #7bcbd0;
+  --color-noche-900: #173f48;
+  --color-noche-950: #0a2930;
+  --color-exito-fijo: #059669;
 
   --color-exito-50: #ecfdf5;
   --color-exito-100: #d1fae5;
@@ -56,8 +97,8 @@
   --radius-control: 0.625rem;
   --radius-tarjeta: 0.875rem;
 
-  --shadow-tarjeta: 0 1px 2px rgb(15 35 45 / 0.05), 0 1px 3px rgb(15 35 45 / 0.04);
-  --shadow-flotante: 0 12px 32px -8px rgb(15 35 45 / 0.22), 0 4px 10px -4px rgb(15 35 45 / 0.1);
+  --shadow-tarjeta: var(--ri-sombra-tarjeta);
+  --shadow-flotante: var(--ri-sombra-flotante);
 
   --animate-aparecer: aparecer 160ms ease-out;
   --animate-subir: subir 200ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -91,13 +132,121 @@
   --ri-fondo: #f4f7f8;
   --ri-superficie: #ffffff;
   --ri-superficie-2: #f8fafb;
+  --ri-superficie-alta: #ffffff;
   --ri-borde: #dfe6e9;
   --ri-borde-fuerte: #b9c6cc;
   --ri-texto: #10242b;
   --ri-texto-suave: #46606a;
   /* ≥ 4,5:1 sobre superficie (#fff 4,97), superficie-2 (4,75), fondo (4,62) y marca-50 (4,66). */
   --ri-texto-tenue: #587480;
+
+  --ri-primario: #1a7480;
+  --ri-primario-hover: #185e69;
+  --ri-primario-activo: #184d56;
+  --ri-critico: #dc2626;
+  --ri-critico-hover: #b91c1c;
+  --ri-critico-activo: #991b1b;
+  --ri-vencido: #b91c1c;
+  --ri-vencido-borde: #991b1b;
+  --ri-velo: rgb(10 41 48 / 0.45);
+  --ri-pista: #0a2930;
+  --ri-sobre-pista: #ffffff;
+  --ri-serie-salidas: #b8683a;
+  --ri-serie-salidas-trama: #cf8a62;
+  --ri-foco: #1a7480;
+  --ri-seleccion: #b0e2e4;
+  --ri-sombra-tarjeta: 0 1px 2px rgb(15 35 45 / 0.05), 0 1px 3px rgb(15 35 45 / 0.04);
+  --ri-sombra-flotante: 0 12px 32px -8px rgb(15 35 45 / 0.22), 0 4px 10px -4px rgb(15 35 45 / 0.1);
   color-scheme: light;
+}
+
+/*
+ * TEMA OSCURO. Fondo casi negro neutro-frío y tres niveles de elevación
+ * (fondo → superficie → superficie-alta; `superficie-2` es el realce de filas,
+ * encabezados y estados "hover"). En oscuro la elevación se comunica con
+ * superficies más claras y bordes; las sombras apenas se ven.
+ *
+ * Una sola definición: se aplica con `@apply` cuando el tema es "oscuro"
+ * (cookie → `<html data-tema="oscuro">`, lo pone el servidor) y cuando es
+ * "según el dispositivo" (sin atributo) y el sistema pide oscuro. Sin script.
+ */
+@utility ri-tema-oscuro {
+  --ri-fondo: #090c0e;
+  --ri-superficie: #12161a;
+  --ri-superficie-2: #1d242a;
+  --ri-superficie-alta: #181d22;
+  --ri-borde: #262e34;
+  --ri-borde-fuerte: #66757f;
+  --ri-texto: #e6ecef;
+  --ri-texto-suave: #aab8bf;
+  --ri-texto-tenue: #8799a3;
+
+  --ri-primario: #1a7682;
+  --ri-primario-hover: #186a76;
+  --ri-primario-activo: #155b65;
+  --ri-critico: #c62828;
+  --ri-critico-hover: #b02222;
+  --ri-critico-activo: #991d1d;
+  --ri-vencido: #c62828;
+  --ri-vencido-borde: #e5484d;
+  --ri-velo: rgb(0 0 0 / 0.64);
+  --ri-pista: #dfe7ea;
+  --ri-sobre-pista: #090c0e;
+  --ri-serie-salidas: #d98452;
+  --ri-serie-salidas-trama: #a85f36;
+  --ri-foco: #5fc5ce;
+  --ri-seleccion: #1f5963;
+  --ri-sombra-tarjeta: 0 1px 2px rgb(0 0 0 / 0.5);
+  --ri-sombra-flotante: 0 0 0 1px rgb(255 255 255 / 0.04), 0 18px 44px -10px rgb(0 0 0 / 0.8), 0 6px 14px -6px rgb(0 0 0 / 0.6);
+
+  --color-marca-50: #0d262b;
+  --color-marca-100: #11343b;
+  --color-marca-200: #1a4750;
+  --color-marca-300: #23606b;
+  --color-marca-400: #2f808c;
+  --color-marca-500: #3a9da9;
+  --color-marca-600: #46b1bc;
+  --color-marca-700: #5fc5ce;
+  --color-marca-800: #90d9df;
+  --color-marca-900: #b6e7eb;
+  --color-marca-950: #daf3f5;
+
+  --color-exito-50: #0c2a1f;
+  --color-exito-100: #103727;
+  --color-exito-600: #32bd87;
+  --color-exito-700: #4fd09b;
+  --color-exito-800: #88e3bc;
+  --color-alerta-50: #2a1f08;
+  --color-alerta-100: #3b2b0b;
+  --color-alerta-500: #eda524;
+  --color-alerta-700: #f3b845;
+  --color-alerta-800: #fbd583;
+  --color-peligro-50: #2b1315;
+  --color-peligro-100: #3d181b;
+  --color-peligro-600: #f0595b;
+  --color-peligro-700: #f87c7c;
+  --color-peligro-800: #fca9a9;
+  --color-info-50: #0d2435;
+  --color-info-100: #123248;
+  --color-info-700: #5eb6ef;
+  --color-info-800: #95cef6;
+
+  color-scheme: dark;
+}
+
+/*
+ * Solo en pantalla: al imprimir (o guardar como PDF) valen siempre los tokens
+ * claros de `:root`, sea cual sea el tema elegido.
+ */
+@media screen {
+  :root[data-tema="oscuro"] {
+    @apply ri-tema-oscuro;
+  }
+}
+@media screen and (prefers-color-scheme: dark) {
+  :root:not([data-tema]) {
+    @apply ri-tema-oscuro;
+  }
 }
 
 @layer base {
@@ -113,11 +262,27 @@
   }
   /* Foco visible y consistente en todo elemento interactivo. */
   :focus-visible {
-    outline: 2px solid var(--color-marca-600);
+    outline: 2px solid var(--ri-foco);
     outline-offset: 2px;
   }
   ::selection {
-    background: var(--color-marca-200);
+    background: var(--ri-seleccion);
+  }
+  /*
+   * Autocompletado del navegador: conserva los colores del tema en vez del
+   * relleno propio de cada navegador (ilegible en oscuro en algunos).
+   */
+  input:-webkit-autofill,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-text-fill-color: var(--ri-texto);
+    caret-color: var(--ri-texto);
+    box-shadow: inset 0 0 0 100vmax var(--color-marca-50);
+  }
+  input:-webkit-autofill:focus-visible,
+  textarea:-webkit-autofill:focus-visible,
+  select:-webkit-autofill:focus-visible {
+    box-shadow: inset 0 0 0 100vmax var(--color-marca-50), 0 0 0 4px var(--color-marca-100);
   }
   h1, h2, h3, h4 {
     text-wrap: balance;

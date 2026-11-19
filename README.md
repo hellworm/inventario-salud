@@ -32,6 +32,9 @@ conjunto.
 - **Permisos por rol, por institución y por centro.** Cada persona ve y hace solo lo que le
   corresponde; una institución nunca ve datos de otra.
 - **Reportes para Excel.** Existencias, movimientos, consumo y cobertura, vencimientos y mermas.
+- **Tema claro u oscuro.** Cada persona elige **Claro**, **Oscuro** o **Según el dispositivo** desde
+  el menú de su nombre (o en la pantalla de ingreso). El semáforo conserva color, forma y texto con
+  contraste AA en ambos temas, y lo que se imprime sale siempre en claro.
 - **Pensado para Chile.** RUT, regiones y comunas, pesos chilenos, hora de Santiago y textos en
   español de Chile.
 
@@ -42,6 +45,10 @@ conjunto.
 | Alertas (pestaña Rojo) | Administración de instituciones |
 |---|---|
 | ![Alertas](docs/capturas/08-alertas.png) | ![Instituciones](docs/capturas/11-instituciones.png) |
+
+| Tema oscuro |
+|---|
+| ![Panel en tema oscuro, con el semáforo de vencimientos](docs/capturas/15-panel-oscuro.png) |
 
 | En el teléfono | Escáner |
 |---|---|

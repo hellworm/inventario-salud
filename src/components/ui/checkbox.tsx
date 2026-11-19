@@ -30,7 +30,7 @@ export function Checkbox({ label, descripcion, className, id, disabled, ...props
           type="checkbox"
           disabled={disabled}
           aria-describedby={descripcion ? `${idControl}-desc` : undefined}
-          className="peer size-5 appearance-none rounded-md border border-borde-fuerte bg-superficie shadow-sm transition-colors checked:border-marca-600 checked:bg-marca-600 focus-visible:outline-offset-2"
+          className="peer size-5 appearance-none rounded-md border border-borde-fuerte bg-superficie shadow-sm transition-colors checked:border-primario checked:bg-primario focus-visible:outline-offset-2"
           {...props}
         />
         <Check className="pointer-events-none absolute size-3.5 text-white opacity-0 peer-checked:opacity-100" strokeWidth={3} aria-hidden />

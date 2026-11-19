@@ -62,7 +62,7 @@ export function BotonEscanearPanel({ rol, className }: { rol: Rol; className?: s
     <BotonEscanear
       data-accion="escanear"
       className={cn(
-        "group flex min-h-[4.5rem] w-full items-center gap-4 rounded-tarjeta border border-marca-700 bg-marca-700 px-4 py-3 text-left text-white shadow-tarjeta transition-colors hover:bg-marca-800 active:bg-marca-900 xl:hidden",
+        "group flex min-h-[4.5rem] w-full items-center gap-4 rounded-tarjeta border border-primario-hover bg-primario-hover px-4 py-3 text-left text-white shadow-tarjeta transition-colors hover:bg-primario-activo active:bg-noche-900 xl:hidden",
         className,
       )}
     >
@@ -95,7 +95,7 @@ export function AccionesPrincipales({ rol, className }: { rol: Rol; className?: 
               className={cn(
                 "group flex h-full min-h-[5.5rem] flex-col justify-between gap-3 rounded-tarjeta border p-4 shadow-tarjeta transition-colors sm:flex-row sm:items-center sm:justify-start sm:gap-4 sm:p-5",
                 i === 0
-                  ? "border-marca-600 bg-marca-600 text-white hover:bg-marca-700"
+                  ? "border-primario bg-primario text-white hover:bg-primario-hover"
                   : "border-borde-fuerte/70 bg-superficie text-texto hover:border-marca-400 hover:bg-marca-50/50",
               )}
             >

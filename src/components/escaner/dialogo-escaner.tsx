@@ -283,14 +283,14 @@ export default function DialogoEscaner({
       }}
     >
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-marca-950/70 data-[state=open]:animate-aparecer" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-noche-950/70 data-[state=open]:animate-aparecer" />
         <DialogPrimitive.Content
           data-escaner={estado}
           data-leido={leido || undefined}
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={onCloseAutoFocus}
           className={cn(
-            "fixed inset-0 z-[60] flex flex-col bg-marca-950 text-white focus:outline-none",
+            "fixed inset-0 z-[60] flex flex-col bg-noche-950 text-white focus:outline-none",
             "sm:inset-auto sm:top-1/2 sm:left-1/2 sm:h-[min(44rem,92dvh)] sm:w-[min(34rem,94vw)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:overflow-hidden sm:rounded-2xl sm:shadow-flotante",
           )}
         >
@@ -323,12 +323,12 @@ export default function DialogoEscaner({
                 <div
                   className={cn(
                     "relative aspect-[4/3] w-[min(78%,22rem)] rounded-2xl border-2 shadow-[0_0_0_100vmax_rgb(0_0_0/0.45)] transition-colors",
-                    leido ? "border-exito-600 bg-exito-600/25" : "border-white/85",
+                    leido ? "border-exito-fijo bg-exito-fijo/25" : "border-white/85",
                   )}
                 >
                   {leido ? (
                     <span className="absolute inset-0 flex items-center justify-center">
-                      <span className="flex size-16 items-center justify-center rounded-full bg-exito-600 text-white">
+                      <span className="flex size-16 items-center justify-center rounded-full bg-exito-fijo text-white">
                         <Check className="size-9" strokeWidth={3} />
                       </span>
                     </span>
@@ -337,14 +337,14 @@ export default function DialogoEscaner({
                       <Loader2 className="size-9 animate-spin text-white/90" />
                     </span>
                   ) : (
-                    <span className="absolute inset-x-4 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-marca-300/90" />
+                    <span className="absolute inset-x-4 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-noche-300/90" />
                   )}
                 </div>
               </div>
             ) : null}
 
             {ayuda && IconoAyuda && !leido ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto bg-marca-950 p-6 text-center">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto bg-noche-950 p-6 text-center">
                 <span className="flex size-14 items-center justify-center rounded-full bg-white/10">
                   <IconoAyuda className="size-7" aria-hidden />
                 </span>
@@ -376,7 +376,7 @@ export default function DialogoEscaner({
                 aria-pressed={linterna.encendida}
                 className={cn(
                   "absolute right-3 bottom-3 flex min-h-12 items-center gap-2 rounded-full px-4 text-sm font-semibold backdrop-blur-md",
-                  linterna.encendida ? "bg-white text-marca-950" : "bg-black/55 text-white hover:bg-black/70",
+                  linterna.encendida ? "bg-white text-noche-950" : "bg-black/55 text-white hover:bg-black/70",
                 )}
               >
                 {linterna.encendida ? <FlashlightOff className="size-5" aria-hidden /> : <Flashlight className="size-5" aria-hidden />}

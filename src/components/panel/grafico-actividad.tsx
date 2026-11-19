@@ -24,8 +24,8 @@ export interface DiaActividad {
  * dependa solo del color. Contraste ≥ 3:1 sobre la superficie.
  */
 const COLOR_ENTRADAS = "var(--color-marca-500)";
-const COLOR_SALIDAS = "#b8683a";
-const TRAMA_SALIDAS = `repeating-linear-gradient(135deg, ${COLOR_SALIDAS} 0 3px, #cf8a62 3px 5px)`;
+const COLOR_SALIDAS = "var(--color-serie-salidas)";
+const TRAMA_SALIDAS = `repeating-linear-gradient(135deg, ${COLOR_SALIDAS} 0 3px, var(--color-serie-salidas-trama) 3px 5px)`;
 
 /** Redondea hacia arriba a un valor "limpio" para el tope del eje (1, 2, 2,5 o 5 × 10ⁿ). */
 function topeLimpio(valor: number): number {

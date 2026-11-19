@@ -75,7 +75,7 @@ export function Toaster() {
             onOpenChange={(abierto) => {
               if (!abierto) quitar(t.id);
             }}
-            className="pointer-events-auto flex items-start gap-3 rounded-xl border border-borde bg-superficie p-4 shadow-flotante data-[state=open]:animate-subir data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)]"
+            className="pointer-events-auto flex items-start gap-3 rounded-xl border border-borde bg-superficie-alta p-4 shadow-flotante data-[state=open]:animate-subir data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)]"
           >
             <Icono className={cn("mt-0.5 size-5 shrink-0", clases)} aria-hidden />
             <div className="min-w-0 flex-1">

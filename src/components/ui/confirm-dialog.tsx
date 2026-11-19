@@ -67,10 +67,10 @@ export function ConfirmDialog({
     <AlertDialog.Root open={abierto} onOpenChange={cambiar}>
       {disparador ? <AlertDialog.Trigger asChild>{disparador}</AlertDialog.Trigger> : null}
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-marca-950/45 backdrop-blur-[2px] data-[state=open]:animate-aparecer" />
+        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-velo backdrop-blur-[2px] data-[state=open]:animate-aparecer" />
         <AlertDialog.Content
           {...(descripcion ? {} : { "aria-describedby": undefined })}
-          className="fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-superficie p-5 shadow-flotante focus:outline-none data-[state=open]:animate-subir sm:p-6"
+          className="fixed top-1/2 left-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-superficie-alta p-5 shadow-flotante focus:outline-none data-[state=open]:animate-subir sm:p-6"
           onCloseAutoFocus={alCerrar}
         >
           {captura}

@@ -897,6 +897,37 @@ institución (ADMIN_RED), "Toda mi institución" + sus centros (ADMIN) o solo lo
 (con su permiso). El contenido de cada página se renderiza dentro de `<main>` con ancho máximo y
 márgenes ya definidos: empieza directamente con `<PageHeader>`.
 
+### Temas: claro, oscuro y según el dispositivo
+
+- **Preferencia:** cookie `ri_tema` = `claro` | `oscuro` (no httpOnly, `SameSite=Lax`, 1 año; sin
+  cookie = "según el dispositivo", el valor por defecto). La escribe el navegador
+  (`useTema().cambiar` en `components/shell/tema.tsx`, igual que `ri_sidebar`) y sobrevive al
+  cierre de sesión. `@/lib/tema` tiene las constantes y `leerTema` (lista blanca).
+- **Sin parpadeo y sin script:** `app/layout.tsx` lee la cookie y pone `data-tema="claro|oscuro"`
+  en `<html>` (y el `theme-color`: uno fijo, o uno por `prefers-color-scheme` si no hay cookie).
+  Con "según el dispositivo" no hay atributo y decide el CSS. No hay script en línea: la CSP no
+  cambia.
+- **CSS (`globals.css`):** `:root` y `@theme` tienen los valores claros; `@utility ri-tema-oscuro`
+  redefine los tokens `--ri-*` y las escalas `--color-*`, y se aplica con `@apply` en
+  `@media screen { :root[data-tema="oscuro"] }` y en
+  `@media screen and (prefers-color-scheme: dark) { :root:not([data-tema]) }`. Al ser solo
+  `screen`, **la impresión siempre sale en claro**. `color-scheme` acompaña al tema (controles
+  nativos, scrollbars).
+- **Papel de cada escalón en oscuro** (no es una inversión): `50–100` fondos teñidos, `200–400`
+  bordes y anillos, `500–600` gráficos, íconos y bordes de acento (≥ 3:1), `700–950` texto
+  (≥ 4,5:1). Por eso **un relleno sólido con texto blanco nunca usa un escalón numérico**:
+  `bg-primario` (+ `-hover`, `-activo`), `bg-critico` (+ `-hover`, `-activo`) y `bg-vencido`
+  (`ring-vencido-borde`). Otros tokens: `bg-superficie-alta` (diálogos, menús, toasts: un nivel
+  sobre `superficie`), `bg-velo` (fondo de diálogos), `outline-foco`, `bg-pista`/`text-sobre-pista`
+  (tooltip del rail), `serie-salidas` (gráfico) y los fijos `noche-*` / `exito-fijo` para zonas
+  siempre oscuras (panel del login, cámara del escáner).
+- **Controles:** `TemaEnMenu` (menú de usuario, `menuitemradio`) y `SelectorTema` (login y cambio
+  de contraseña, radios nativos).
+- **Pruebas:** `tests/tema.test.ts` mide con la fórmula de WCAG los pares texto/fondo (≥ 4,5:1) y
+  gráfico/fondo (≥ 3:1) de los tokens en ambos temas, incluido el semáforo; `e2e/tema.spec.ts`
+  cubre el cambio, la persistencia, `prefers-color-scheme`, la impresión y la CSP. Si agregas un
+  color nuevo, agrégalo a los dos temas y a la prueba.
+
 ### Shell, tablet e impresión
 
 - **Menú lateral:** completo solo desde `xl` (1280 px). Entre `lg` y `xl` (tablet horizontal) es un
