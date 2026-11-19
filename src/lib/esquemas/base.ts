@@ -8,6 +8,10 @@ import { parsearNumero } from "../formato";
 import { normalizarRut, validarRut } from "../chile/rut";
 
 z.config(z.locales.es());
+// Sin compilación en tiempo de ejecución: zod prueba `new Function` para
+// acelerar la validación y eso choca con la CSP (script-src sin 'unsafe-eval'),
+// dejando una violación en la consola de cada página con formularios.
+z.config({ jitless: true });
 
 /** Identificador de una entidad. */
 export const zId = z
