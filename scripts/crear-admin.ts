@@ -69,10 +69,10 @@ function leerOpciones(argumentos: readonly string[]): Opciones {
   }
 
   if (!email.trim()) {
-    throw new ErrorDeUso("Indica el email del administrador con --email (o la variable ADMIN_EMAIL).");
+    throw new ErrorDeUso("Indica el correo electrónico del administrador con --email (o la variable ADMIN_EMAIL).");
   }
   const emailValido = z.email().max(200).safeParse(normalizarEmail(email));
-  if (!emailValido.success) throw new ErrorDeUso(`El email "${email}" no es válido.`);
+  if (!emailValido.success) throw new ErrorDeUso(`El correo electrónico "${email}" no es válido.`);
   nombre = nombre.trim() || "Administrador";
   if (nombre.length > 120) throw new ErrorDeUso("El nombre no puede superar los 120 caracteres.");
 
@@ -100,14 +100,14 @@ async function obtenerPassword(opciones: Opciones): Promise<{ password: string; 
   const password = await leerPasswordDeStdin();
   validarPoliticaPassword(password);
   if (password.toLowerCase().includes(opciones.email.split("@")[0]!)) {
-    throw new ErrorDominio("PASSWORD_DEBIL", "La contraseña no puede contener el nombre de usuario del email.");
+    throw new ErrorDominio("PASSWORD_DEBIL", "La contraseña no puede contener el nombre de usuario del correo electrónico.");
   }
   return { password, generada: false };
 }
 
 function mostrarCredenciales(titulo: string, email: string, credencial: { password: string; generada: boolean }): void {
   console.log(`\n✔ ${titulo}`);
-  console.log(`\n    Email:                ${email}`);
+  console.log(`\n    Correo electrónico:   ${email}`);
   if (credencial.generada) {
     console.log(`    Contraseña temporal:  ${credencial.password}`);
     console.log("\n  Anótala ahora: no se volverá a mostrar ni se puede recuperar.");
@@ -127,7 +127,7 @@ async function main(): Promise<void> {
 
   if (existente && existente.rol !== "ADMIN") {
     throw new ErrorDeUso(
-      `Ya existe un usuario con el email ${opciones.email} y rol ${existente.rol}. Este script no cambia roles: usa otro email o pide a un administrador que lo edite en Administración → Usuarios.`,
+      `Ya existe un usuario con el correo electrónico ${opciones.email} y rol ${existente.rol}. Este script no cambia roles: usa otro correo o pide a un administrador que lo edite en Administración → Usuarios.`,
     );
   }
 

@@ -4,7 +4,7 @@
  */
 import { z } from "zod";
 import { parsearDia, type DiaISO } from "../fechas";
-import { parsearNumero } from "../formato";
+import { interpretarNumero } from "../formato";
 import { normalizarRut, validarRut } from "../chile/rut";
 
 z.config(z.locales.es());
@@ -15,10 +15,10 @@ z.config({ jitless: true });
 
 /** Identificador de una entidad. */
 export const zId = z
-  .string({ error: "Selecciona una opción" })
+  .string({ error: "Selecciona una opción." })
   .trim()
-  .min(1, "Selecciona una opción")
-  .max(40, "Identificador inválido");
+  .min(1, "Selecciona una opción.")
+  .max(40, "Identificador inválido.");
 
 export const zIdOpcional = z
   .string()
@@ -57,26 +57,26 @@ function zEnteroEstricto(mensajes: { invalido: string; noEntero: string }) {
 
 /** Cantidad entera positiva. Acepta un número entero o texto de dígitos de un input. */
 export const zCantidad = zEnteroEstricto({
-  invalido: "Ingresa una cantidad válida",
-  noEntero: "La cantidad debe ser un número entero",
+  invalido: "Ingresa una cantidad válida.",
+  noEntero: "La cantidad debe ser un número entero.",
 }).pipe(
   z
     .number()
-    .int("La cantidad debe ser un número entero")
-    .positive("La cantidad debe ser mayor que cero")
-    .max(1_000_000, "La cantidad es demasiado grande"),
+    .int("La cantidad debe ser un número entero.")
+    .positive("La cantidad debe ser mayor que cero.")
+    .max(1_000_000, "La cantidad es demasiado grande."),
 );
 
 /** Entero ≥ 0 (stock mínimo, etc.). Mismas reglas de entrada que `zCantidad`. */
 export const zEnteroNoNegativo = zEnteroEstricto({
-  invalido: "Ingresa un número válido",
-  noEntero: "Debe ser un número entero",
+  invalido: "Ingresa un número válido.",
+  noEntero: "Debe ser un número entero.",
 }).pipe(
   z
     .number()
-    .int("Debe ser un número entero")
-    .min(0, "No puede ser negativo")
-    .max(10_000_000, "El valor es demasiado grande"),
+    .int("Debe ser un número entero.")
+    .min(0, "No puede ser negativo.")
+    .max(10_000_000, "El valor es demasiado grande."),
 );
 
 /**
@@ -87,18 +87,18 @@ export const zEnteroNoNegativo = zEnteroEstricto({
 export const zClaveIdempotencia = z
   .string()
   .trim()
-  .max(36, "Clave de idempotencia inválida")
+  .max(36, "Clave de idempotencia inválida.")
   .nullish()
   .transform((v) => (v ? v.toLowerCase() : undefined))
-  .pipe(z.uuid("Clave de idempotencia inválida").optional());
+  .pipe(z.uuid("Clave de idempotencia inválida.").optional());
 
 /** Texto obligatorio recortado. */
-export function zTexto(maximo: number, mensajeVacio = "Este campo es obligatorio") {
+export function zTexto(maximo: number, mensajeVacio = "Este campo es obligatorio.") {
   return z
     .string({ error: mensajeVacio })
     .trim()
     .min(1, mensajeVacio)
-    .max(maximo, `Máximo ${maximo} caracteres`);
+    .max(maximo, `Máximo ${maximo} caracteres.`);
 }
 
 /** Texto opcional: "" y null se convierten en `undefined`. */
@@ -106,16 +106,16 @@ export function zTextoOpcional(maximo: number) {
   return z
     .string()
     .trim()
-    .max(maximo, `Máximo ${maximo} caracteres`)
+    .max(maximo, `Máximo ${maximo} caracteres.`)
     .nullish()
     .transform((v) => (v ? v : undefined));
 }
 
 /** Día calendario obligatorio (`YYYY-MM-DD` o `dd-MM-yyyy`) → `YYYY-MM-DD`. */
 export const zDia = z
-  .string({ error: "Ingresa una fecha" })
+  .string({ error: "Ingresa una fecha." })
   .trim()
-  .refine((v) => parsearDia(v) !== null, "Fecha inválida")
+  .refine((v) => parsearDia(v) !== null, "Fecha inválida.")
   .transform((v): DiaISO => parsearDia(v) as DiaISO);
 
 /** Día calendario opcional. */
@@ -123,18 +123,47 @@ export const zDiaOpcional = z
   .string()
   .trim()
   .nullish()
-  .refine((v) => !v || parsearDia(v) !== null, "Fecha inválida")
+  .refine((v) => !v || parsearDia(v) !== null, "Fecha inválida.")
   .transform((v): DiaISO | undefined => (v ? (parsearDia(v) as DiaISO) : undefined));
 
-/** Monto opcional ≥ 0. Acepta número o texto con formato chileno ("1.250,50"). */
+/** Tope de sanidad de un monto unitario (CLP): más que esto es un error de tipeo. */
+export const MONTO_MAXIMO = 100_000_000;
+
+const MENSAJE_MONTO_INVALIDO = "Ingresa un monto válido, por ejemplo 1.250 o 1250,5.";
+
+/**
+ * Monto opcional entre 0 y `MONTO_MAXIMO`, con hasta 2 decimales. Acepta un
+ * número o texto con formato chileno ("1.250,50"). Un punto usado como decimal
+ * ("1250.5") se RECHAZA en vez de adivinar: el libro mayor es inmutable y un
+ * costo mal interpretado no se podría corregir.
+ */
 export const zMontoOpcional = z
-  .union([z.number(), z.string()])
+  .union([z.number(), z.string()], { error: MENSAJE_MONTO_INVALIDO })
   .nullish()
   .transform((v, ctx): number | undefined => {
-    if (v === null || v === undefined || v === "") return undefined;
-    const n = typeof v === "number" ? v : parsearNumero(v);
-    if (n === null || !Number.isFinite(n) || n < 0 || n > 99_999_999_999) {
-      ctx.issues.push({ code: "custom", message: "Ingresa un monto válido", input: v });
+    if (v === null || v === undefined || (typeof v === "string" && v.trim() === "")) return undefined;
+    let n: number;
+    if (typeof v === "number") {
+      n = v;
+    } else {
+      const r = interpretarNumero(v);
+      if (!r.ok) {
+        ctx.issues.push({
+          code: "custom",
+          message:
+            r.motivo === "punto_decimal" ? `Usa coma para los decimales: ${r.sugerencia}.` : MENSAJE_MONTO_INVALIDO,
+          input: v,
+        });
+        return z.NEVER;
+      }
+      n = r.valor;
+    }
+    if (!Number.isFinite(n) || n < 0) {
+      ctx.issues.push({ code: "custom", message: MENSAJE_MONTO_INVALIDO, input: v });
+      return z.NEVER;
+    }
+    if (n > MONTO_MAXIMO) {
+      ctx.issues.push({ code: "custom", message: "El monto es demasiado grande (máximo $100.000.000).", input: v });
       return z.NEVER;
     }
     return Math.round(n * 100) / 100;
@@ -142,17 +171,17 @@ export const zMontoOpcional = z
 
 /** RUT chileno válido → forma canónica `76123456-7`. */
 export const zRut = z
-  .string({ error: "Ingresa el RUT" })
+  .string({ error: "Ingresa el RUT." })
   .trim()
-  .min(1, "Ingresa el RUT")
-  .refine((v) => validarRut(v), "El RUT no es válido")
+  .min(1, "Ingresa el RUT.")
+  .refine((v) => validarRut(v), "El RUT no es válido.")
   .transform((v) => normalizarRut(v));
 
 export const zEmail = z
-  .string({ error: "Ingresa el email" })
+  .string({ error: "Ingresa el correo electrónico." })
   .trim()
   .toLowerCase()
-  .pipe(z.email("Ingresa un email válido").max(254));
+  .pipe(z.email("Ingresa un correo electrónico válido.").max(254));
 
 /** Página (≥ 1) para listados; valores inválidos caen en 1. */
 export const zPagina = z.coerce.number<number | string | undefined>().int().min(1).catch(1);

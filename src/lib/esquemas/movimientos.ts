@@ -10,12 +10,19 @@ import {
   zTextoOpcional,
 } from "./base";
 
+/**
+ * Forma canónica de un número de lote: sin espacios al inicio ni al final, los
+ * espacios internos colapsados a uno y en mayúsculas ("  l-01   a " → "L-01 A").
+ * Así "L-01  A" y "L-01 A" son el mismo lote y no se crean duplicados.
+ */
+export function normalizarNumeroLote(texto: string): string {
+  return texto.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
 const zNumeroLote = z
-  .string({ error: "Ingresa el número de lote" })
-  .trim()
-  .min(1, "Ingresa el número de lote")
-  .max(60, "Máximo 60 caracteres")
-  .transform((v) => v.toUpperCase());
+  .string({ error: "Ingresa el número de lote." })
+  .transform(normalizarNumeroLote)
+  .pipe(z.string().min(1, "Ingresa el número de lote.").max(60, "Máximo 60 caracteres."));
 
 export const esquemaIngreso = z.object({
   ubicacionId: zId,
@@ -51,9 +58,9 @@ export type DatosRetiro = z.output<typeof esquemaRetiro>;
 export const esquemaAjuste = z.object({
   ubicacionId: zId,
   loteId: zId,
-  sentido: z.enum(["POSITIVO", "NEGATIVO"], { error: "Indica si el ajuste suma o resta" }),
+  sentido: z.enum(["POSITIVO", "NEGATIVO"], { error: "Indica si el ajuste suma o resta." }),
   cantidad: zCantidad,
-  motivo: zTexto(200, "El motivo del ajuste es obligatorio"),
+  motivo: zTexto(200, "El motivo del ajuste es obligatorio."),
   nota: zTextoOpcional(500),
   claveIdempotencia: zClaveIdempotencia,
 });
@@ -64,7 +71,7 @@ export const esquemaMerma = z.object({
   ubicacionId: zId,
   loteId: zId,
   cantidad: zCantidad,
-  motivo: zTexto(200, "El motivo de la merma es obligatorio"),
+  motivo: zTexto(200, "El motivo de la merma es obligatorio."),
   nota: zTextoOpcional(500),
   claveIdempotencia: zClaveIdempotencia,
 });
@@ -83,7 +90,7 @@ export const esquemaTraslado = z
   })
   .refine((d) => d.ubicacionOrigenId !== d.ubicacionDestinoId, {
     path: ["ubicacionDestinoId"],
-    message: "El destino debe ser distinto del origen",
+    message: "El destino debe ser distinto del origen.",
   });
 export type EntradaTraslado = z.input<typeof esquemaTraslado>;
 export type DatosTraslado = z.output<typeof esquemaTraslado>;
@@ -93,7 +100,7 @@ export const esquemaCorregirVencimientoLote = z.object({
   loteId: zId,
   /** Nueva fecha de vencimiento; vacío = el lote queda sin fecha. */
   fechaVencimiento: zDiaOpcional,
-  motivo: zTexto(200, "Indica el motivo de la corrección"),
+  motivo: zTexto(200, "Indica el motivo de la corrección."),
 });
 export type EntradaCorregirVencimientoLote = z.input<typeof esquemaCorregirVencimientoLote>;
 export type DatosCorregirVencimientoLote = z.output<typeof esquemaCorregirVencimientoLote>;

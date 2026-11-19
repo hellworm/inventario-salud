@@ -80,7 +80,7 @@ export interface SesionValida {
 
 /** Mensaje único: no revela si el email existe, si hay bloqueo ni si una clave temporal venció. */
 export const MENSAJE_CREDENCIALES =
-  "Email o contraseña incorrectos. Tras varios intentos fallidos el acceso se bloquea temporalmente.";
+  "Correo electrónico o contraseña incorrectos. Tras varios intentos fallidos el acceso se bloquea temporalmente.";
 
 // Hash de relleno para igualar tiempos cuando el email no existe.
 let hashSenuelo: Promise<string> | undefined;

@@ -7,14 +7,14 @@ const zEmailOpcional = z
   .string()
   .trim()
   .toLowerCase()
-  .max(254, "Máximo 254 caracteres")
+  .max(254, "Máximo 254 caracteres.")
   .nullish()
-  .refine((v) => !v || z.email().safeParse(v).success, "Ingresa un email válido")
+  .refine((v) => !v || z.email().safeParse(v).success, "Ingresa un correo electrónico válido.")
   .transform((v) => (v ? v : undefined));
 
 export const esquemaProveedor = z.object({
   rut: zRut,
-  razonSocial: zTexto(140, "Ingresa la razón social"),
+  razonSocial: zTexto(140, "Ingresa la razón social."),
   contacto: zTextoOpcional(100),
   telefono: zTelefonoOpcional,
   email: zEmailOpcional,

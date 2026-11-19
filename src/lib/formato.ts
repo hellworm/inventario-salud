@@ -36,6 +36,12 @@ export function formatearCLP(valor: number | null | undefined): string {
   return fmtCLP.format(valor);
 }
 
+/** Monto en pesos conservando hasta 2 decimales: 1250.5 → "$1.250,5"; 1250 → "$1.250". */
+export function formatearMonto(valor: number | null | undefined): string {
+  if (valor === null || valor === undefined || Number.isNaN(valor)) return "—";
+  return `${valor < 0 ? "-" : ""}$${fmtDecimal.format(Math.abs(valor))}`;
+}
+
 /** 0.125 → "12,5 %" */
 export function formatearPorcentaje(valor: number | null | undefined): string {
   if (valor === null || valor === undefined || Number.isNaN(valor)) return "—";
@@ -53,12 +59,46 @@ export function pluralizar(cantidad: number, singular: string, plural?: string):
   return `${formatearNumero(cantidad)} ${cantidad === 1 ? singular : (plural ?? `${singular}s`)}`;
 }
 
-/** Interpreta un número escrito al estilo chileno ("1.250", "1.250,5"). */
+/** Resultado de interpretar un número escrito por una persona. */
+export type NumeroInterpretado =
+  | { ok: true; valor: number }
+  | { ok: false; motivo: "vacio" | "invalido" }
+  /**
+   * Se escribió un punto como separador decimal ("1250.5", "1.5"). En Chile el
+   * punto separa miles: no se adivina, se pide usar coma. `sugerencia` trae el
+   * mismo texto con coma ("1250,5").
+   */
+  | { ok: false; motivo: "punto_decimal"; sugerencia: string };
+
+/**
+ * Interpreta un número escrito al estilo chileno, sin adivinar:
+ *  - la coma es el separador decimal ("1250,5");
+ *  - el punto es separador de miles SOLO si agrupa de a tres ("1.250",
+ *    "1.250.000,5");
+ *  - un punto usado como decimal ("1250.5", "1.5") se rechaza con una
+ *    sugerencia; cualquier otra forma ("1.25.0", "1,2,3", "12abc") es inválida.
+ */
+export function interpretarNumero(texto: string | null | undefined): NumeroInterpretado {
+  if (texto === null || texto === undefined) return { ok: false, motivo: "vacio" };
+  const limpio = texto.trim().replace(/[\s$]/g, "");
+  if (limpio === "") return { ok: false, motivo: "vacio" };
+  if (/^-?\d+(,\d+)?$/.test(limpio)) return { ok: true, valor: Number(limpio.replace(",", ".")) };
+  if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(limpio)) {
+    return { ok: true, valor: Number(limpio.replace(/\./g, "").replace(",", ".")) };
+  }
+  if (/^-?\d+\.\d+$/.test(limpio)) {
+    return { ok: false, motivo: "punto_decimal", sugerencia: limpio.replace(".", ",") };
+  }
+  return { ok: false, motivo: "invalido" };
+}
+
+/**
+ * Número escrito al estilo chileno ("1.250", "1.250,5"), o `null` si no se
+ * puede interpretar con certeza (ver `interpretarNumero`).
+ */
 export function parsearNumero(texto: string | null | undefined): number | null {
-  if (texto === null || texto === undefined) return null;
-  const limpio = texto.trim().replace(/\s|\$/g, "").replace(/\./g, "").replace(",", ".");
-  if (limpio === "" || !/^-?\d+(\.\d+)?$/.test(limpio)) return null;
-  return Number(limpio);
+  const r = interpretarNumero(texto);
+  return r.ok ? r.valor : null;
 }
 
 /** Normaliza texto para búsquedas: minúsculas y sin tildes. */
