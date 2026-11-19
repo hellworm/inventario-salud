@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { redirect } from "next/navigation";
 import { buttonClasses, PageHeader } from "@/components/ui";
+import { FILTRO_SIN_PROVEEDOR } from "@/lib/esquemas/proveedor-insumo";
 import { escribirSemaforo, ESTADOS_STOCK, leerSemaforo } from "@/lib/estados";
 import { construirHref } from "@/lib/parametros-url";
 import { enumParam, paginaParam, textoParam } from "@/lib/parametros";
@@ -11,11 +12,14 @@ import { contextoPagina } from "@/server/auth/sesion";
 import { esErrorDominio } from "@/server/errores";
 import {
   detalleInsumo,
+  detalleProveedorInsumo,
   listarCategorias,
   listarInventario,
+  listarProveedoresActivos,
   listarUbicaciones,
   ORDENES_INVENTARIO,
   type DetalleInsumo,
+  type DetalleProveedorInsumo,
 } from "@/server/servicios";
 import { VistaInventario } from "./vista-inventario";
 import { SinCentroActivo } from "@/components/shell/sin-centro";
@@ -32,36 +36,46 @@ export default async function PaginaInventario({ searchParams }: PageProps<"/inv
   const estadoPedido = textoParam(sp.estado);
   if (estadoPedido === "POR_VENCER" || estadoPedido === "VENCIDO") {
     const resto: Record<string, string | undefined> = {};
-    for (const clave of ["q", "categoria", "ubicacion", "orden", "ver"] as const) resto[clave] = textoParam(sp[clave]) ?? undefined;
+    for (const clave of ["q", "categoria", "ubicacion", "proveedor", "orden", "ver"] as const) resto[clave] = textoParam(sp[clave]) ?? undefined;
     redirect(construirHref("/inventario", { ...resto, semaforo: estadoPedido === "VENCIDO" ? "vencido" : "rojo,amarillo" }));
   }
 
-  const [categorias, ubicaciones] = await Promise.all([listarCategorias(actor), listarUbicaciones(actor, { centroId })]);
+  const [categorias, ubicaciones, proveedores] = await Promise.all([
+    listarCategorias(actor),
+    listarUbicaciones(actor, { centroId }),
+    puede(actor.rol, "proveedores:ver") ? listarProveedoresActivos(actor) : [],
+  ]);
+  const proveedorPedido = textoParam(sp.proveedor);
   const filtros = {
     q: textoParam(sp.q) ?? "",
     categoria: categorias.find((c) => c.id === textoParam(sp.categoria))?.id ?? "",
     ubicacion: ubicaciones.find((u) => u.id === textoParam(sp.ubicacion))?.id ?? "",
+    // Proveedor efectivo: uno activo o "sin" (insumos sin proveedor definido).
+    proveedor: proveedorPedido === FILTRO_SIN_PROVEEDOR ? FILTRO_SIN_PROVEEDOR : (proveedores.find((p) => p.id === proveedorPedido)?.id ?? ""),
     estado: enumParam(sp.estado, ESTADOS_STOCK) ?? "",
     semaforo: escribirSemaforo(leerSemaforo(textoParam(sp.semaforo))) ?? "",
     orden: enumParam(sp.orden, ORDENES_INVENTARIO) ?? "",
   } as const;
 
-  const [inventario, detalle] = await Promise.all([
+  const siNoExiste = <T,>(error: unknown): T | null => {
+    if (esErrorDominio(error) && error.codigo === "NO_ENCONTRADO") return null;
+    throw error;
+  };
+  const [inventario, detalle, proveedorDetalle] = await Promise.all([
     listarInventario(actor, {
       centroId,
       texto: filtros.q,
       categoriaId: filtros.categoria,
       ubicacionId: filtros.ubicacion,
+      proveedorId: filtros.proveedor || null,
       estado: filtros.estado || null,
       semaforo: leerSemaforo(filtros.semaforo),
       orden: filtros.orden || null,
       pagina: paginaParam(sp.pagina),
     }),
-    verId
-      ? detalleInsumo(actor, verId, { centroId }).catch((error: unknown): DetalleInsumo | null => {
-          if (esErrorDominio(error) && error.codigo === "NO_ENCONTRADO") return null;
-          throw error;
-        })
+    verId ? detalleInsumo(actor, verId, { centroId }).catch((error: unknown) => siNoExiste<DetalleInsumo>(error)) : null,
+    verId && puede(actor.rol, "proveedores:ver")
+      ? detalleProveedorInsumo(actor, verId, { centroId }).catch((error: unknown) => siNoExiste<DetalleProveedorInsumo>(error))
       : null,
   ]);
 
@@ -100,9 +114,11 @@ export default async function PaginaInventario({ searchParams }: PageProps<"/inv
         inventario={inventario}
         categorias={categorias}
         ubicaciones={ubicaciones}
+        proveedores={proveedores}
         filtros={filtros}
         verId={verId}
         detalle={detalle}
+        proveedorDetalle={proveedorDetalle}
         mostrarCentro={centro === null}
         permisos={{
           ingresar: puedeIngresar,

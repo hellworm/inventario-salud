@@ -24,6 +24,15 @@ export interface ValoresInsumo {
   codigoBarras: string | null;
   requiereCadenaFrio: boolean;
   controlaVencimiento: boolean;
+  /** Proveedor predeterminado de la red (`null` = sin definir). */
+  proveedorId: string | null;
+}
+
+/** Proveedor activo que se puede elegir como predeterminado. */
+export interface OpcionProveedorInsumo {
+  id: string;
+  rut: string;
+  razonSocial: string;
 }
 
 /** Huella de los valores del formulario, para saber si hay cambios respecto de lo guardado. */
@@ -49,10 +58,16 @@ function Seccion({ titulo, descripcion, children }: { titulo: string; descripcio
 export function FormularioInsumo({
   insumo,
   categorias,
+  proveedores,
+  proveedorInactivo,
   codigoBarrasInicial,
 }: {
   insumo?: ValoresInsumo;
   categorias: { id: string; nombre: string }[];
+  /** Proveedores ACTIVOS para el campo "Proveedor predeterminado". */
+  proveedores: readonly OpcionProveedorInsumo[];
+  /** Al editar: el proveedor actual si está inactivo (se muestra marcado para no perderlo en silencio). */
+  proveedorInactivo?: { id: string; razonSocial: string } | null;
   /** Código de barras ya leído con el escáner (solo al crear). */
   codigoBarrasInicial?: string;
 }) {
@@ -103,6 +118,8 @@ export function FormularioInsumo({
       codigoBarras: texto(f, "codigoBarras"),
       requiereCadenaFrio: f.get("requiereCadenaFrio") === "on",
       controlaVencimiento: f.get("controlaVencimiento") === "on",
+      // Al editar viaja siempre (vacío = quitarlo); al crear, vacío = sin proveedor.
+      proveedorId: texto(f, "proveedorId"),
     };
     if (!validacion.validar(valores)) return;
     if (insumo) void actualizar.ejecutar({ ...valores, id: insumo.id });
@@ -187,6 +204,31 @@ export function FormularioInsumo({
             autoComplete="off"
             inicio={<Barcode aria-hidden />}
           />
+        </Field>
+      </Seccion>
+
+      <Seccion titulo="Abastecimiento" descripcion="A quién se le compra. Vale para toda la red; cada institución puede definir el suyo.">
+        <Field
+          label="Proveedor predeterminado"
+          opcional
+          error={e.proveedorId}
+          className="sm:col-span-2"
+          ayuda={
+            proveedorInactivo && insumo?.proveedorId === proveedorInactivo.id
+              ? "El proveedor actual está inactivo: conviene cambiarlo por uno activo."
+              : insumo
+                ? "Es el proveedor de la red para este insumo. No cambia el que haya definido cada institución."
+                : "Se preselecciona al registrar ingresos y aparece en el inventario, las alertas y la lista de reposición."
+          }
+        >
+          <Select name="proveedorId" defaultValue={insumo?.proveedorId ?? ""} placeholder="Sin proveedor predeterminado">
+            {proveedorInactivo ? <option value={proveedorInactivo.id}>{proveedorInactivo.razonSocial} (inactivo)</option> : null}
+            {proveedores.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.razonSocial}
+              </option>
+            ))}
+          </Select>
         </Field>
       </Seccion>
 

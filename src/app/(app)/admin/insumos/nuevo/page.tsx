@@ -7,7 +7,7 @@ import { RE_CODIGO_BARRAS } from "@/lib/esquemas/catalogo";
 import { textoParam } from "@/lib/parametros";
 import { puede } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
-import { listarCategorias } from "@/server/servicios";
+import { listarCategorias, listarProveedoresActivos } from "@/server/servicios";
 
 export const metadata: Metadata = { title: "Nuevo insumo" };
 
@@ -17,7 +17,7 @@ export default async function PaginaNuevoInsumo({ searchParams }: PageProps<"/ad
   // `?codigoBarras=`: llega desde el escáner ("crear el insumo con este código").
   const codigoPedido = textoParam((await searchParams).codigoBarras);
   const codigoBarrasInicial = codigoPedido && codigoPedido.length <= 64 && RE_CODIGO_BARRAS.test(codigoPedido) ? codigoPedido : undefined;
-  const categorias = await listarCategorias(actor);
+  const [categorias, proveedores] = await Promise.all([listarCategorias(actor), listarProveedoresActivos(actor)]);
 
   return (
     <>
@@ -46,7 +46,7 @@ export default async function PaginaNuevoInsumo({ searchParams }: PageProps<"/ad
             </Alert>
           ) : null}
           <Card className="sm:p-6">
-            <FormularioInsumo categorias={categorias} codigoBarrasInicial={codigoBarrasInicial} />
+            <FormularioInsumo categorias={categorias} proveedores={proveedores} codigoBarrasInicial={codigoBarrasInicial} />
           </Card>
         </>
       )}
