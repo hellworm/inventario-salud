@@ -10,8 +10,9 @@ const CUENTAS_DEMO = [
   { rol: "Administrador de la red", email: "admin@redinsumos.cl", password: "Admin.Demo.2026" },
   { rol: "Administrador de institución (Andes)", email: "admin.andes@redinsumos.cl", password: "AdminAndes.Demo.2026" },
   { rol: "Administrador de institución (Cerro Alegre)", email: "admin.cerroalegre@redinsumos.cl", password: "AdminCerro.Demo.2026" },
-  { rol: "Bodeguero", email: "bodega@redinsumos.cl", password: "Bodega.Demo.2026" },
-  { rol: "Visitante", email: "visita@redinsumos.cl", password: "Visita.Demo.2026" },
+  { rol: "Bodeguero (Andes, Ñuñoa)", email: "bodega@redinsumos.cl", password: "Bodega.Demo.2026" },
+  { rol: "Bodeguero (Cerro Alegre, Valparaíso)", email: "bodega.valparaiso@redinsumos.cl", password: "Bodega.Valpo.2026" },
+  { rol: "Visitante (Andes, Ñuñoa)", email: "visita@redinsumos.cl", password: "Visita.Demo.2026" },
 ];
 
 export default async function PaginaLogin({ searchParams }: PageProps<"/login">) {

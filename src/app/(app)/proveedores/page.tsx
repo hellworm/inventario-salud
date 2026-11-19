@@ -11,7 +11,7 @@ import { listarDirectorioProveedores } from "@/server/servicios";
 
 export const metadata: Metadata = { title: "Proveedores" };
 
-/** Directorio completo de proveedores activos (solo lectura; los tres roles). */
+/** Directorio completo de proveedores activos (solo lectura; los cuatro roles). */
 export default async function PaginaProveedores({ searchParams }: PageProps<"/proveedores">) {
   const { actor, centroId } = await contextoPagina("proveedores:ver");
   const texto = textoParam((await searchParams).q) ?? undefined;

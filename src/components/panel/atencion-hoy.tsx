@@ -265,7 +265,7 @@ export function AtencionHoy({
             tono="alerta"
             total={atencion.venceEstaSemana.total}
             mostrados={atencion.venceEstaSemana.items.length}
-            hrefTodos="/alertas?tab=por-vencer&tramo=30"
+            hrefTodos="/alertas?tab=rojo"
           >
             {atencion.venceEstaSemana.items.map((a) => (
               <Fila

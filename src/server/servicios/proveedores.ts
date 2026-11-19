@@ -239,7 +239,7 @@ export interface DirectorioProveedores {
  * Directorio de proveedores ACTIVOS con teléfono, correo, contacto y sitio web.
  * Orden `uso`: primero los usados más recientemente en ingresos de los centros
  * del alcance, luego el resto por nombre; `nombre`: alfabético.
- * Permiso: `proveedores:ver` (los tres roles; solo lectura) y acceso al centro si se indica.
+ * Permiso: `proveedores:ver` (los cuatro roles; solo lectura) y acceso al centro si se indica.
  */
 export async function listarDirectorioProveedores(
   actor: Actor,
