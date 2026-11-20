@@ -35,11 +35,11 @@ export function SheetContent({
   const { captura, alCerrar } = useDevolverFoco(onCloseAutoFocus);
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-marca-950/45 backdrop-blur-[2px] data-[state=open]:animate-aparecer" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-velo backdrop-blur-[2px] data-[state=open]:animate-aparecer" />
       <DialogPrimitive.Content
         {...(descripcion ? {} : { "aria-describedby": undefined })}
         className={cn(
-          "fixed inset-y-0 z-50 flex w-[min(22rem,88vw)] flex-col bg-superficie shadow-flotante focus:outline-none",
+          "fixed inset-y-0 z-50 flex w-[min(22rem,88vw)] flex-col bg-superficie-alta shadow-flotante focus:outline-none",
           lado === "derecha"
             ? "right-0 data-[state=open]:animate-entrar-derecha"
             : "left-0 data-[state=open]:animate-entrar-izquierda",

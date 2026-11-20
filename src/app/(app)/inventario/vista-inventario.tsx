@@ -57,7 +57,7 @@ const ESTADOS: readonly { valor: EstadoStock | ""; etiqueta: string }[] = [
 
 const CLASE_CHIP =
   "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-medium whitespace-nowrap transition-colors pointer-fine:min-h-10";
-const CLASE_CHIP_ACTIVO = "border-marca-600 bg-marca-600 text-white";
+const CLASE_CHIP_ACTIVO = "border-primario bg-primario text-white";
 const CLASE_CHIP_INACTIVO = "border-borde-fuerte/70 bg-superficie text-texto-suave hover:border-borde-fuerte hover:text-texto";
 const CLASE_ETIQUETA_FILTRO = "w-24 shrink-0 text-xs font-medium text-texto-suave max-sm:hidden";
 

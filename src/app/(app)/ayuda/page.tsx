@@ -298,6 +298,11 @@ export default async function PaginaAyuda() {
           Tu rol ({NOMBRE_ROL[rol]}) aparece bajo tu nombre, arriba a la derecha. Ahí mismo puedes cambiar tu contraseña y salir. Con el
           selector de centro, arriba a la izquierda, eliges qué centro estás viendo.
         </p>
+        <p className="mt-2 text-sm text-texto-suave" data-ayuda-tema>
+          Para cambiar el tema de la pantalla, abre el menú de tu nombre y elige <strong className="font-semibold text-texto">Claro</strong>,{" "}
+          <strong className="font-semibold text-texto">Oscuro</strong> o <strong className="font-semibold text-texto">Dispositivo</strong> (sigue la
+          configuración de tu equipo). Se recuerda en este navegador; lo que imprimes sale siempre en claro.
+        </p>
       </Card>
 
       <Card className="mb-4" id="semaforo">

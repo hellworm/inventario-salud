@@ -38,6 +38,7 @@ import { hrefActivo, navegacionInferior, navegacionPara, type GrupoNavegacion } 
 import { NOMBRE_ROL, puede, type Rol } from "@/lib/permisos";
 import { BotonEscanear } from "@/components/escaner/boton-escanear";
 import { Isotipo, Logo } from "./logo";
+import { TemaEnMenu } from "./tema";
 
 const COOKIE_SIDEBAR = "ri_sidebar";
 const CENTRO_TODOS = "todos";
@@ -286,7 +287,7 @@ function MenuUsuario({ usuario, institucion }: Pick<AppShellProps, "usuario" | "
         // El nombre accesible empieza por el texto visible (WCAG 2.5.3).
         aria-label={`${usuario.nombre}, ${NOMBRE_ROL[usuario.rol]}. Menú de usuario`}
       >
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-marca-600 text-sm font-semibold text-white">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primario text-sm font-semibold text-white">
           {iniciales(usuario.nombre)}
         </span>
         <span className="hidden min-w-0 text-left sm:block">
@@ -306,6 +307,8 @@ function MenuUsuario({ usuario, institucion }: Pick<AppShellProps, "usuario" | "
             </p>
           ) : null}
         </div>
+        <DropdownMenuSeparator />
+        <TemaEnMenu />
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/cambiar-password">
@@ -459,7 +462,7 @@ export function AppShell({
     <div className="min-h-dvh">
       <a
         href="#contenido"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[70] focus:rounded-lg focus:bg-marca-700 focus:px-4 focus:py-2.5 focus:text-white"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[70] focus:rounded-lg focus:bg-primario-hover focus:px-4 focus:py-2.5 focus:text-white"
       >
         Saltar al contenido
       </a>
@@ -505,7 +508,7 @@ export function AppShell({
           <div
             aria-hidden
             style={{ top: pista.arriba }}
-            className="pointer-events-none fixed left-[5.25rem] z-40 -translate-y-1/2 rounded-lg bg-marca-950 px-2.5 py-1.5 text-sm font-medium whitespace-nowrap text-white shadow-flotante"
+            className="pointer-events-none fixed left-[5.25rem] z-40 -translate-y-1/2 rounded-lg bg-pista px-2.5 py-1.5 text-sm font-medium whitespace-nowrap text-sobre-pista shadow-flotante"
           >
             {pista.etiqueta}
           </div>

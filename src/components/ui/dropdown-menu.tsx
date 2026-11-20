@@ -8,6 +8,9 @@ import { cn } from "@/lib/cn";
 export const DropdownMenu = Menu.Root;
 export const DropdownMenuTrigger = Menu.Trigger;
 export const DropdownMenuGroup = Menu.Group;
+/** Grupo de opciones excluyentes (`menuitemradio`); el estilo lo pone quien lo usa. */
+export const DropdownMenuRadioGroup = Menu.RadioGroup;
+export const DropdownMenuRadioItem = Menu.RadioItem;
 
 export function DropdownMenuContent({ className, sideOffset = 8, ...props }: React.ComponentProps<typeof Menu.Content>) {
   return (
@@ -16,7 +19,7 @@ export function DropdownMenuContent({ className, sideOffset = 8, ...props }: Rea
         sideOffset={sideOffset}
         collisionPadding={12}
         className={cn(
-          "z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-56 overflow-y-auto rounded-xl border border-borde bg-superficie p-1.5 shadow-flotante data-[state=open]:animate-subir",
+          "z-50 max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-56 overflow-y-auto rounded-xl border border-borde bg-superficie-alta p-1.5 shadow-flotante data-[state=open]:animate-subir",
           className,
         )}
         {...props}
