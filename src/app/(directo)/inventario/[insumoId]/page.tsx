@@ -51,7 +51,10 @@ import { contextoPagina, obtenerSesion } from "@/server/auth/sesion";
 import { esErrorDominio } from "@/server/errores";
 import {
   detalleInsumo,
+  detalleProveedorInsumo,
   listarMovimientos,
+  listarOpcionesInstitucion,
+  listarProveedoresActivos,
   obtenerOpcionInsumo,
   type DetalleInsumo,
   type ExistenciaDetalle,
@@ -59,6 +62,8 @@ import {
   type ParametroDetalle,
 } from "@/server/servicios";
 import { BotonCorregirVencimiento } from "@/components/inventario/corregir-vencimiento";
+import { BotonCambiarProveedor } from "@/components/proveedores/cambiar-proveedor";
+import { BloqueProveedor } from "@/components/proveedores/datos-proveedor";
 import { SinCentroActivo } from "@/components/shell/sin-centro";
 
 /** Título de pestaña con el nombre real del insumo (o el genérico si no existe o no hay acceso). */
@@ -120,9 +125,15 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
   if (sinCentro) return <SinCentroActivo titulo="Inventario" />;
   const { insumoId } = await params;
   const puedeVerMovimientos = puede(actor.rol, "movimientos:ver");
-  const [detalle, movimientos] = await Promise.all([
+  const puedeCambiarProveedor = puede(actor.rol, "catalogo:gestionar") || puede(actor.rol, "proveedores-insumo:gestionar");
+  const [detalle, movimientos, proveedor, proveedoresActivos, instituciones] = await Promise.all([
     cargarDetalle(actor, insumoId, { centroId }),
     puedeVerMovimientos ? listarMovimientos(actor, { centroId, insumoId, porPagina: ULTIMOS_MOVIMIENTOS }) : null,
+    // Si el insumo no existe, `cargarDetalle` ya respondió 404.
+    puede(actor.rol, "proveedores:ver") ? detalleProveedorInsumo(actor, insumoId, { centroId }).catch(() => null) : null,
+    puedeCambiarProveedor ? listarProveedoresActivos(actor) : [],
+    // Solo el administrador de la red elige para qué institución define un proveedor propio.
+    veTodaLaRed(actor) && puedeCambiarProveedor ? listarOpcionesInstitucion(actor) : [],
   ]);
   const { insumo } = detalle;
   const unidad = insumo.unidadMedida;
@@ -362,7 +373,46 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
       </section>
 
       <div className="mt-4 grid grid-cols-1 items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="min-w-0 space-y-4">
+        {/* El proveedor va primero (bajo 2xl, antes de las tablas; desde 2xl, arriba en la columna lateral). */}
+        {proveedor ? (
+          <Card id="proveedor" className="scroll-mt-24 2xl:col-start-2 2xl:row-start-1">
+            <CardHeader
+              titulo="Proveedor"
+              descripcion={
+                proveedor.institucion
+                  ? `A quién se le compra este insumo en ${proveedor.institucion.nombre}`
+                  : "A quién se le compra este insumo en la red"
+              }
+            />
+            <BloqueProveedor
+              detalle={proveedor}
+              accionUltimo={
+                puedeCambiarProveedor && proveedor.ultimoIngreso?.proveedor.activo ? (
+                  <BotonCambiarProveedor
+                    insumo={{ id: insumo.id, nombre: insumo.nombre }}
+                    detalle={proveedor}
+                    proveedores={proveedoresActivos}
+                    instituciones={instituciones.filter((i) => i.activo)}
+                    sugeridoId={proveedor.ultimoIngreso.proveedor.id}
+                  >
+                    Usar como predeterminado
+                  </BotonCambiarProveedor>
+                ) : undefined
+              }
+              acciones={
+                puedeCambiarProveedor ? (
+                  <BotonCambiarProveedor
+                    insumo={{ id: insumo.id, nombre: insumo.nombre }}
+                    detalle={proveedor}
+                    proveedores={proveedoresActivos}
+                    instituciones={instituciones.filter((i) => i.activo)}
+                  />
+                ) : undefined
+              }
+            />
+          </Card>
+        ) : null}
+        <div className="min-w-0 space-y-4 2xl:col-start-1 2xl:row-span-2 2xl:row-start-1">
           <Card relleno={false} className="overflow-hidden">
             <CardHeader
               className="mb-0 p-4 sm:p-5"
@@ -463,7 +513,7 @@ export default async function PaginaInsumo({ params }: PageProps<"/inventario/[i
           ) : null}
         </div>
 
-        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 2xl:grid-cols-1">
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 2xl:col-start-2 2xl:grid-cols-1">
           <Card>
             <CardHeader titulo="Ficha del catálogo" />
             <dl className="-my-2.5 divide-y divide-borde">

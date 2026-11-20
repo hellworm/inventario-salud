@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowDownToLine, CalendarCheck, PackagePlus, Plus, ScanBarcode } from "lucide-react";
 import { buscarPorCodigoAccion } from "@/acciones/consultas";
 import { registrarIngresoAccion, type StockActual } from "@/acciones/movimientos";
+import { proveedorSugeridoAccion, type ProveedorSugerido } from "@/acciones/proveedor-insumo";
 import { BotonEscanear } from "@/components/escaner/boton-escanear";
 import { hrefEscaneo } from "@/lib/escaneo";
 import {
@@ -143,6 +144,11 @@ export function FormularioIngreso({
   const [buscandoCodigo, setBuscandoCodigo] = React.useState(false);
   const [cantidad, setCantidad] = React.useState("");
   const [proveedorId, setProveedorId] = React.useState("");
+  // Proveedor predeterminado (efectivo) del insumo elegido, para el centro de destino.
+  // Se guarda con su clave para descartar respuestas de un insumo o centro anteriores.
+  const [sugerencia, setSugerencia] = React.useState<{ clave: string; proveedor: ProveedorSugerido | null } | null>(null);
+  // `true` desde que la persona elige el proveedor a mano: desde ahí no se vuelve a preseleccionar.
+  const proveedorAMano = React.useRef(false);
   const [documentoRef, setDocumentoRef] = React.useState("");
   const [costoUnitario, setCostoUnitario] = React.useState("");
   const [nota, setNota] = React.useState("");
@@ -157,6 +163,30 @@ export function FormularioIngreso({
   const ingreso = useAccion(registrarIngresoAccion, { toastError: false });
 
   const ubicacion = ubicaciones.find((u) => u.id === ubicacionId) ?? null;
+
+  // Al elegir el insumo (a mano, prellenado por la URL o con el escáner) se
+  // preselecciona su proveedor efectivo para la institución del centro de
+  // destino. No pisa uno elegido por la persona ni impide cambiarlo, y
+  // registrar con otro proveedor NO cambia el predeterminado.
+  const insumoId = insumo?.id ?? null;
+  const centroDestino = ubicacion?.centroId ?? centroId;
+  const claveSugerencia = insumoId ? `${insumoId}:${centroDestino ?? ""}` : null;
+  React.useEffect(() => {
+    if (!insumoId || !claveSugerencia) return;
+    let vigente = true;
+    void proveedorSugeridoAccion({ insumoId, centroId: centroDestino ?? undefined })
+      .then((r) => {
+        if (!vigente || !r.ok) return;
+        setSugerencia({ clave: claveSugerencia, proveedor: r.datos });
+        const p = r.datos;
+        if (p && p.activo && !proveedorAMano.current && proveedores.some((x) => x.id === p.id)) setProveedorId(p.id);
+      })
+      .catch(() => undefined);
+    return () => {
+      vigente = false;
+    };
+  }, [insumoId, centroDestino, claveSugerencia, proveedores]);
+  const sugerido = sugerencia && sugerencia.clave === claveSugerencia ? sugerencia.proveedor : null;
   const loteNormalizado = normalizarNumeroLote(numeroLote);
   const lotesRegistrados = existencias.datos?.lotesRegistrados ?? [];
   const loteExistente = loteNormalizado ? (lotesRegistrados.find((l) => l.numeroLote === loteNormalizado) ?? null) : null;
@@ -606,11 +636,49 @@ export function FormularioIngreso({
                 <span className="block font-normal text-texto-tenue sm:ml-2 sm:inline">Se conserva al registrar varias líneas</span>
               </h2>
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                <Field label="Proveedor" opcional error={errores.proveedorId}>
+                <Field
+                  label="Proveedor"
+                  opcional
+                  error={errores.proveedorId}
+                  ayuda={
+                    sugerido ? (
+                      <span data-proveedor-sugerido={sugerido.id}>
+                        {!sugerido.activo ? (
+                          <>
+                            El proveedor predeterminado de este insumo ({sugerido.razonSocial}) está inactivo: elige otro.
+                          </>
+                        ) : proveedorId === sugerido.id ? (
+                          <>
+                            Proveedor predeterminado de este insumo{sugerido.origen === "INSTITUCION" ? " en tu institución" : ""}. Puedes
+                            elegir otro para este ingreso.
+                          </>
+                        ) : (
+                          <>
+                            El predeterminado de este insumo es <strong className="font-semibold text-texto">{sugerido.razonSocial}</strong>.{" "}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                proveedorAMano.current = false;
+                                alEditar(setProveedorId)(sugerido.id);
+                              }}
+                              className="min-h-11 font-medium text-marca-700 underline underline-offset-2 pointer-fine:min-h-0"
+                            >
+                              Usar el predeterminado
+                            </button>
+                            <span className="block">Registrar con otro proveedor no cambia el predeterminado.</span>
+                          </>
+                        )}
+                      </span>
+                    ) : undefined
+                  }
+                >
                   <Select
                     name="proveedorId"
                     value={proveedorId}
-                    onChange={(e) => alEditar(setProveedorId)(e.target.value)}
+                    onChange={(e) => {
+                      proveedorAMano.current = true;
+                      alEditar(setProveedorId)(e.target.value);
+                    }}
                     placeholder="Sin proveedor"
                     opciones={proveedores.map((p) => ({ value: p.id, label: `${p.razonSocial} · ${formatearRut(p.rut)}` }))}
                   />

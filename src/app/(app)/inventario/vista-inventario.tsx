@@ -32,6 +32,8 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { ExistenciasPorUbicacion, SemaforoInsumo } from "@/components/inventario/existencias";
+import { BloqueProveedor, NombreProveedor } from "@/components/proveedores/datos-proveedor";
+import { FILTRO_SIN_PROVEEDOR } from "@/lib/esquemas/proveedor-insumo";
 import { COLOR_DE_FILTRO, ETIQUETA_ESTADO_VENCIMIENTO, FILTROS_SEMAFORO, type EstadoStock, type FiltroSemaforo } from "@/lib/estados";
 import { enfocarFila, useParametrosUrl } from "@/components/inventario/parametros-url";
 import { cn } from "@/lib/cn";
@@ -41,8 +43,10 @@ import type { Paginado } from "@/lib/resultado";
 import { unidadSegun } from "@/lib/unidades";
 import type {
   DetalleInsumo,
+  DetalleProveedorInsumo,
   FilaInventario,
   OpcionCategoria,
+  OpcionProveedor,
   OpcionUbicacion,
   OrdenInventario,
 } from "@/server/servicios";
@@ -73,6 +77,8 @@ export interface FiltrosVista {
   q: string;
   categoria: string;
   ubicacion: string;
+  /** Id de un proveedor activo, `"sin"` (sin proveedor definido) o vacío. */
+  proveedor: string;
   estado: EstadoStock | "";
   /** Valor canónico de `?semaforo=` ("rojo", "rojo,amarillo"…) o vacío. */
   semaforo: string;
@@ -90,15 +96,30 @@ export interface VistaInventarioProps {
   inventario: Paginado<FilaInventario>;
   categorias: OpcionCategoria[];
   ubicaciones: OpcionUbicacion[];
+  /** Proveedores activos, para el filtro por proveedor. */
+  proveedores: OpcionProveedor[];
   filtros: FiltrosVista;
   /** Insumo abierto en el panel lateral (`?ver=`). */
   verId: string | null;
   detalle: DetalleInsumo | null;
+  /** Proveedor del insumo abierto en el panel lateral. */
+  proveedorDetalle: DetalleProveedorInsumo | null;
   mostrarCentro: boolean;
   permisos: PermisosVista;
 }
 
-export function VistaInventario({ inventario, categorias, ubicaciones, filtros, verId, detalle, mostrarCentro, permisos }: VistaInventarioProps) {
+export function VistaInventario({
+  inventario,
+  categorias,
+  ubicaciones,
+  proveedores,
+  filtros,
+  verId,
+  detalle,
+  proveedorDetalle,
+  mostrarCentro,
+  permisos,
+}: VistaInventarioProps) {
   const { urlCon, filtrar, pendiente, iniciar, router } = useParametrosUrl();
   // El panel se abre al instante (optimista) mientras el servidor trae los lotes.
   const [idAbierto, setIdAbierto] = React.useOptimistic(verId);
@@ -124,7 +145,8 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
     iniciar(() => router.replace("/inventario", { scroll: false }));
   };
 
-  const hayFiltros = Boolean(filtros.q || filtros.categoria || filtros.ubicacion || filtros.estado || filtros.semaforo);
+  const hayFiltros = Boolean(filtros.q || filtros.categoria || filtros.ubicacion || filtros.proveedor || filtros.estado || filtros.semaforo);
+  const proveedorFiltrado = proveedores.find((p) => p.id === filtros.proveedor) ?? null;
   const semaforoActivo = new Set(filtros.semaforo ? filtros.semaforo.split(",") : []);
   /** Un toque elige ese color; tocar el único color elegido lo quita. */
   const alternarSemaforo = (f: FiltroSemaforo) =>
@@ -138,13 +160,15 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
   return (
     <>
       <Card className="mb-4 space-y-3">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_14rem_14rem_15rem]">
-          <SearchInput
-            key={limpiezas}
-            valorInicial={limpiezas > 0 ? "" : undefined}
-            placeholder="Nombre, código o lote"
-            label="Buscar en el inventario"
-          />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-[minmax(0,1fr)_13rem_13rem_13rem_14rem]">
+          <div className="sm:col-span-2 xl:col-span-4 2xl:col-span-1">
+            <SearchInput
+              key={limpiezas}
+              valorInicial={limpiezas > 0 ? "" : undefined}
+              placeholder="Nombre, código o lote"
+              label="Buscar en el inventario"
+            />
+          </div>
           <Select
             aria-label="Categoría"
             value={filtros.categoria}
@@ -170,6 +194,14 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                     {u.nombre}
                   </option>
                 ))}
+          </Select>
+          <Select aria-label="Proveedor" value={filtros.proveedor} onChange={(e) => filtrar({ proveedor: e.target.value })} placeholder="Todos los proveedores">
+            {proveedores.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.razonSocial}
+              </option>
+            ))}
+            <option value={FILTRO_SIN_PROVEEDOR}>Sin proveedor definido</option>
           </Select>
           <Select
             aria-label="Ordenar por"
@@ -244,6 +276,7 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
           {inventario.total === 1 ? "insumo" : "insumos"}
           {hayFiltros ? " con estos filtros" : ""}
           {ubicacionFiltrada ? ` · con stock en ${ubicacionFiltrada.nombre}` : ""}
+          {proveedorFiltrado ? ` · proveedor ${proveedorFiltrado.razonSocial}` : filtros.proveedor === FILTRO_SIN_PROVEEDOR ? " · sin proveedor definido" : ""}
         </p>
         {hayFiltros ? (
           <Button variant="fantasma" size="sm" onClick={limpiar}>
@@ -296,7 +329,8 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                 <thead>
                   <tr className="border-b border-borde bg-superficie-2 text-xs tracking-wide text-texto-suave uppercase">
                     <th scope="col" className="px-4 py-3 text-left font-semibold">Insumo</th>
-                    <th scope="col" className="hidden px-4 py-3 text-left font-semibold xl:table-cell">Categoría</th>
+                    <th scope="col" className="hidden px-4 py-3 text-left font-semibold 2xl:table-cell">Categoría</th>
+                    <th scope="col" className="hidden px-4 py-3 text-left font-semibold xl:table-cell">Proveedor</th>
                     <th scope="col" className="px-4 py-3 text-right font-semibold whitespace-nowrap">Disponible</th>
                     <th scope="col" className="px-4 py-3 text-right font-semibold">Lotes</th>
                     <th scope="col" className="px-4 py-3 text-left font-semibold whitespace-nowrap">Vencimiento</th>
@@ -313,7 +347,7 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                       onClick={() => abrir(f.insumoId)}
                       className={cn("cursor-pointer transition-colors hover:bg-marca-50/50", idAbierto === f.insumoId && "bg-marca-50")}
                     >
-                      <td className="max-w-0 px-4 py-3 align-middle lg:w-[34%]">
+                      <td className="max-w-0 px-4 py-3 align-middle lg:w-[34%] xl:w-[30%]">
                         <button
                           type="button"
                           aria-haspopup="dialog"
@@ -333,10 +367,24 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                             <span className="cifras">{f.codigo}</span>
                             {f.presentacion ? ` · ${f.presentacion}` : ""}
                           </span>
+                          {/* En anchos medios no hay columna: el proveedor va bajo el nombre. */}
+                          <span className="mt-0.5 block truncate text-xs text-texto-suave xl:hidden" data-proveedor-fila>
+                            {f.proveedor ? (
+                              <>
+                                Proveedor: <span className="font-medium text-texto">{f.proveedor.razonSocial}</span>
+                                {f.proveedor.activo ? "" : " (inactivo)"}
+                              </>
+                            ) : (
+                              <span className="text-texto-tenue">Sin proveedor</span>
+                            )}
+                          </span>
                         </button>
                       </td>
-                      <td className="hidden max-w-56 truncate px-4 py-3 align-middle text-texto-suave xl:table-cell" title={f.categoria}>
+                      <td className="hidden max-w-56 truncate px-4 py-3 align-middle text-texto-suave 2xl:table-cell" title={f.categoria}>
                         {f.categoria}
+                      </td>
+                      <td className="hidden max-w-0 px-4 py-3 align-middle text-texto xl:table-cell xl:w-[19%]" data-columna-proveedor>
+                        <NombreProveedor proveedor={f.proveedor} lineas={2} />
                       </td>
                       <td className="px-4 py-3 text-right align-middle whitespace-nowrap">
                         <span className="cifras text-base font-semibold text-texto">{formatearNumero(f.disponible)}</span>{" "}
@@ -405,7 +453,17 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
                       <BadgeEstadoStock estado={f.estadoStock} />
                       {f.lotes > 0 ? <SemaforoInsumo fila={f} /> : null}
                     </span>
-                    <span className="mt-2 flex items-center justify-between gap-3 text-xs text-texto-suave">
+                    <span className="mt-2 block truncate text-xs text-texto-suave" data-proveedor-fila>
+                      {f.proveedor ? (
+                        <>
+                          Proveedor: <span className="font-medium text-texto">{f.proveedor.razonSocial}</span>
+                          {f.proveedor.activo ? "" : " (inactivo)"}
+                        </>
+                      ) : (
+                        <span className="text-texto-tenue">Sin proveedor</span>
+                      )}
+                    </span>
+                    <span className="mt-1 flex items-center justify-between gap-3 text-xs text-texto-suave">
                       <span className="cifras">
                         {formatearNumero(f.lotes)} {f.lotes === 1 ? "lote" : "lotes"}
                         {f.proximoVencimiento ? ` · próx. venc. ${formatearDia(f.proximoVencimiento)}` : ""}
@@ -445,7 +503,12 @@ export function VistaInventario({ inventario, categorias, ubicaciones, filtros, 
           }}
         >
           {idAbierto === null ? null : detalleAbierto ? (
-            <PanelInsumo detalle={detalleAbierto} mostrarCentro={mostrarCentro} permisos={permisos} />
+            <PanelInsumo
+              detalle={detalleAbierto}
+              proveedor={proveedorDetalle && proveedorDetalle.insumoId === idAbierto ? proveedorDetalle : null}
+              mostrarCentro={mostrarCentro}
+              permisos={permisos}
+            />
           ) : navegando || verId !== idAbierto ? (
             <div className="space-y-4 p-5" role="status" aria-label="Cargando lotes">
               <div className="grid grid-cols-3 gap-2">
@@ -488,7 +551,17 @@ function Cifra({ etiqueta, valor, nota, tono }: { etiqueta: string; valor: strin
   );
 }
 
-function PanelInsumo({ detalle, mostrarCentro, permisos }: { detalle: DetalleInsumo; mostrarCentro: boolean; permisos: PermisosVista }) {
+function PanelInsumo({
+  detalle,
+  proveedor,
+  mostrarCentro,
+  permisos,
+}: {
+  detalle: DetalleInsumo;
+  proveedor: DetalleProveedorInsumo | null;
+  mostrarCentro: boolean;
+  permisos: PermisosVista;
+}) {
   const { insumo } = detalle;
   const unidad = insumo.unidadMedida;
   const claseAccion = buttonClasses({ variant: "fantasma", size: "sm" }) + " !px-2.5";
@@ -529,6 +602,24 @@ function PanelInsumo({ detalle, mostrarCentro, permisos }: { detalle: DetalleIns
             tono={detalle.vencido > 0 ? "peligro" : undefined}
           />
         </dl>
+
+        {proveedor ? (
+          <section aria-labelledby="titulo-proveedor">
+            <h3 id="titulo-proveedor" className="mb-3 text-sm font-semibold tracking-wide text-texto-suave uppercase">
+              Proveedor
+            </h3>
+            <BloqueProveedor detalle={proveedor} compacto />
+            {proveedor.permisos.cambiarRed || proveedor.permisos.cambiarInstitucion ? (
+              <p className="mt-2 text-sm text-texto-suave">
+                Para {proveedor.efectivo ? "cambiarlo" : "definirlo"}, abre la{" "}
+                <Link href={`/inventario/${insumo.id}#proveedor`} className="font-medium text-marca-700 underline underline-offset-2">
+                  ficha completa
+                </Link>
+                .
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
         <section aria-labelledby="titulo-donde">
           <h3 id="titulo-donde" className="mb-3 text-sm font-semibold tracking-wide text-texto-suave uppercase">

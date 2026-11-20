@@ -135,7 +135,32 @@ const TAREAS: Tarea[] = [
       <><strong>Ir a comprar</strong> abre el sitio web del proveedor en otra pestaña (verás su dirección bajo el nombre).</>,
       <>Toca el nombre de un proveedor para desplegar su <strong>teléfono</strong>, su <strong>correo</strong>, la persona de contacto y el RUT. Desde el celular, tocar el teléfono inicia la llamada.</>,
     ],
-    notas: ["Los proveedores son compartidos por toda la red. Los administradores (de la red o de una institución) los mantienen, incluido el sitio web, en Administración › Proveedores."],
+    notas: [
+      "Los proveedores son compartidos por toda la red. Los administradores (de la red o de una institución) los mantienen, incluido el sitio web, en Administración › Proveedores.",
+      "Cada insumo tiene su proveedor: lo ves en la grilla del Inventario (y puedes filtrar por él), en la ficha del insumo, en las alertas de stock y en la lista de reposición, con el botón «Ir a comprar» cuando el proveedor tiene sitio web.",
+      "Al desplegar un proveedor, «Insumos que le compras» abre el inventario filtrado por ese proveedor.",
+    ],
+  },
+  {
+    id: "proveedor-insumo",
+    titulo: "Definir o cambiar el proveedor de un insumo",
+    icono: Truck,
+    permiso: "proveedores-insumo:gestionar",
+    enlace: { href: "/inventario", texto: "Ir al inventario" },
+    pasos: [
+      <>Abre la <strong>ficha del insumo</strong> (Inventario → el insumo → <strong>Ver ficha completa</strong>). La tarjeta <strong>Proveedor</strong> muestra a quién se le compra, con su teléfono, su correo y el botón <strong>Ir a comprar</strong>.</>,
+      <>Presiona <strong>Cambiar proveedor</strong> (o <strong>Definir proveedor</strong> si aún no tiene) y elige uno de la lista; puedes buscarlo por nombre o RUT.</>,
+      <>Fíjate en el recuadro que dice <strong>qué estás cambiando</strong>: «para tu institución» (solo cambia para la tuya) o «el predeterminado de la red» (lo define el administrador de la red y vale para todas las instituciones que no tengan uno propio).</>,
+      <>Presiona <strong>Continuar</strong>, revisa el resumen «Hoy / Quedará» y <strong>Confirmar cambio</strong>.</>,
+      <>Para dejar de usar un proveedor propio, en el mismo diálogo elige <strong>Volver al predeterminado de la red</strong>.</>,
+    ],
+    notas: [
+      "El proveedor de un insumo se preselecciona al registrar un ingreso. Si un ingreso se registra con otro proveedor, el predeterminado NO cambia.",
+      "Si el insumo no tiene proveedor, la ficha muestra el del último ingreso como sugerencia («Último proveedor»), con «Usar como predeterminado».",
+      "Un proveedor desactivado no se puede elegir. Si un insumo lo tenía asignado, se muestra marcado «Inactivo» hasta que lo cambies.",
+      "También puedes hacerlo en Administración › Insumos: el administrador de la red, en el campo «Proveedor predeterminado»; el administrador de institución, en la sección «Proveedor de tu institución» (y al crear un insumo nuevo).",
+      "Cada cambio queda en la auditoría.",
+    ],
   },
   {
     id: "ingreso",

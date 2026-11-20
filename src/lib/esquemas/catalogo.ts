@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { zId, zTexto, zTextoOpcional } from "./base";
+import { zId, zIdOpcional, zTexto, zTextoOpcional } from "./base";
 
 /** Entero ≥ 0 opcional: "" / null / undefined → `undefined`. Acepta "1.200". */
 const zEnteroOpcional = z
@@ -58,11 +58,25 @@ export const esquemaInsumo = z.object({
   ),
   requiereCadenaFrio: z.boolean().default(false),
   controlaVencimiento: z.boolean().default(true),
+  /** Proveedor predeterminado de la red para el insumo (opcional). Vacío = sin proveedor. */
+  proveedorId: zIdOpcional,
 });
 export type EntradaInsumo = z.input<typeof esquemaInsumo>;
 export type DatosInsumo = z.output<typeof esquemaInsumo>;
 
-export const esquemaActualizarInsumo = esquemaInsumo.extend({ id: zId });
+export const esquemaActualizarInsumo = esquemaInsumo.extend({
+  id: zId,
+  /**
+   * Proveedor predeterminado de la red. Al EDITAR tiene tres estados: omitido
+   * (`undefined`) = no se toca; `""` o `null` = quitarlo; un id = definirlo.
+   */
+  proveedorId: z
+    .string()
+    .trim()
+    .max(40, "Identificador inválido.")
+    .nullish()
+    .transform((v) => (v === undefined ? undefined : v ? v : null)),
+});
 export type EntradaActualizarInsumo = z.input<typeof esquemaActualizarInsumo>;
 
 /** Una fila por centro. Mínimo y máximo vacíos = sin parámetro para ese centro. */

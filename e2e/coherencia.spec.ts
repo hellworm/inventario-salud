@@ -152,7 +152,7 @@ test.describe("Coherencia entre panel, alertas, inventario y reposición", () =>
     expect(cantidadesVistas).toBeGreaterThan(5);
     // Y el caso original del informe: la columna "Falta" de las alertas de stock.
     await page.goto("/alertas?tab=bajo-minimo");
-    const falta = page.getByRole("main").locator("tbody tr").first().getByRole("cell").nth(2);
+    const falta = page.getByRole("main").locator("tbody tr").first().getByRole("cell").nth(3);
     await expect(falta).toHaveText(new RegExp(`^(1 (${singulares})|(?!1 )\\d[\\d.]* (${plurales}))$`, "u"));
   });
 });

@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
 import { calcularReposicion } from "@/lib/abastecimiento";
+import { formatearRut } from "@/lib/chile/rut";
 import { nombreArchivoCsv, type CeldaCsv } from "@/lib/csv";
 import { calcularEstadoVencimiento, limitesSemaforo } from "@/lib/estados";
 import { dateADia, diaADate, diasEntre, formatearDia, hoyEnSantiago, type DiaISO } from "@/lib/fechas";
@@ -10,6 +11,7 @@ import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
 import { db } from "../db";
 import { textoDeBusqueda } from "./apoyo-admin";
 import { auditarExportacion, type ExportacionCsv } from "./exportaciones";
+import { proveedorDeFila, sqlProveedorEfectivo, type ColumnasProveedorSql, type ProveedorEfectivo } from "./proveedor-insumo";
 
 /** Alerta de stock: un insumo bajo su mínimo (o sin stock) en un centro. */
 export interface AlertaStock {
@@ -33,6 +35,11 @@ export interface AlertaStock {
   faltaParaMaximo: number | null;
   /** Cantidad sugerida a pedir (hasta el máximo si existe; si no, hasta el mínimo). */
   sugerido: number;
+  /**
+   * Proveedor efectivo del insumo PARA LA INSTITUCIÓN DEL CENTRO de la alerta
+   * (su preferencia o, si no tiene, el predeterminado de la red). `null` = sin definir.
+   */
+  proveedor: ProveedorEfectivo | null;
 }
 
 /**
@@ -89,7 +96,7 @@ export interface FiltrosAlertas {
   texto?: string | null;
 }
 
-interface FilaStockSql {
+interface FilaStockSql extends ColumnasProveedorSql {
   insumoId: string;
   codigo: string;
   nombre: string;
@@ -128,6 +135,12 @@ export async function obtenerAlertas(
         ? Prisma.sql`AND FALSE`
         : Prisma.sql`AND p."centroId" IN (${Prisma.join(centros)})`;
   const filtroCategoriaSql = categoriaId ? Prisma.sql`AND i."categoriaId" = ${categoriaId}` : Prisma.empty;
+  // Cada alerta es de un centro: su proveedor es el de la institución de ESE centro.
+  const prov = sqlProveedorEfectivo({
+    insumoId: Prisma.sql`i."id"`,
+    predeterminado: Prisma.sql`i."proveedorId"`,
+    institucionId: Prisma.sql`ce."institucionId"`,
+  });
 
   const [filasStock, existencias] = await Promise.all([
     db.$queryRaw<FilaStockSql[]>(Prisma.sql`
@@ -135,10 +148,12 @@ export async function obtenerAlertas(
         p."insumoId", i."codigo", i."nombre", i."unidadMedida", i."categoriaId", c."nombre" AS categoria,
         p."centroId", ce."nombre" AS centro, p."stockMinimo", p."stockMaximo",
         COALESCE(d.disponible, 0)::int AS disponible
+        ${prov.columnas}
       FROM "parametros_stock" p
       JOIN "insumos" i ON i."id" = p."insumoId" AND i."activo"
       JOIN "categorias" c ON c."id" = i."categoriaId"
       JOIN "centros" ce ON ce."id" = p."centroId" AND ce."activo"
+      ${prov.uniones}
       LEFT JOIN (
         SELECT l."insumoId" AS insumo_id, u."centroId" AS centro_id, SUM(e."cantidad") AS disponible
         FROM "existencias" e
@@ -206,6 +221,7 @@ export async function obtenerAlertas(
         faltante: reposicion.faltaParaMinimo,
         faltaParaMaximo: reposicion.faltaParaMaximo,
         sugerido: reposicion.sugerido,
+        proveedor: proveedorDeFila(f),
       };
     })
     .sort(
@@ -270,10 +286,24 @@ export interface GrupoReposicion {
   items: AlertaStock[];
 }
 
+/** Insumos por reponer que se le compran a un mismo proveedor (un pedido por distribuidor). */
+export interface GrupoReposicionProveedor {
+  /** `null` = insumos sin proveedor definido (van al final). */
+  proveedor: ProveedorEfectivo | null;
+  /** Ordenados por centro, categoría y nombre. */
+  items: AlertaStock[];
+}
+
 export interface ListaReposicion {
   /** Día (Santiago) en que se generó la lista. */
   dia: DiaISO;
   grupos: GrupoReposicion[];
+  /**
+   * Los mismos ítems agrupados por PROVEEDOR efectivo (por nombre; "sin
+   * proveedor" al final). Un insumo que dos instituciones compran a
+   * proveedores distintos aparece en el grupo de cada una.
+   */
+  porProveedor: GrupoReposicionProveedor[];
   totalItems: number;
   sinStock: number;
 }
@@ -301,9 +331,30 @@ export async function listaReposicion(
   for (const grupo of grupos.values()) {
     grupo.items.sort((a, b) => a.categoria.localeCompare(b.categoria, "es") || a.nombre.localeCompare(b.nombre, "es"));
   }
+  const porProveedor = new Map<string, GrupoReposicionProveedor>();
+  for (const item of stock) {
+    const clave = item.proveedor?.id ?? "";
+    let grupo = porProveedor.get(clave);
+    if (!grupo) {
+      grupo = { proveedor: item.proveedor, items: [] };
+      porProveedor.set(clave, grupo);
+    }
+    grupo.items.push(item);
+  }
+  for (const grupo of porProveedor.values()) {
+    grupo.items.sort(
+      (a, b) =>
+        a.centro.localeCompare(b.centro, "es") || a.categoria.localeCompare(b.categoria, "es") || a.nombre.localeCompare(b.nombre, "es"),
+    );
+  }
   return {
     dia: hoyEnSantiago(opciones.ahora),
     grupos: [...grupos.values()].sort((a, b) => a.centro.localeCompare(b.centro, "es")),
+    porProveedor: [...porProveedor.values()].sort((a, b) =>
+      a.proveedor === null || b.proveedor === null
+        ? Number(a.proveedor === null) - Number(b.proveedor === null)
+        : a.proveedor.razonSocial.localeCompare(b.proveedor.razonSocial, "es") || a.proveedor.id.localeCompare(b.proveedor.id),
+    ),
     totalItems: stock.length,
     sinStock: stock.filter((s) => s.tipo === "SIN_STOCK").length,
   };
@@ -322,6 +373,10 @@ export const ENCABEZADOS_REPOSICION = [
   "Falta para el mínimo",
   "Falta para el máximo",
   "Cantidad sugerida",
+  "Proveedor",
+  "RUT proveedor",
+  "Teléfono proveedor",
+  "Correo proveedor",
 ] as const;
 
 /** Fila CSV de un ítem de reposición (mismo orden que `ENCABEZADOS_REPOSICION`). */
@@ -339,16 +394,26 @@ export function filaCsvReposicion(item: AlertaStock): CeldaCsv[] {
     item.faltante,
     item.faltaParaMaximo,
     item.sugerido,
+    item.proveedor ? `${item.proveedor.razonSocial}${item.proveedor.activo ? "" : " (inactivo)"}` : "",
+    item.proveedor ? formatearRut(item.proveedor.rut) : "",
+    item.proveedor?.telefono ?? "",
+    item.proveedor?.email ?? "",
   ];
 }
 
+/** Cómo se agrupa la lista de reposición (pantalla, hoja impresa y orden del CSV). */
+export const AGRUPACIONES_REPOSICION = ["centro", "proveedor"] as const;
+export type AgrupacionReposicion = (typeof AGRUPACIONES_REPOSICION)[number];
+
 /**
  * Exportación CSV de la lista de reposición. Queda registrada en la auditoría.
+ * Con `agrupar: "proveedor"` las filas van ordenadas por proveedor (un pedido
+ * por distribuidor); las columnas son las mismas.
  * Permiso: `alertas:ver` (y acceso al centro si se indica).
  */
 export async function exportarReposicion(
   actor: Actor,
-  filtros: FiltrosAlertas = {},
+  filtros: FiltrosAlertas & { agrupar?: AgrupacionReposicion | null } = {},
   opciones: { ahora?: Date } = {},
 ): Promise<ExportacionCsv> {
   const lista = await listaReposicion(actor, filtros, opciones);
@@ -356,9 +421,10 @@ export async function exportarReposicion(
     centroId: filtros.centroId ?? null,
     categoriaId: filtros.categoriaId ?? null,
     texto: textoDeBusqueda(filtros.texto),
+    ...(filtros.agrupar === "proveedor" ? { agrupar: "proveedor" } : {}),
     filas: lista.totalItems,
   });
-  const items = lista.grupos.flatMap((g) => g.items);
+  const items = (filtros.agrupar === "proveedor" ? lista.porProveedor : lista.grupos).flatMap((g) => g.items);
   return {
     archivo: nombreArchivoCsv("lista-reposicion", formatearDia(lista.dia)),
     encabezados: [...ENCABEZADOS_REPOSICION],

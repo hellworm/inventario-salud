@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { ChevronDown, ExternalLink, IdCard, Mail, Pencil, Phone, Truck, UserRound } from "lucide-react";
+import { Boxes, ChevronDown, ExternalLink, IdCard, Mail, Pencil, Phone, Truck, UserRound } from "lucide-react";
 import { buttonClasses, EmptyState } from "@/components/ui";
 import { formatearRut } from "@/lib/chile/rut";
 import { cn } from "@/lib/cn";
 import { dominioDeSitioWeb, normalizarSitioWeb } from "@/lib/esquemas/proveedores";
+import { pluralizar } from "@/lib/formato";
 import { construirHref } from "@/lib/parametros-url";
 import type { ProveedorDirectorio } from "@/server/servicios";
 
@@ -106,6 +107,20 @@ export function DirectorioProveedores({
                   </li>
                 </ul>
                 {sinDatos ? <p className="px-2 pb-1 text-sm text-texto-suave">Sin teléfono ni correo registrados.</p> : null}
+                {/* "Insumos que le compras": los del inventario del alcance cuyo proveedor efectivo es este. */}
+                {p.insumos > 0 ? (
+                  <Link href={construirHref("/inventario", { proveedor: p.id })} className={CLASE_DATO} data-insumos-proveedor>
+                    <Boxes className={CLASE_ICONO} aria-hidden />
+                    <span>
+                      Insumos que le compras: <span className="cifras font-semibold">{pluralizar(p.insumos, "insumo")}</span>
+                    </span>
+                  </Link>
+                ) : (
+                  <p className={CLASE_DATO_FIJO} data-insumos-proveedor>
+                    <Boxes className={CLASE_ICONO} aria-hidden />
+                    <span className="text-texto-suave">Ningún insumo del inventario lo tiene como proveedor.</span>
+                  </p>
+                )}
                 {puedeEditar ? (
                   <Link
                     href={construirHref("/admin/proveedores", { q: formatearRut(p.rut) })}

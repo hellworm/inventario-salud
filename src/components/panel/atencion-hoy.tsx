@@ -18,6 +18,7 @@ import {
   hrefRetirar,
   type UbicacionPorCentro,
 } from "@/components/alertas/acciones";
+import { EnlaceComprar } from "@/components/proveedores/datos-proveedor";
 import { Card, CardHeader } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { describirVencimiento } from "@/lib/fechas";
@@ -25,7 +26,7 @@ import { formatearNumero, pluralizar } from "@/lib/formato";
 import type { Rol } from "@/lib/permisos";
 import { puede } from "@/lib/permisos";
 import { cantidadConUnidad } from "@/lib/unidades";
-import type { AlertaStock, AlertaVencimiento, AtencionHoy as Atencion } from "@/server/servicios";
+import type { AlertaStock, AlertaVencimiento, AtencionHoy as Atencion, ProveedorEfectivo } from "@/server/servicios";
 
 type Tono = "peligro" | "alerta";
 
@@ -103,6 +104,7 @@ function Fila({
   valor,
   nota,
   accion,
+  proveedor,
 }: {
   href: string;
   titulo: string;
@@ -110,9 +112,11 @@ function Fila({
   valor: React.ReactNode;
   nota: string;
   accion?: Accion;
+  /** Proveedor efectivo del insumo (solo en "Sin stock"): se nombra y, si tiene sitio, se ofrece "Ir a comprar". */
+  proveedor?: ProveedorEfectivo | null;
 }) {
   return (
-    <li className="flex items-center gap-2 pr-3 hover:bg-marca-50/60 sm:pr-4">
+    <li className="flex items-center gap-2 pr-3 hover:bg-marca-50/60 max-sm:flex-wrap sm:pr-4">
       {/* En móvil el valor baja a una segunda línea para no truncar el nombre del insumo. */}
       <Link
         href={href}
@@ -121,6 +125,12 @@ function Fila({
         <span className="min-w-0 sm:flex-1">
           <span className="block text-[0.9375rem] font-medium group-hover:text-marca-800 sm:truncate">{titulo}</span>
           <span className="block truncate text-xs text-texto-suave">{detalle}</span>
+          {proveedor ? (
+            <span className="block truncate text-xs text-texto-suave" data-proveedor-atencion>
+              Proveedor: <span className="font-medium text-texto">{proveedor.razonSocial}</span>
+              {proveedor.activo ? "" : " (inactivo)"}
+            </span>
+          ) : null}
         </span>
         <span className="shrink-0 max-sm:mt-0.5 max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-2 sm:text-right">
           <span className="cifras block text-sm font-semibold">{valor}</span>
@@ -130,6 +140,12 @@ function Fila({
           <ChevronRight className="size-4 shrink-0 text-texto-tenue group-hover:text-marca-700 max-sm:hidden" aria-hidden />
         )}
       </Link>
+      {/* Enlace secundario en escritorio; en móvil baja a su propia línea, dentro del detalle de la fila. */}
+      <EnlaceComprar
+        proveedor={proveedor}
+        variante="enlace"
+        className="shrink-0 max-sm:order-last max-sm:-mt-1.5 max-sm:mb-1 max-sm:ml-4 max-sm:basis-full"
+      />
       {accion ? (
         <Link href={accion.href} aria-label={accion.etiqueta} className={cn(CLASE_ACCION_FILA, "min-h-11")}>
           <accion.icono aria-hidden className="max-sm:hidden" />
@@ -216,6 +232,7 @@ export function AtencionHoy({
                 detalle={lugar(a.centro, `${a.codigo} · ${a.categoria}`)}
                 valor={`Faltan ${formatearNumero(a.faltante)}`}
                 nota={`mínimo ${cantidadConUnidad(a.stockMinimo, a.unidadMedida)}`}
+                proveedor={a.proveedor}
                 accion={
                   puedeIngresar
                     ? { href: hrefIngresar(a, ubicacionesIngreso), texto: "Ingresar", etiqueta: `Ingresar ${a.nombre}`, icono: ArrowDownToLine }

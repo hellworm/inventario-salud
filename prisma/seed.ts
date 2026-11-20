@@ -4,6 +4,10 @@
  * - Datos de referencia (instituciones, centros, ubicaciones, catálogo,
  *   proveedores, usuarios, parámetros de stock): se crean o actualizan
  *   (idempotente).
+ * - Proveedor de cada insumo (predeterminado de la red y preferencias por
+ *   institución): se asigna también sobre una base ya sembrada, sin tocar el
+ *   historial y sin pisar lo que alguien haya definido a mano (solo completa
+ *   lo que está vacío).
  * - Historial de ~60 días: se genera A TRAVÉS de los servicios de inventario
  *   (con fecha retroactiva), por lo que existencias, libro mayor y auditoría
  *   quedan coherentes. Solo se genera si aún no hay movimientos.
@@ -237,6 +241,28 @@ const INSUMOS: DefInsumo[] = [
   { codigo: "TOR-ALG", nombre: "Tórulas de algodón", categoria: C.curacion, unidad: "bolsa", presentacion: "Bolsa de 500 g", fabricante: "Medisur", vence: false, costo: 3100, dialisis: 0.5, consultorio: 0.8, proveedor: 1 },
 ];
 
+/**
+ * Proveedor predeterminado de la RED por insumo: el habitual de sus ingresos
+ * (`DefInsumo.proveedor`: dializadores, líneas y concentrados al proveedor
+ * renal; fármacos y sueros a la farmacéutica; EPP al de protección sanitaria;
+ * jeringas y curación a la distribuidora clínica; antisépticos a Cordillera).
+ * Estos insumos quedan SIN proveedor, para mostrar el estado vacío (la ficha
+ * ofrece el del último ingreso como sugerencia).
+ */
+const SIN_PROVEEDOR_PREDETERMINADO = new Set(["ANT-PRO", "HIP-5", "VEN-ELA", "TOR-ALG"]);
+
+/**
+ * Preferencias por institución: sobrescriben el predeterminado de la red solo
+ * para esa institución (índice en `PROVEEDORES`).
+ */
+const PROVEEDOR_POR_INSTITUCION: { institucion: ClaveInstitucion; codigo: string; proveedor: number }[] = [
+  // El consultorio compra sus guantes y jeringas al distribuidor de la región de Valparaíso.
+  { institucion: "cerroAlegre", codigo: "GUA-NM", proveedor: 4 },
+  { institucion: "cerroAlegre", codigo: "JER-5", proveedor: 4 },
+  // Los centros de diálisis reciben el suero junto con el resto del pedido renal.
+  { institucion: "andes", codigo: "SUE-1000", proveedor: 0 },
+];
+
 const USUARIOS: {
   email: string;
   nombre: string;
@@ -388,6 +414,29 @@ async function sembrarReferencia() {
   for (const p of PROVEEDORES) {
     const fila = await db.proveedor.upsert({ where: { rut: p.rut }, update: { ...p }, create: { ...p } });
     proveedores.push(fila.id);
+  }
+
+  // Proveedor de cada insumo. Solo se completa lo que está vacío: sirve igual
+  // para una base nueva y para una base demo ya sembrada (antes de que existiera
+  // el proveedor por insumo), y nunca pisa un proveedor definido a mano.
+  let predeterminados = 0;
+  for (const d of INSUMOS) {
+    if (SIN_PROVEEDOR_PREDETERMINADO.has(d.codigo)) continue;
+    const r = await db.insumo.updateMany({
+      where: { id: insumos.get(d.codigo)!, proveedorId: null },
+      data: { proveedorId: proveedores[d.proveedor]! },
+    });
+    predeterminados += r.count;
+  }
+  let preferencias = 0;
+  for (const p of PROVEEDOR_POR_INSTITUCION) {
+    const clave = { insumoId: insumos.get(p.codigo)!, institucionId: instituciones.get(p.institucion)! };
+    if (await db.proveedorInsumoInstitucion.findUnique({ where: { insumoId_institucionId: clave } })) continue;
+    await db.proveedorInsumoInstitucion.create({ data: { ...clave, proveedorId: proveedores[p.proveedor]! } });
+    preferencias++;
+  }
+  if (predeterminados > 0 || preferencias > 0) {
+    console.log(`Proveedor por insumo: ${predeterminados} predeterminados de la red y ${preferencias} preferencias por institución asignados.`);
   }
 
   const actores = new Map<string, Actor>();

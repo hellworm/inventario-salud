@@ -13,6 +13,7 @@ import {
   Pagination,
   type Columna,
 } from "@/components/ui";
+import { NombreProveedor } from "@/components/proveedores/datos-proveedor";
 import { DosLineas } from "@/components/reportes/piezas";
 import { pluralizar } from "@/lib/formato";
 import { AvisoCatalogoCompartido } from "@/components/admin/aviso-catalogo-compartido";
@@ -28,7 +29,7 @@ const COLUMNAS: Columna<FilaInsumoAdmin>[] = [
     clave: "nombre",
     encabezado: "Insumo",
     movil: "titulo",
-    className: "md:w-[34%]",
+    className: "md:w-[30%]",
     celda: (i) => (
       <DosLineas
         principal={<span className="font-medium">{i.nombre}</span>}
@@ -40,6 +41,20 @@ const COLUMNAS: Columna<FilaInsumoAdmin>[] = [
     clave: "categoria",
     encabezado: "Categoría y unidad",
     celda: (i) => <DosLineas principal={i.categoria} secundario={`Se cuenta por ${i.unidadMedida}`} />,
+  },
+  {
+    clave: "proveedor",
+    encabezado: "Proveedor",
+    className: "md:max-w-48",
+    celda: (i) =>
+      i.proveedor ? (
+        <DosLineas
+          principal={<NombreProveedor proveedor={i.proveedor} />}
+          secundario={i.proveedor.origen === "INSTITUCION" ? "De tu institución" : undefined}
+        />
+      ) : (
+        <span className="text-texto-tenue">Sin proveedor</span>
+      ),
   },
   {
     clave: "manejo",

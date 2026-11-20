@@ -12,7 +12,7 @@ import {
   type EntradaParametrosStock,
 } from "@/lib/esquemas/catalogo";
 import { variantesGtin } from "@/lib/gs1";
-import type { Actor } from "@/lib/permisos";
+import { veTodaLaRed, type Actor } from "@/lib/permisos";
 import type { Paginado } from "@/lib/resultado";
 import { registrarAuditoria } from "../auditoria";
 import { alcanceDeCentros, verificarPermiso } from "../autorizacion";
@@ -30,6 +30,13 @@ import {
   type OpcionesPagina,
   textoDeBusqueda,
 } from "./apoyo-admin";
+import {
+  exigirProveedorAsignable,
+  proveedorDeFila,
+  sqlProveedorEfectivo,
+  type ColumnasProveedorSql,
+  type ProveedorEfectivo,
+} from "./proveedor-insumo";
 
 export interface FilaInsumoAdmin {
   id: string;
@@ -45,6 +52,11 @@ export interface FilaInsumoAdmin {
   activo: boolean;
   /** Centros con stock mínimo o máximo definido. */
   centrosConParametro: number;
+  /**
+   * Proveedor efectivo para quien consulta: el predeterminado de la red
+   * (ADMIN_RED) o el de su institución si lo sobrescribió (ADMIN).
+   */
+  proveedor: ProveedorEfectivo | null;
 }
 
 export interface FiltrosInsumosAdmin extends OpcionesPagina {
@@ -85,22 +97,44 @@ export async function listarInsumosAdmin(actor: Actor, filtros: FiltrosInsumosAd
   if (filtros.estado === "activos") condiciones.push(Prisma.sql`i."activo"`);
   if (filtros.estado === "inactivos") condiciones.push(Prisma.sql`NOT i."activo"`);
   const donde = Prisma.join(condiciones, " AND ");
+  // Proveedor efectivo: el de la institución del administrador o, para la red, el predeterminado.
+  const prov = sqlProveedorEfectivo({
+    insumoId: Prisma.sql`i."id"`,
+    predeterminado: Prisma.sql`i."proveedorId"`,
+    institucionId: veTodaLaRed(actor) ? null : actor.institucionId,
+  });
 
   const [conteo, filas] = await Promise.all([
     db.$queryRaw<{ total: bigint }[]>(Prisma.sql`SELECT COUNT(*) AS total FROM "insumos" i WHERE ${donde}`),
-    db.$queryRaw<(Omit<FilaInsumoAdmin, "centrosConParametro"> & { centrosConParametro: bigint })[]>(Prisma.sql`
+    db.$queryRaw<(Omit<FilaInsumoAdmin, "centrosConParametro" | "proveedor"> & ColumnasProveedorSql & { centrosConParametro: bigint })[]>(Prisma.sql`
       SELECT i."id", i."codigo", i."nombre", i."categoriaId", c."nombre" AS "categoria", i."unidadMedida",
              i."presentacion", i."fabricante", i."requiereCadenaFrio", i."controlaVencimiento", i."activo",
              (SELECT COUNT(*) FROM "parametros_stock" p WHERE p."insumoId" = i."id" ${enAlcance}) AS "centrosConParametro"
+             ${prov.columnas}
       FROM "insumos" i
       JOIN "categorias" c ON c."id" = i."categoriaId"
+      ${prov.uniones}
       WHERE ${donde}
       ORDER BY i."activo" DESC, i."nombre" ASC, i."id" ASC
       LIMIT ${porPagina} OFFSET ${saltar}
     `),
   ]);
   return armarPaginado(
-    filas.map((f) => ({ ...f, centrosConParametro: Number(f.centrosConParametro) })),
+    filas.map((f): FilaInsumoAdmin => ({
+      id: f.id,
+      codigo: f.codigo,
+      nombre: f.nombre,
+      categoriaId: f.categoriaId,
+      categoria: f.categoria,
+      unidadMedida: f.unidadMedida,
+      presentacion: f.presentacion,
+      fabricante: f.fabricante,
+      requiereCadenaFrio: f.requiereCadenaFrio,
+      controlaVencimiento: f.controlaVencimiento,
+      activo: f.activo,
+      centrosConParametro: Number(f.centrosConParametro),
+      proveedor: proveedorDeFila(f),
+    })),
     Number(conteo[0]?.total ?? 0),
     pagina,
     porPagina,
@@ -131,6 +165,8 @@ export interface InsumoAdmin {
   codigoBarras: string | null;
   requiereCadenaFrio: boolean;
   controlaVencimiento: boolean;
+  /** Proveedor predeterminado de la red (id); el detalle lo da `detalleProveedorInsumo`. */
+  proveedorId: string | null;
   activo: boolean;
   creadoEn: Date;
   actualizadoEn: Date;
@@ -202,7 +238,10 @@ export async function obtenerInsumoAdmin(actor: Actor, insumoId: string): Promis
   };
 }
 
-async function exigirInsumoValido(tx: Tx, datos: DatosInsumo, exceptoId?: string): Promise<void> {
+/** Datos del catálogo de un insumo (sin su proveedor predeterminado, que se trata aparte). */
+type DatosCatalogoInsumo = Omit<DatosInsumo, "proveedorId">;
+
+async function exigirInsumoValido(tx: Tx, datos: DatosCatalogoInsumo, exceptoId?: string): Promise<void> {
   const otro = exceptoId ? { id: { not: exceptoId } } : {};
   const mismoCodigo = await tx.insumo.findFirst({
     where: { codigo: { equals: datos.codigo, mode: "insensitive" }, ...otro },
@@ -231,7 +270,7 @@ async function exigirInsumoValido(tx: Tx, datos: DatosInsumo, exceptoId?: string
   }
 }
 
-function camposInsumo(datos: DatosInsumo) {
+function camposInsumo(datos: DatosCatalogoInsumo) {
   return {
     codigo: datos.codigo,
     nombre: datos.nombre,
@@ -259,8 +298,10 @@ export async function crearInsumo(actor: Actor, entrada: EntradaInsumo): Promise
     () =>
       enTransaccion(async (tx) => {
         await exigirInsumoValido(tx, datos);
+        // Quien crea el insumo puede dejarle su proveedor predeterminado de la red.
+        const proveedor = datos.proveedorId ? await exigirProveedorAsignable(tx, datos.proveedorId) : null;
         const insumo = await tx.insumo.create({
-          data: camposInsumo(datos),
+          data: { ...camposInsumo(datos), proveedorId: datos.proveedorId ?? null },
           select: { id: true, codigo: true, nombre: true },
         });
         await registrarAuditoria(tx, actor, {
@@ -273,6 +314,7 @@ export async function crearInsumo(actor: Actor, entrada: EntradaInsumo): Promise
             unidadMedida: datos.unidadMedida,
             requiereCadenaFrio: datos.requiereCadenaFrio,
             controlaVencimiento: datos.controlaVencimiento,
+            ...(proveedor ? { proveedor } : {}),
           },
         });
         return insumo;
@@ -312,6 +354,15 @@ export async function actualizarInsumo(
           },
           nuevos,
         );
+        // Proveedor predeterminado de la red: `undefined` = no se toca; `null` = se quita.
+        const cambiaProveedor = datos.proveedorId !== undefined && datos.proveedorId !== actual.proveedorId;
+        if (cambiaProveedor) {
+          const despues = datos.proveedorId ? await exigirProveedorAsignable(tx, datos.proveedorId) : null;
+          const antes = actual.proveedorId
+            ? ((await tx.proveedor.findUnique({ where: { id: actual.proveedorId }, select: { razonSocial: true } }))?.razonSocial ?? null)
+            : null;
+          cambios.proveedor = { antes, despues };
+        }
         if (Object.keys(cambios).length === 0) return { id, codigo: actual.codigo, nombre: actual.nombre };
 
         if (cambios.categoriaId) {
@@ -326,7 +377,7 @@ export async function actualizarInsumo(
         }
         const insumo = await tx.insumo.update({
           where: { id },
-          data: nuevos,
+          data: cambiaProveedor ? { ...nuevos, proveedorId: datos.proveedorId } : nuevos,
           select: { id: true, codigo: true, nombre: true },
         });
         await registrarAuditoria(tx, actor, {

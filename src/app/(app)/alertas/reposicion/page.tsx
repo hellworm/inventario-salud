@@ -1,25 +1,41 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Download, PackageCheck } from "lucide-react";
+import { Download, Mail, PackageCheck, Phone } from "lucide-react";
 import { BotonImprimir } from "@/components/alertas/boton-imprimir";
 import { BarraFiltros, FiltroCentro, FiltroSelect } from "@/components/admin/filtros-url";
 import "@/components/alertas/impresion.css";
+import { EnlaceComprar } from "@/components/proveedores/datos-proveedor";
 import { BadgeEstadoStock, buttonClasses, Card, EmptyState, PageHeader } from "@/components/ui";
+import { formatearRut } from "@/lib/chile/rut";
 import { formatearDia, formatearFechaHora } from "@/lib/fechas";
 import { leerFiltros } from "@/lib/filtros-reportes";
 import { formatearNumero, pluralizar } from "@/lib/formato";
-import { construirHref, resolverCentro } from "@/lib/parametros-url";
+import { construirHref, leerOpcion, resolverCentro } from "@/lib/parametros-url";
 import { etiquetaAlcanceTotal } from "@/lib/permisos";
 import { contextoPagina } from "@/server/auth/sesion";
 import { pluralUnidad, unidadSegun } from "@/lib/unidades";
-import { listaReposicion, listarCategorias, type AlertaStock } from "@/server/servicios";
+import {
+  AGRUPACIONES_REPOSICION,
+  listaReposicion,
+  listarCategorias,
+  type AlertaStock,
+  type ProveedorEfectivo,
+} from "@/server/servicios";
 import { SinCentroActivo } from "@/components/shell/sin-centro";
 
 export const metadata: Metadata = { title: "Lista de reposición" };
 
 const numero = (valor: number | null) => (valor === null ? "—" : formatearNumero(valor));
 
-function TablaReposicion({ items, titulo }: { items: AlertaStock[]; titulo: string }) {
+const nombreProveedor = (p: ProveedorEfectivo | null) => (p ? `${p.razonSocial}${p.activo ? "" : " (inactivo)"}` : "Sin proveedor");
+
+/**
+ * Tabla de un grupo. `columna` es el dato que NO da el encabezado del grupo:
+ * el proveedor (lista agrupada por centro) o el centro (agrupada por proveedor);
+ * `null` si no hace falta (un solo centro).
+ */
+function TablaReposicion({ items, titulo, columna }: { items: AlertaStock[]; titulo: string; columna: "proveedor" | "centro" | null }) {
+  const dato = (i: AlertaStock) => (columna === "proveedor" ? nombreProveedor(i.proveedor) : i.centro);
   return (
     <>
       {/* Tabla: escritorio e impresión */}
@@ -28,7 +44,12 @@ function TablaReposicion({ items, titulo }: { items: AlertaStock[]; titulo: stri
           <caption className="sr-only">{titulo}</caption>
           <thead>
             <tr className="border-b border-borde bg-superficie-2 text-left text-xs tracking-wide text-texto-suave uppercase print:border-b-2 print:border-texto print:bg-transparent print:text-[8pt] print:text-texto">
-              <th scope="col" className="px-4 py-3 font-semibold xl:w-[36%] print:w-[36%] print:px-1.5 print:py-1.5">Insumo</th>
+              <th scope="col" className="px-4 py-3 font-semibold xl:w-[30%] print:w-[30%] print:px-1.5 print:py-1.5">Insumo</th>
+              {columna ? (
+                <th scope="col" className="px-4 py-3 font-semibold max-xl:hidden print:table-cell print:px-1.5 print:py-1.5">
+                  {columna === "proveedor" ? "Proveedor" : "Centro"}
+                </th>
+              ) : null}
               <th scope="col" className="px-4 py-3 font-semibold print:px-1.5 print:py-1.5">Estado</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Disponible</th>
               <th scope="col" className="px-4 py-3 text-right font-semibold print:px-1.5 print:py-1.5">Mínimo</th>
@@ -49,8 +70,20 @@ function TablaReposicion({ items, titulo }: { items: AlertaStock[]; titulo: stri
                     <span className="text-xs text-texto-tenue print:text-[8pt] print:text-texto-suave">
                       {i.codigo} · {i.categoria} · en {pluralUnidad(i.unidadMedida)}
                     </span>
+                    {/* Bajo xl no hay columna: el dato va bajo el nombre (en la hoja impresa sí hay columna). */}
+                    {columna ? (
+                      <span className="text-xs text-texto-suave xl:hidden print:hidden">
+                        {columna === "proveedor" ? "Proveedor: " : "Centro: "}
+                        {dato(i)}
+                      </span>
+                    ) : null}
                   </Link>
                 </th>
+                {columna ? (
+                  <td className="px-4 py-3 text-texto-suave max-xl:hidden xl:min-w-44 print:table-cell print:min-w-0 print:px-1.5 print:py-1.5 print:text-texto" data-columna-reposicion={columna}>
+                    {dato(i)}
+                  </td>
+                ) : null}
                 <td className="px-4 py-3 print:px-1.5 print:py-1.5">
                   <span className="print:hidden">
                     <BadgeEstadoStock estado={i.tipo} />
@@ -84,6 +117,12 @@ function TablaReposicion({ items, titulo }: { items: AlertaStock[]; titulo: stri
                 <p className="truncate text-xs text-texto-tenue">
                   {i.codigo} · {i.categoria}
                 </p>
+                {columna ? (
+                  <p className="truncate text-xs text-texto-suave">
+                    {columna === "proveedor" ? "Proveedor: " : "Centro: "}
+                    {dato(i)}
+                  </p>
+                ) : null}
               </div>
               <BadgeEstadoStock estado={i.tipo} className="shrink-0" />
             </div>
@@ -115,8 +154,11 @@ function TablaReposicion({ items, titulo }: { items: AlertaStock[]; titulo: stri
 export default async function PaginaReposicion({ searchParams }: PageProps<"/alertas/reposicion">) {
   const { sesion, actor, centroId: centroActivoId, centro, centros, sinCentro } = await contextoPagina("alertas:ver");
   if (sinCentro) return <SinCentroActivo titulo="Lista de reposición" />;
-  const filtros = leerFiltros(await searchParams);
+  const sp = await searchParams;
+  const filtros = leerFiltros(sp);
   const centroId = resolverCentro(centroActivoId, centros, filtros.centro);
+  // `?agrupar=proveedor`: un grupo por distribuidor, para armar un pedido a cada uno.
+  const agrupar = leerOpcion(sp, "agrupar", AGRUPACIONES_REPOSICION) ?? "centro";
 
   const [lista, categorias] = await Promise.all([
     listaReposicion(actor, { centroId, categoriaId: filtros.categoriaId }),
@@ -124,7 +166,12 @@ export default async function PaginaReposicion({ searchParams }: PageProps<"/ale
   ]);
   const alcance = centro?.nombre ?? centros.find((c) => c.id === centroId)?.nombre ?? etiquetaAlcanceTotal(actor.rol);
   const categoria = categorias.find((c) => c.id === filtros.categoriaId)?.nombre;
-  const hrefCsv = construirHref("/alertas/reposicion/exportar", { centro: centroId, categoria: filtros.categoriaId });
+  const hrefCsv = construirHref("/alertas/reposicion/exportar", {
+    centro: centroId,
+    categoria: filtros.categoriaId,
+    agrupar: agrupar === "proveedor" ? "proveedor" : undefined,
+  });
+  const variosCentros = lista.grupos.length > 1;
   const resumen =
     lista.totalItems === 0
       ? "Nada que reponer"
@@ -159,6 +206,7 @@ export default async function PaginaReposicion({ searchParams }: PageProps<"/ale
         <p className="text-[10pt]">
           {alcance}
           {categoria ? ` · ${categoria}` : ""} · {resumen}
+          {agrupar === "proveedor" ? " · agrupada por proveedor" : ""}
         </p>
         <p className="text-[9pt] text-texto-suave">
           RedInsumos · Generada el {formatearFechaHora(new Date())} por {sesion.usuario.nombre} · Stock disponible al{" "}
@@ -166,7 +214,7 @@ export default async function PaginaReposicion({ searchParams }: PageProps<"/ale
         </p>
       </div>
 
-      <BarraFiltros parametros={["categoria", "centro"]}>
+      <BarraFiltros parametros={["categoria", "centro", "agrupar"]}>
         <FiltroSelect
           parametro="categoria"
           etiqueta="Categoría"
@@ -174,6 +222,14 @@ export default async function PaginaReposicion({ searchParams }: PageProps<"/ale
           opciones={categorias.map((c) => ({ value: c.id, label: c.nombre }))}
         />
         <FiltroCentro centroActivoId={centroActivoId} centros={centros} />
+        <FiltroSelect
+          parametro="agrupar"
+          etiqueta="Agrupar por"
+          opciones={[
+            { value: "centro", label: "Centro" },
+            { value: "proveedor", label: "Proveedor" },
+          ]}
+        />
       </BarraFiltros>
 
       {lista.grupos.length === 0 ? (
@@ -182,15 +238,76 @@ export default async function PaginaReposicion({ searchParams }: PageProps<"/ale
           titulo="Nada que reponer"
           descripcion="Todos los insumos con stock mínimo definido están sobre su mínimo."
         />
+      ) : agrupar === "proveedor" ? (
+        <div className="space-y-4 print:space-y-6" data-agrupada-por="proveedor">
+          {lista.porProveedor.map((g) => (
+            <Card
+              key={g.proveedor?.id ?? "sin-proveedor"}
+              relleno={false}
+              className="overflow-hidden print:rounded-none print:border-0 print:shadow-none"
+              data-grupo-proveedor={g.proveedor?.id ?? "sin"}
+            >
+              <div className="p-4 sm:px-5 print:px-0 print:pt-0 print:pb-2">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <h2 className="text-base font-semibold tracking-tight print:text-[12pt]">
+                    {g.proveedor ? g.proveedor.razonSocial : "Sin proveedor definido"}
+                    {g.proveedor && !g.proveedor.activo ? <span className="font-normal text-texto-suave"> (inactivo)</span> : null}
+                  </h2>
+                  <p className="text-sm text-texto-suave print:text-[9pt]">{pluralizar(g.items.length, "insumo")} por reponer</p>
+                </div>
+                {g.proveedor ? (
+                  <>
+                    {/* Pantalla: enlaces para llamar, escribir o ir a comprar. */}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm print:hidden">
+                      {g.proveedor.telefono ? (
+                        <a href={`tel:${g.proveedor.telefono.replace(/[^\d+]/g, "")}`} className="inline-flex min-h-11 items-center gap-1.5 text-marca-700 underline-offset-4 hover:underline pointer-fine:min-h-8">
+                          <Phone className="size-4 shrink-0 text-texto-tenue" aria-hidden />
+                          <span className="cifras">{g.proveedor.telefono}</span>
+                        </a>
+                      ) : null}
+                      {g.proveedor.email ? (
+                        <a href={`mailto:${g.proveedor.email}`} className="inline-flex min-h-11 min-w-0 items-center gap-1.5 text-marca-700 underline-offset-4 hover:underline pointer-fine:min-h-8">
+                          <Mail className="size-4 shrink-0 text-texto-tenue" aria-hidden />
+                          <span className="min-w-0 break-all">{g.proveedor.email}</span>
+                        </a>
+                      ) : null}
+                      <EnlaceComprar proveedor={g.proveedor} />
+                    </div>
+                    {/* Hoja impresa: los datos para hacer el pedido, en el encabezado del grupo. */}
+                    <p className="mt-0.5 hidden text-[9pt] text-texto-suave print:block" data-contacto-impreso>
+                      {[
+                        `RUT ${formatearRut(g.proveedor.rut)}`,
+                        g.proveedor.telefono ? `Tel. ${g.proveedor.telefono}` : null,
+                        g.proveedor.email,
+                        g.proveedor.contacto ? `Contacto: ${g.proveedor.contacto}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-0.5 text-sm text-texto-suave print:text-[9pt]">
+                    Estos insumos no tienen proveedor: defínelo en la ficha de cada insumo.
+                  </p>
+                )}
+              </div>
+              <TablaReposicion
+                items={g.items}
+                titulo={`Reposición de ${g.proveedor ? g.proveedor.razonSocial : "insumos sin proveedor"}`}
+                columna={variosCentros ? "centro" : null}
+              />
+            </Card>
+          ))}
+        </div>
       ) : (
-        <div className="space-y-4 print:space-y-6">
+        <div className="space-y-4 print:space-y-6" data-agrupada-por="centro">
           {lista.grupos.map((g) => (
             <Card key={g.centroId} relleno={false} className="overflow-hidden print:rounded-none print:border-0 print:shadow-none">
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 p-4 sm:px-5 print:px-0 print:pt-0 print:pb-2">
                 <h2 className="text-base font-semibold tracking-tight print:text-[12pt]">{g.centro}</h2>
                 <p className="text-sm text-texto-suave print:text-[9pt]">{pluralizar(g.items.length, "insumo")} por reponer</p>
               </div>
-              <TablaReposicion items={g.items} titulo={`Reposición de ${g.centro}`} />
+              <TablaReposicion items={g.items} titulo={`Reposición de ${g.centro}`} columna="proveedor" />
             </Card>
           ))}
         </div>

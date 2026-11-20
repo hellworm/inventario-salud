@@ -16,7 +16,7 @@ export async function limpiarBD(): Promise<void> {
     ...INMUTABLES.map((t) => db.$executeRawUnsafe(`ALTER TABLE "${t}" DISABLE TRIGGER USER`)),
     db.$executeRawUnsafe(`
       TRUNCATE TABLE "registros_auditoria", "movimientos", "existencias", "lotes", "parametros_stock",
-        "proveedores", "insumos", "categorias", "sesiones", "usuarios_centros", "usuarios",
+        "proveedores_insumo_institucion", "proveedores", "insumos", "categorias", "sesiones", "usuarios_centros", "usuarios",
         "ubicaciones", "centros", "instituciones", "intentos_login" RESTART IDENTITY CASCADE
     `),
     ...INMUTABLES.map((t) => db.$executeRawUnsafe(`ALTER TABLE "${t}" ENABLE TRIGGER USER`)),

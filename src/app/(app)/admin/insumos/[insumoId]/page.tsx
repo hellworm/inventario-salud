@@ -6,6 +6,8 @@ import { Boxes, ScrollText } from "lucide-react";
 import { BotonCambiarActivo } from "@/components/admin/boton-cambiar-activo";
 import { BotonEliminarInsumo } from "@/components/admin/boton-eliminar-insumo";
 import { FormularioInsumo } from "@/components/admin/formulario-insumo";
+import { BotonCambiarProveedor } from "@/components/proveedores/cambiar-proveedor";
+import { BloqueProveedor } from "@/components/proveedores/datos-proveedor";
 import { TablaParametros } from "@/components/admin/tabla-parametros";
 import { Alert, BadgeActivo, buttonClasses, Card, CardHeader, PageHeader } from "@/components/ui";
 import { formatearFechaHora } from "@/lib/fechas";
@@ -14,7 +16,14 @@ import { cantidadConUnidad } from "@/lib/unidades";
 import { AvisoCatalogoCompartido } from "@/components/admin/aviso-catalogo-compartido";
 import { contextoPagina, obtenerSesion } from "@/server/auth/sesion";
 import { esErrorDominio } from "@/server/errores";
-import { listarCategorias, obtenerInsumoAdmin, type InsumoAdmin } from "@/server/servicios";
+import {
+  detalleProveedorInsumo,
+  listarCategorias,
+  listarOpcionesInstitucion,
+  listarProveedoresActivos,
+  obtenerInsumoAdmin,
+  type InsumoAdmin,
+} from "@/server/servicios";
 
 /** Una sola lectura por solicitud: la comparten el título de la pestaña y la página. */
 const cargarInsumo = cache((actor: Actor, insumoId: string) => obtenerInsumoAdmin(actor, insumoId));
@@ -47,7 +56,12 @@ export default async function PaginaEditarInsumo({ params }: PageProps<"/admin/i
     if (esErrorDominio(error) && error.codigo === "NO_ENCONTRADO") notFound();
     throw error;
   }
-  const categorias = await listarCategorias(actor);
+  const [categorias, proveedores, proveedor, instituciones] = await Promise.all([
+    listarCategorias(actor),
+    listarProveedoresActivos(actor),
+    detalleProveedorInsumo(actor, insumoId),
+    esRed ? listarOpcionesInstitucion(actor) : [],
+  ]);
 
   return (
     <>
@@ -101,8 +115,11 @@ export default async function PaginaEditarInsumo({ params }: PageProps<"/admin/i
               codigoBarras: insumo.codigoBarras,
               requiereCadenaFrio: insumo.requiereCadenaFrio,
               controlaVencimiento: insumo.controlaVencimiento,
+              proveedorId: insumo.proveedorId,
             }}
             categorias={categorias}
+            proveedores={proveedores}
+            proveedorInactivo={proveedor.red && !proveedor.red.activo ? { id: proveedor.red.id, razonSocial: proveedor.red.razonSocial } : null}
           />
         </Card>
         ) : (
@@ -122,6 +139,10 @@ export default async function PaginaEditarInsumo({ params }: PageProps<"/admin/i
                   ["Código de barras", insumo.codigoBarras ?? "—"],
                   ["Requiere cadena de frío", insumo.requiereCadenaFrio ? "Sí" : "No"],
                   ["Controla vencimiento", insumo.controlaVencimiento ? "Sí" : "No"],
+                  [
+                    "Proveedor predeterminado de la red",
+                    proveedor.red ? `${proveedor.red.razonSocial}${proveedor.red.activo ? "" : " (inactivo)"}` : "Sin definir",
+                  ],
                 ] as const
               ).map(([etiqueta, valor]) => (
                 <div key={etiqueta} className="min-w-0">
@@ -138,6 +159,30 @@ export default async function PaginaEditarInsumo({ params }: PageProps<"/admin/i
             </dl>
           </Card>
         )}
+
+        <Card className="sm:p-6" id="proveedor">
+          <CardHeader
+            titulo={esRed ? "Proveedor por institución" : "Proveedor de tu institución"}
+            descripcion={
+              esRed
+                ? "El predeterminado de la red se edita arriba, en los datos del insumo. Aquí puedes definir un proveedor propio para una institución: vale solo para ella."
+                : "Si tu institución le compra este insumo a otro proveedor, defínelo aquí: sobrescribe el predeterminado de la red solo para tu institución. Se guarda de inmediato."
+            }
+          />
+          <div className="max-w-xl">
+            <BloqueProveedor
+              detalle={proveedor}
+              acciones={
+                <BotonCambiarProveedor
+                  insumo={{ id: insumo.id, nombre: insumo.nombre }}
+                  detalle={proveedor}
+                  proveedores={proveedores}
+                  instituciones={instituciones.filter((i) => i.activo)}
+                />
+              }
+            />
+          </div>
+        </Card>
 
         <Card className="sm:p-6" id="parametros">
           <CardHeader

@@ -145,6 +145,51 @@ han usado en los ingresos de tu centro):
 - Toca el nombre para **desplegar** su teléfono, su correo, la persona de contacto y el RUT. Desde el
   celular, tocar el teléfono inicia la llamada y tocar el correo abre tu aplicación de correo.
 - **Ver todos** abre el directorio completo, con buscador.
+- Al desplegar un proveedor, **Insumos que le compras** dice cuántos insumos de tu inventario lo
+  tienen como proveedor y abre el Inventario filtrado por él.
+
+### El proveedor de cada insumo
+
+Cada insumo tiene **su proveedor**, y lo ves donde lo necesitas (todos los roles):
+
+- **Inventario:** columna **Proveedor** de la grilla (en pantallas angostas, bajo el nombre del
+  insumo) y filtro **Proveedor** en la barra de filtros (incluye «Sin proveedor definido»). Al abrir
+  un insumo, el panel lateral trae el bloque **Proveedor** con **Ir a comprar**, teléfono y correo.
+- **Ficha del insumo:** tarjeta **Proveedor** con los mismos datos.
+- **Alertas** (pestañas *Sin stock* y *Bajo mínimo*) y **Qué requiere atención hoy** del Panel:
+  el proveedor junto al insumo y el enlace **Ir a comprar** si tiene sitio web.
+- **Lista de reposición:** columna Proveedor y la opción **Agrupar por → Proveedor**, que arma un
+  bloque por distribuidor (con su teléfono y correo en el encabezado, también en la hoja impresa)
+  para hacer un pedido a cada uno. El CSV trae proveedor, RUT, teléfono y correo.
+- **Registrar ingreso:** al elegir el insumo (a mano o con el escáner) el campo Proveedor llega con
+  su proveedor ya elegido. Puedes cambiarlo para ese ingreso: **registrar con otro proveedor no
+  cambia el proveedor del insumo**.
+
+Cómo se decide cuál es: como el catálogo es compartido, hay un **proveedor predeterminado de la
+red** (lo define el administrador de la red) y cada institución puede tener **su propio proveedor**
+para un insumo, que vale solo para ella. Ves siempre el de tu institución si existe; si no, el de la
+red; y si ninguno está definido, «Sin proveedor». En ese caso la ficha muestra el **último
+proveedor** al que se le ingresó ese insumo en tus centros, rotulado como tal (es solo una pista).
+Un proveedor **desactivado** que sigue asignado se muestra marcado «Inactivo».
+
+**Definir o cambiar el proveedor de un insumo** (administradores):
+
+1. Abre la ficha del insumo y, en la tarjeta **Proveedor**, presiona **Cambiar proveedor** (o
+   **Definir proveedor**).
+2. Elige el proveedor (puedes buscarlo por nombre o RUT; solo aparecen los activos).
+3. Revisa el recuadro que indica **qué cambias**:
+   - *Administrador de institución:* «Cambias el proveedor **para tu institución**». Las demás
+     instituciones y el predeterminado de la red no cambian.
+   - *Administrador de la red:* eliges entre el **predeterminado de la red** o **solo para una
+     institución** (y cuál).
+4. **Continuar**, revisa «Hoy / Quedará» y **Confirmar cambio**. Queda en la auditoría.
+5. Para dejar el proveedor propio de tu institución: **Volver al predeterminado de la red**.
+
+También desde **Administración → Insumos**: al **crear** un insumo puedes indicar su «Proveedor
+predeterminado» (queda para toda la red); al **editarlo**, el administrador de la red cambia ese
+campo y el administrador de institución usa la sección **Proveedor de tu institución**, junto a los
+mínimos y máximos. Cuando el insumo no tiene proveedor y la ficha muestra el del último ingreso,
+**Usar como predeterminado** lo deja definido en un paso.
 
 ### Buscar un insumo — *Inventario*
 
@@ -358,7 +403,7 @@ En el menú **Administración**:
 
 | Sección | Para qué |
 |---|---|
-| **Insumos** | El catálogo **compartido por toda la red**: código, nombre, categoría, unidad de medida, si controla vencimiento o requiere cadena de frío y, opcionalmente, su registro sanitario. Puedes **crear insumos nuevos** y, en la ficha de cada insumo, definir el **stock mínimo y máximo de tus centros**, que es lo que activa las alertas. No puedes modificar ni desactivar un insumo que ya existe (lo usan otras instituciones): pídeselo al administrador de la red. |
+| **Insumos** | El catálogo **compartido por toda la red**: código, nombre, categoría, unidad de medida, si controla vencimiento o requiere cadena de frío y, opcionalmente, su registro sanitario. Puedes **crear insumos nuevos** (con su proveedor predeterminado) y, en la ficha de cada insumo, definir el **stock mínimo y máximo de tus centros**, que es lo que activa las alertas, y el **proveedor de tu institución** para ese insumo. No puedes modificar ni desactivar un insumo que ya existe (lo usan otras instituciones): pídeselo al administrador de la red. |
 | **Categorías** | Los grupos en que se ordenan los insumos. Puedes crear categorías nuevas; renombrar o eliminar las existentes es del administrador de la red. |
 | **Centros y ubicaciones** | Los establecimientos de tu institución y los lugares donde cada uno guarda su stock (bodegas, salas, refrigeradores). Puedes crear, editar y desactivar tus centros. |
 | **Proveedores** | A quiénes se les compra: RUT, razón social, contacto, teléfono, correo y **sitio web (para comprar)**. Se indican en los ingresos y aparecen en el Panel de todos los roles con el botón «Ir a comprar». Se pueden crear, editar, desactivar y reactivar. Son compartidos por toda la red. |

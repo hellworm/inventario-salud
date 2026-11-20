@@ -29,8 +29,22 @@ function columnas(mostrarCentro: boolean): Columna<FilaExistencia>[] {
       clave: "insumo",
       encabezado: "Insumo y lote",
       movil: "titulo",
-      className: "md:w-[30%]",
+      className: "md:w-[26%]",
       celda: (f) => <CeldaInsumo nombre={f.nombre} codigo={f.codigo} extra={`Lote ${f.numeroLote}`} />,
+    },
+    {
+      clave: "proveedor",
+      encabezado: "Proveedor",
+      className: "md:max-w-48",
+      celda: (f) =>
+        f.proveedor ? (
+          <span className="block min-w-0 break-words">
+            {f.proveedor.razonSocial}
+            {f.proveedor.activo ? "" : " (inactivo)"}
+          </span>
+        ) : (
+          <span className="text-texto-tenue">Sin proveedor</span>
+        ),
     },
     {
       clave: "ubicacion",

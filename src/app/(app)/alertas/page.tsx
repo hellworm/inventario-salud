@@ -11,6 +11,7 @@ import {
   type UbicacionPorCentro,
 } from "@/components/alertas/acciones";
 import { PestanasEnlace, type PestanaEnlace } from "@/components/alertas/pestanas-enlace";
+import { EnlaceComprar, NombreProveedor } from "@/components/proveedores/datos-proveedor";
 import { CeldaInsumo, DosLineas } from "@/components/reportes/piezas";
 import {
   Alert,
@@ -80,8 +81,24 @@ function columnasStock(mostrarCentro: boolean, ubicacionesIngreso: UbicacionPorC
       clave: "insumo",
       encabezado: "Insumo",
       movil: "titulo",
-      className: "md:w-[38%]",
+      className: "md:w-[30%]",
       celda: (a) => <CeldaInsumo nombre={a.nombre} codigo={a.codigo} extra={mostrarCentro ? a.centro : a.categoria} />,
+    },
+    // Proveedor efectivo para la institución del centro de la alerta, con acceso a su sitio de compra.
+    {
+      clave: "proveedor",
+      encabezado: "Proveedor",
+      movilAncho: true,
+      className: "md:max-w-52",
+      celda: (a) =>
+        a.proveedor ? (
+          <span className="block min-w-0" data-proveedor-alerta>
+            <NombreProveedor proveedor={a.proveedor} />
+            <EnlaceComprar proveedor={a.proveedor} variante="enlace" />
+          </span>
+        ) : (
+          <span className="text-texto-tenue">Sin proveedor</span>
+        ),
     },
     // El estado es el de la pestaña: en escritorio no ocupa columna; en móvil identifica la tarjeta.
     ...(ubicacionesIngreso
