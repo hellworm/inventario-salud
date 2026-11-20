@@ -18,3 +18,4 @@ Reglas rápidas:
 - Prisma está fijado en 6.19.3: no lo actualices.
 - Antes de terminar: `npm run typecheck && npm run lint && npm test && npm run build`.
 - No ejecutes `npm run db:reset` (destructivo): pídelo a una persona.
+- Estado del proyecto, decisiones del dueño y pendientes: `docs/TRASPASO.md`.

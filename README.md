@@ -307,7 +307,7 @@ La aplicación está completa para el alcance descrito arriba y pasa todas sus v
   configuran por insumo ni por centro.
 - **Costos:** el costo unitario es opcional y los reportes valorizan con el costo promedio de los
   ingresos que lo traen; no es un sistema contable.
-- **Modo oscuro** y listado oficial completo de comunas: no incluidos.
+- **Listado oficial completo de comunas:** no incluido (solo las principales por región).
 - **Imagen Docker:** el `Dockerfile` se mantiene al día con el código, pero conviene construirla y
   probarla en el entorno de destino antes de salir a producción (ver el checklist de
   [`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)).
